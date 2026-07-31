@@ -199,19 +199,19 @@ function parseProbeResult(probeResult) {
 function validateMedia(metadata) {
     const issues = [];
 
-    if (
-        metadata.width !== 1920 ||
-        metadata.height !== 1080
-    ) {
+    const isFullHdCompatible =
+        metadata.width === 1920 &&
+        metadata.height !== null &&
+        metadata.height > 0 &&
+        metadata.height <= 1080;
+
+    if (!isFullHdCompatible) {
         issues.push(
-            "A resolução não é 1920x1080."
+            "A resolução precisa ter 1920 pixels de largura e altura de até 1080."
         );
     }
 
-    if (
-        metadata.videoCodec !==
-        "H.264"
-    ) {
+    if (metadata.videoCodec !== "H.264") {
         issues.push(
             "O codec de vídeo não é H.264."
         );
@@ -219,12 +219,10 @@ function validateMedia(metadata) {
 
     if (
         metadata.fps === null ||
-        !isSupportedFrameRate(
-            metadata.fps
-        )
+        !isSupportedFrameRate(metadata.fps)
     ) {
         issues.push(
-            "O FPS não é 29,97 ou 59,94."
+            "O FPS não é compatível."
         );
     }
 
@@ -237,18 +235,20 @@ function validateMedia(metadata) {
         issues
     };
 }
-
 function isSupportedFrameRate(fps) {
     const supportedRates = [
-        30000 / 1001,
-        60000 / 1001
+        24000 / 1001,
+        23.98,
+        24,
+        60000 / 1001,
+        60
     ];
 
     return supportedRates.some(
         (supportedRate) =>
             Math.abs(
                 fps - supportedRate
-            ) < 0.02
+            ) < 0.03
     );
 }
 
