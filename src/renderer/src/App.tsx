@@ -562,14 +562,47 @@ function LibraryPanel({
                                         {item.path}
                                     </span>
 
-                                    <small>
-                                        {formatFileSize(
-                                            item.fileSize
-                                        )}
-                                        {" • "}
-                                        Metadados aguardando
-                                        FFprobe
-                                    </small>
+                                   <div className="media-metadata">
+    <span>
+        {item.width && item.height
+            ? `${item.width}×${item.height}`
+            : "Resolução desconhecida"}
+    </span>
+
+    <span>
+        {item.videoCodec ?? "Codec desconhecido"}
+    </span>
+
+    <span>
+        {item.fps !== null
+            ? `${item.fps.toFixed(3)} fps`
+            : "FPS desconhecido"}
+    </span>
+
+    <span>
+        {formatDuration(item.duration)}
+    </span>
+
+    <span>
+        {formatFileSize(item.fileSize)}
+    </span>
+</div>
+
+<div
+    className={
+        item.status === "compatible"
+            ? "compatibility-badge compatible"
+            : item.status === "incompatible"
+              ? "compatibility-badge incompatible"
+              : "compatibility-badge pending"
+    }
+>
+    {item.status === "compatible"
+        ? "● Compatível"
+        : item.status === "incompatible"
+          ? "● Incompatível"
+          : "● Analisando"}
+</div>
                                 </div>
 
                                 <button
@@ -644,4 +677,39 @@ function formatFileSize(
     return `${gigabytes.toFixed(
         2
     )} GB`;
+
+    function formatDuration(
+    duration: number | null
+): string {
+    if (
+        duration === null ||
+        !Number.isFinite(duration)
+    ) {
+        return "Duração desconhecida";
+    }
+
+    const totalSeconds =
+        Math.floor(duration);
+
+    const hours =
+        Math.floor(totalSeconds / 3600);
+
+    const minutes =
+        Math.floor(
+            (totalSeconds % 3600) / 60
+        );
+
+    const seconds =
+        totalSeconds % 60;
+
+    return [
+        hours,
+        minutes,
+        seconds
+    ]
+        .map((value) =>
+            String(value).padStart(2, "0")
+        )
+        .join(":");
+}
 }
