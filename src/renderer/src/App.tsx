@@ -657,28 +657,22 @@ function formatFileSize(
     const kilobytes = bytes / 1024;
 
     if (kilobytes < 1024) {
-        return `${kilobytes.toFixed(
-            1
-        )} KB`;
+        return `${kilobytes.toFixed(1)} KB`;
     }
 
-    const megabytes =
-        kilobytes / 1024;
+    const megabytes = kilobytes / 1024;
 
     if (megabytes < 1024) {
-        return `${megabytes.toFixed(
-            1
-        )} MB`;
+        return `${megabytes.toFixed(1)} MB`;
     }
 
-    const gigabytes =
-        megabytes / 1024;
+    const gigabytes = megabytes / 1024;
 
-    return `${gigabytes.toFixed(
-        2
-    )} GB`;
+    return `${gigabytes.toFixed(2)} GB`;
+}
 
-    function formatDuration(
+
+function formatDuration(
     duration: number | null
 ): string {
     if (
@@ -688,19 +682,17 @@ function formatFileSize(
         return "Duração desconhecida";
     }
 
-    const totalSeconds =
-        Math.floor(duration);
+    const totalSeconds = Math.floor(duration);
 
-    const hours =
-        Math.floor(totalSeconds / 3600);
+    const hours = Math.floor(
+        totalSeconds / 3600
+    );
 
-    const minutes =
-        Math.floor(
-            (totalSeconds % 3600) / 60
-        );
+    const minutes = Math.floor(
+        (totalSeconds % 3600) / 60
+    );
 
-    const seconds =
-        totalSeconds % 60;
+    const seconds = totalSeconds % 60;
 
     return [
         hours,
@@ -711,5 +703,4 @@ function formatFileSize(
             String(value).padStart(2, "0")
         )
         .join(":");
-}
 }
