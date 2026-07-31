@@ -1,19 +1,23 @@
-const button =
-document.getElementById(
+const button = document.getElementById(
     "add-media"
 );
 
 
-
 button.addEventListener(
     "click",
-    ()=>{
+    async ()=>{
+
+        const video =
+        await window.electronAPI.selectVideo();
 
 
-        alert(
-            "Selecionar vídeo em breve..."
-        );
+        if(video){
 
+            alert(
+                "Vídeo selecionado:\n\n" + video
+            );
+
+        }
 
     }
 );
