@@ -9,13 +9,18 @@ const path = require("path");
 
 const {
     initializeDatabase,
-    addLog
+    addLog,
+    getMedia,
+    addMedia,
+    removeMedia
 } = require("../database/database");
 
 const isDevelopment = !app.isPackaged;
 
+let mainWindow = null;
+
 function createWindow() {
-    const win = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1500,
         height: 900,
 
@@ -29,21 +34,92 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            preload: path.join(__dirname, "preload.js")
+
+            preload: path.join(
+                __dirname,
+                "preload.js"
+            )
         }
     });
 
     if (isDevelopment) {
-        win.loadURL("http://localhost:5173");
+        mainWindow.loadURL(
+            "http://localhost:5173"
+        );
     } else {
-        win.loadFile(
-            path.join(__dirname, "../../dist/index.html")
+        mainWindow.loadFile(
+            path.join(
+                __dirname,
+                "../../dist/index.html"
+            )
         );
     }
+
+    mainWindow.on("closed", () => {
+        mainWindow = null;
+    });
+}
+
+function registerIpcHandlers() {
+    ipcMain.handle(
+        "media:select",
+        async () => {
+            const result =
+                await dialog.showOpenDialog({
+                    title:
+                        "Adicionar vídeos à biblioteca",
+
+                    properties: [
+                        "openFile",
+                        "multiSelections"
+                    ],
+
+                    filters: [
+                        {
+                            name:
+                                "Vídeos compatíveis",
+                            extensions: [
+                                "mp4",
+                                "mov"
+                            ]
+                        }
+                    ]
+                });
+
+            if (result.canceled) {
+                return [];
+            }
+
+            return result.filePaths;
+        }
+    );
+
+    ipcMain.handle(
+        "media:list",
+        async () => {
+            return getMedia();
+        }
+    );
+
+    ipcMain.handle(
+        "media:import",
+        async (_event, filePaths) => {
+            return addMedia(filePaths);
+        }
+    );
+
+    ipcMain.handle(
+        "media:remove",
+        async (_event, mediaId) => {
+            return removeMedia(mediaId);
+        }
+    );
 }
 
 function startSystem() {
-    console.log("Inicializando Santtos TV Automation...");
+    console.log(
+        "Inicializando Santtos TV Automation..."
+    );
 
     initializeDatabase();
     addLog("Sistema iniciado");
@@ -51,36 +127,16 @@ function startSystem() {
     console.log("Banco de dados OK");
 }
 
-ipcMain.handle("select-video", async () => {
-    const result = await dialog.showOpenDialog({
-        title: "Adicionar vídeo à biblioteca",
-
-        properties: [
-            "openFile",
-            "multiSelections"
-        ],
-
-        filters: [
-            {
-                name: "Vídeos compatíveis",
-                extensions: ["mp4", "mov"]
-            }
-        ]
-    });
-
-    if (result.canceled) {
-        return [];
-    }
-
-    return result.filePaths;
-});
-
 app.whenReady().then(() => {
     startSystem();
+    registerIpcHandlers();
     createWindow();
 
     app.on("activate", () => {
-        if (BrowserWindow.getAllWindows().length === 0) {
+        if (
+            BrowserWindow.getAllWindows()
+                .length === 0
+        ) {
             createWindow();
         }
     });
