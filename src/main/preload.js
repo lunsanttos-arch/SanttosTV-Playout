@@ -1,17 +1,8 @@
-const { contextBridge, ipcRenderer } = require("electron");
+const {
+    contextBridge,
+    ipcRenderer
+} = require("electron");
 
-
-contextBridge.exposeInMainWorld(
-
-    "electronAPI",
-
-    {
-
-        selectVideo: () =>
-            ipcRenderer.invoke(
-                "select-video"
-            )
-
-    }
-
-);
+contextBridge.exposeInMainWorld("santtosAPI", {
+    selectVideos: () => ipcRenderer.invoke("select-video")
+});
