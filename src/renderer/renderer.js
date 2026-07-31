@@ -1,26 +1,24 @@
-function updateClock(){
+<!doctype html>
+<html lang="pt-BR">
 
-    const now = new Date();
+<head>
+    <meta charset="UTF-8">
 
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
 
-    const time =
-        now.toLocaleTimeString(
-            "pt-BR"
-        );
+    <title>Santtos TV Automation</title>
+</head>
 
+<body>
+    <div id="root"></div>
 
-    document
-    .getElementById("clock")
-    .innerHTML = time;
+    <script
+        type="module"
+        src="/src/main.tsx"
+    ></script>
+</body>
 
-}
-
-
-
-setInterval(
-    updateClock,
-    1000
-);
-
-
-updateClock();
+</html>
