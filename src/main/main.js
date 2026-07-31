@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog } = require("electron");
 const path = require("path");
 
 const { initializeDatabase, addLog } = require("../database/database");
@@ -16,12 +16,18 @@ function createWindow() {
 
         backgroundColor: "#101010",
 
-        webPreferences: {
+       webPreferences: {
 
-            nodeIntegration: false,
+    nodeIntegration: false,
 
-            contextIsolation: true
+    contextIsolation: true,
 
+    preload: path.join(
+        __dirname,
+        "preload.js"
+    )
+
+}
         },
 
         title: "Santtos TV Automation"
@@ -68,7 +74,46 @@ function startSystem(){
 }
 
 
+ipcMain.handle(
+    "select-video",
+    async ()=>{
 
+
+        const result =
+        await dialog.showOpenDialog({
+
+            properties:[
+                "openFile"
+            ],
+
+            filters:[
+
+                {
+                    name:"Vídeos",
+                    extensions:[
+                        "mp4",
+                        "mov"
+                    ]
+                }
+
+            ]
+
+        });
+
+
+
+        if(result.canceled){
+
+            return null;
+
+        }
+
+
+        return result.filePaths[0];
+
+
+    }
+);
 
 app.whenReady().then(()=>{
 
