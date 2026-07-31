@@ -16,18 +16,17 @@ function createWindow() {
 
         backgroundColor: "#101010",
 
-       webPreferences: {
+        webPreferences: {
 
-    nodeIntegration: false,
+            nodeIntegration: false,
 
-    contextIsolation: true,
+            contextIsolation: true,
 
-    preload: path.join(
-        __dirname,
-        "preload.js"
-    )
+            preload: path.join(
+                __dirname,
+                "preload.js"
+            )
 
-}
         },
 
         title: "Santtos TV Automation"
