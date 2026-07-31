@@ -1,98 +1,32 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-
-<head>
-
-<meta charset="UTF-8">
-
-<title>Santtos TV - Biblioteca</title>
-
-<link rel="stylesheet" href="style.css">
-
-</head>
-
-
-<body>
-
-
-<div class="app">
-
-
-<header>
-
-<div class="brand">
-
-<h1>Santtos TV</h1>
-
-<span>Biblioteca</span>
-
-</div>
-
-
-<div class="status">
-
-🟢 Sistema ONLINE
-
-</div>
-
-
-</header>
+const button =
+document.getElementById(
+    "add-media"
+);
 
 
 
-<div class="library-page">
+button.addEventListener(
+
+"click",
+
+async ()=>{
 
 
-<div class="library-header">
-
-
-<h2>Biblioteca de Mídia</h2>
-
-
-<button id="add-media">
-
-+ Adicionar Vídeo
-
-</button>
-
-
-</div>
+    const video =
+    await window.electronAPI.selectVideo();
 
 
 
+    if(video){
 
-<div id="media-list">
+        alert(
+            "Vídeo selecionado:\n\n"
+            + video
+        );
 
-
-<div class="empty-library">
-
-Nenhum vídeo cadastrado
-
-</div>
-
-
-</div>
+    }
 
 
+}
 
-</div>
-
-
-
-<footer>
-
-Santtos TV Automation
-
-</footer>
-
-
-</div>
-
-
-
-<script src="library.js"></script>
-
-
-</body>
-
-</html>
+);
