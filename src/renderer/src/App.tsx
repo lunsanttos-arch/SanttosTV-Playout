@@ -1,5 +1,6 @@
 import {
     useEffect,
+    useMemo,
     useState
 } from "react";
 
@@ -12,37 +13,80 @@ type Panel =
 
 interface MediaItem {
     id: string;
+
     name: string;
     path: string;
+    extension: string;
+
+    fileSize: number;
+
+    duration: number | null;
+    width: number | null;
+    height: number | null;
+    fps: number | null;
+
+    videoCodec: string | null;
+    audioCodec: string | null;
+    thumbnail: string | null;
+
+    status: string;
+    createdAt: string;
+}
+
+interface ImportResult {
+    importedItems: MediaItem[];
+    duplicatedItems: string[];
+    media: MediaItem[];
+}
+
+interface RemoveResult {
+    removed: boolean;
+    removedItem?: MediaItem;
+    media: MediaItem[];
 }
 
 declare global {
     interface Window {
         santtosAPI: {
-            selectVideos: () => Promise<string[]>;
+            selectVideos: () =>
+                Promise<string[]>;
+
+            getMedia: () =>
+                Promise<MediaItem[]>;
+
+            importMedia: (
+                filePaths: string[]
+            ) => Promise<ImportResult>;
+
+            removeMedia: (
+                mediaId: string
+            ) => Promise<RemoveResult>;
         };
     }
 }
 
-function getFileName(filePath: string): string {
-    return filePath
-        .replaceAll("\\", "/")
-        .split("/")
-        .pop() ?? filePath;
-}
-
 export default function App() {
-    const [clock, setClock] = useState("00:00:00");
+    const [clock, setClock] =
+        useState("00:00:00");
+
     const [activePanel, setActivePanel] =
         useState<Panel>("playout");
 
     const [media, setMedia] =
         useState<MediaItem[]>([]);
 
+    const [isLoading, setIsLoading] =
+        useState(false);
+
+    const [message, setMessage] =
+        useState("");
+
     useEffect(() => {
         const updateClock = () => {
             setClock(
-                new Date().toLocaleTimeString("pt-BR")
+                new Date().toLocaleTimeString(
+                    "pt-BR"
+                )
             );
         };
 
@@ -53,31 +97,125 @@ export default function App() {
             1000
         );
 
-        return () => {
+        return () =>
             window.clearInterval(timer);
-        };
     }, []);
 
-    async function addVideos() {
-        const selectedFiles =
-            await window.santtosAPI.selectVideos();
+    useEffect(() => {
+        loadMedia();
+    }, []);
 
-        if (!selectedFiles.length) {
+    async function loadMedia() {
+        try {
+            const savedMedia =
+                await window.santtosAPI.getMedia();
+
+            setMedia(savedMedia);
+        } catch (error) {
+            console.error(error);
+
+            setMessage(
+                "Não foi possível carregar a biblioteca."
+            );
+        }
+    }
+
+    async function addVideos() {
+        try {
+            setMessage("");
+
+            const selectedFiles =
+                await window.santtosAPI
+                    .selectVideos();
+
+            if (selectedFiles.length === 0) {
+                return;
+            }
+
+            setIsLoading(true);
+
+            const result =
+                await window.santtosAPI
+                    .importMedia(
+                        selectedFiles
+                    );
+
+            setMedia(result.media);
+
+            const importedCount =
+                result.importedItems.length;
+
+            const duplicatedCount =
+                result.duplicatedItems.length;
+
+            if (
+                importedCount > 0 &&
+                duplicatedCount === 0
+            ) {
+                setMessage(
+                    `${importedCount} vídeo(s) adicionado(s).`
+                );
+            } else if (
+                importedCount > 0 &&
+                duplicatedCount > 0
+            ) {
+                setMessage(
+                    `${importedCount} vídeo(s) adicionado(s) e ${duplicatedCount} duplicado(s) ignorado(s).`
+                );
+            } else if (
+                duplicatedCount > 0
+            ) {
+                setMessage(
+                    "Os vídeos selecionados já estavam cadastrados."
+                );
+            } else {
+                setMessage(
+                    "Nenhum vídeo compatível foi importado."
+                );
+            }
+        } catch (error) {
+            console.error(error);
+
+            setMessage(
+                "Ocorreu um erro durante a importação."
+            );
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
+    async function handleRemoveMedia(
+        mediaItem: MediaItem
+    ) {
+        const confirmed = window.confirm(
+            `Remover "${mediaItem.name}" da biblioteca?\n\nO arquivo original não será apagado do computador.`
+        );
+
+        if (!confirmed) {
             return;
         }
 
-        const newMedia = selectedFiles.map(
-            (filePath, index) => ({
-                id: `${Date.now()}-${index}`,
-                name: getFileName(filePath),
-                path: filePath
-            })
-        );
+        try {
+            const result =
+                await window.santtosAPI
+                    .removeMedia(
+                        mediaItem.id
+                    );
 
-        setMedia((currentMedia) => [
-            ...currentMedia,
-            ...newMedia
-        ]);
+            setMedia(result.media);
+
+            if (result.removed) {
+                setMessage(
+                    `"${mediaItem.name}" foi removido da biblioteca.`
+                );
+            }
+        } catch (error) {
+            console.error(error);
+
+            setMessage(
+                "Não foi possível remover o vídeo."
+            );
+        }
     }
 
     return (
@@ -102,100 +240,54 @@ export default function App() {
             </header>
 
             <div className="workspace">
-                <aside className="sidebar">
-                    <button
-                        className={
-                            activePanel === "playout"
-                                ? "active"
-                                : ""
-                        }
-                        onClick={() =>
-                            setActivePanel("playout")
-                        }
-                    >
-                        📺 Playout
-                    </button>
-
-                    <button
-                        className={
-                            activePanel === "library"
-                                ? "active"
-                                : ""
-                        }
-                        onClick={() =>
-                            setActivePanel("library")
-                        }
-                    >
-                        📁 Biblioteca
-                    </button>
-
-                    <button
-                        className={
-                            activePanel === "playlist"
-                                ? "active"
-                                : ""
-                        }
-                        onClick={() =>
-                            setActivePanel("playlist")
-                        }
-                    >
-                        📋 Playlist
-                    </button>
-
-                    <button
-                        className={
-                            activePanel === "scheduler"
-                                ? "active"
-                                : ""
-                        }
-                        onClick={() =>
-                            setActivePanel("scheduler")
-                        }
-                    >
-                        🗓 Scheduler
-                    </button>
-
-                    <button
-                        className={
-                            activePanel === "settings"
-                                ? "active"
-                                : ""
-                        }
-                        onClick={() =>
-                            setActivePanel("settings")
-                        }
-                    >
-                        ⚙ Configurações
-                    </button>
-                </aside>
+                <Sidebar
+                    activePanel={activePanel}
+                    setActivePanel={
+                        setActivePanel
+                    }
+                />
 
                 <main className="main-content">
-                    {activePanel === "playout" && (
+                    {activePanel ===
+                        "playout" && (
                         <PlayoutPanel />
                     )}
 
-                    {activePanel === "library" && (
+                    {activePanel ===
+                        "library" && (
                         <LibraryPanel
                             media={media}
-                            onAddVideos={addVideos}
+                            isLoading={
+                                isLoading
+                            }
+                            message={message}
+                            onAddVideos={
+                                addVideos
+                            }
+                            onRemoveMedia={
+                                handleRemoveMedia
+                            }
                         />
                     )}
 
-                    {activePanel === "playlist" && (
+                    {activePanel ===
+                        "playlist" && (
                         <EmptyPanel
                             title="Playlist"
                             message="A programação será montada aqui."
                         />
                     )}
 
-                    {activePanel === "scheduler" && (
+                    {activePanel ===
+                        "scheduler" && (
                         <EmptyPanel
                             title="Scheduler"
                             message="A programação por horário será configurada aqui."
                         />
                     )}
 
-                    {activePanel === "settings" && (
+                    {activePanel ===
+                        "settings" && (
                         <EmptyPanel
                             title="Configurações"
                             message="As configurações técnicas serão exibidas aqui."
@@ -210,10 +302,84 @@ export default function App() {
                 </span>
 
                 <span>
-                    Playout v0.2 Alpha
+                    {media.length} mídia(s)
+                    cadastrada(s)
+                </span>
+
+                <span>
+                    Playout v0.3 Alpha
                 </span>
             </footer>
         </div>
+    );
+}
+
+interface SidebarProps {
+    activePanel: Panel;
+
+    setActivePanel: (
+        panel: Panel
+    ) => void;
+}
+
+function Sidebar({
+    activePanel,
+    setActivePanel
+}: SidebarProps) {
+    const buttons: Array<{
+        panel: Panel;
+        icon: string;
+        label: string;
+    }> = [
+        {
+            panel: "playout",
+            icon: "📺",
+            label: "Playout"
+        },
+        {
+            panel: "library",
+            icon: "📁",
+            label: "Biblioteca"
+        },
+        {
+            panel: "playlist",
+            icon: "📋",
+            label: "Playlist"
+        },
+        {
+            panel: "scheduler",
+            icon: "🗓",
+            label: "Scheduler"
+        },
+        {
+            panel: "settings",
+            icon: "⚙",
+            label: "Configurações"
+        }
+    ];
+
+    return (
+        <aside className="sidebar">
+            {buttons.map((button) => (
+                <button
+                    key={button.panel}
+                    className={
+                        activePanel ===
+                        button.panel
+                            ? "active"
+                            : ""
+                    }
+                    onClick={() =>
+                        setActivePanel(
+                            button.panel
+                        )
+                    }
+                >
+                    {button.icon}{" "}
+                    {button.label}
+                </button>
+            ))}
+        </aside>
     );
 }
 
@@ -235,7 +401,10 @@ function PlayoutPanel() {
                     NO AR
                 </div>
 
-                <strong>Nenhum conteúdo</strong>
+                <strong>
+                    Nenhum conteúdo
+                </strong>
+
                 <span>00:00:00</span>
 
                 <div className="progress-bar">
@@ -272,13 +441,47 @@ function PlayoutPanel() {
 
 interface LibraryPanelProps {
     media: MediaItem[];
-    onAddVideos: () => Promise<void>;
+    isLoading: boolean;
+    message: string;
+
+    onAddVideos: () =>
+        Promise<void>;
+
+    onRemoveMedia: (
+        media: MediaItem
+    ) => Promise<void>;
 }
 
 function LibraryPanel({
     media,
-    onAddVideos
+    isLoading,
+    message,
+    onAddVideos,
+    onRemoveMedia
 }: LibraryPanelProps) {
+    const [search, setSearch] =
+        useState("");
+
+    const filteredMedia = useMemo(
+        () => {
+            const normalizedSearch =
+                search.trim().toLowerCase();
+
+            if (!normalizedSearch) {
+                return media;
+            }
+
+            return media.filter((item) =>
+                item.name
+                    .toLowerCase()
+                    .includes(
+                        normalizedSearch
+                    )
+            );
+        },
+        [media, search]
+    );
+
     return (
         <section className="panel module-panel">
             <div className="module-header">
@@ -287,41 +490,102 @@ function LibraryPanel({
                         BIBLIOTECA
                     </div>
 
-                    <h1>Biblioteca de mídia</h1>
+                    <h1>
+                        Biblioteca de mídia
+                    </h1>
                 </div>
 
                 <button
                     className="primary-button"
                     onClick={onAddVideos}
+                    disabled={isLoading}
                 >
-                    + Adicionar vídeos
+                    {isLoading
+                        ? "Importando..."
+                        : "+ Adicionar vídeos"}
                 </button>
             </div>
+
+            <div className="library-toolbar">
+                <input
+                    className="search-input"
+                    type="search"
+                    value={search}
+                    placeholder="Pesquisar vídeo..."
+                    onChange={(event) =>
+                        setSearch(
+                            event.target.value
+                        )
+                    }
+                />
+
+                <span>
+                    {filteredMedia.length} de{" "}
+                    {media.length} mídia(s)
+                </span>
+            </div>
+
+            {message && (
+                <div className="library-message">
+                    {message}
+                </div>
+            )}
 
             {media.length === 0 ? (
                 <div className="empty-state">
                     Nenhum vídeo cadastrado
                 </div>
+            ) : filteredMedia.length ===
+              0 ? (
+                <div className="empty-state">
+                    Nenhum vídeo encontrado
+                </div>
             ) : (
                 <div className="media-list">
-                    {media.map((item) => (
-                        <article
-                            className="media-item"
-                            key={item.id}
-                        >
-                            <div className="media-thumbnail">
-                                VIDEO
-                            </div>
+                    {filteredMedia.map(
+                        (item) => (
+                            <article
+                                className="media-item"
+                                key={item.id}
+                            >
+                                <div className="media-thumbnail">
+                                    {item.extension
+                                        .toUpperCase()}
+                                </div>
 
-                            <div className="media-information">
-                                <strong>{item.name}</strong>
-                                <span>{item.path}</span>
-                                <small>
-                                    Metadados aguardando FFprobe
-                                </small>
-                            </div>
-                        </article>
-                    ))}
+                                <div className="media-information">
+                                    <strong>
+                                        {item.name}
+                                    </strong>
+
+                                    <span>
+                                        {item.path}
+                                    </span>
+
+                                    <small>
+                                        {formatFileSize(
+                                            item.fileSize
+                                        )}
+                                        {" • "}
+                                        Metadados aguardando
+                                        FFprobe
+                                    </small>
+                                </div>
+
+                                <button
+                                    className="remove-media-button"
+                                    title="Remover da biblioteca"
+                                    onClick={() =>
+                                        onRemoveMedia(
+                                            item
+                                        )
+                                    }
+                                >
+                                    Remover
+                                </button>
+                            </article>
+                        )
+                    )}
                 </div>
             )}
         </section>
@@ -348,4 +612,36 @@ function EmptyPanel({
             </div>
         </section>
     );
+}
+
+function formatFileSize(
+    bytes: number
+): string {
+    if (bytes < 1024) {
+        return `${bytes} B`;
+    }
+
+    const kilobytes = bytes / 1024;
+
+    if (kilobytes < 1024) {
+        return `${kilobytes.toFixed(
+            1
+        )} KB`;
+    }
+
+    const megabytes =
+        kilobytes / 1024;
+
+    if (megabytes < 1024) {
+        return `${megabytes.toFixed(
+            1
+        )} MB`;
+    }
+
+    const gigabytes =
+        megabytes / 1024;
+
+    return `${gigabytes.toFixed(
+        2
+    )} GB`;
 }
