@@ -7,8 +7,10 @@ button.addEventListener(
     "click",
     async ()=>{
 
+
         const video =
         await window.electronAPI.selectVideo();
+
 
 
         if(video){
@@ -18,6 +20,7 @@ button.addEventListener(
             );
 
         }
+
 
     }
 );
