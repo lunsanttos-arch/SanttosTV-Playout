@@ -260,11 +260,41 @@ function normalizePath(filePath) {
         .replaceAll("\\", "/")
         .toLowerCase();
 }
+function updateMediaMetadata(
+    mediaId,
+    metadata
+) {
+    const mediaItem =
+        data.media.find(
+            (item) =>
+                item.id === mediaId
+        );
 
+    if (!mediaItem) {
+        return null;
+    }
+
+    Object.assign(
+        mediaItem,
+        metadata,
+        {
+            metadataUpdatedAt:
+                new Date()
+                    .toISOString()
+        }
+    );
+
+    saveDatabase();
+
+    return {
+        ...mediaItem
+    };
+}
 module.exports = {
     initializeDatabase,
     addLog,
     getMedia,
     addMedia,
-    removeMedia
+    removeMedia,
+    updateMediaMetadata
 };
