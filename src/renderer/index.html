@@ -14,13 +14,12 @@
 
 <body>
 
-
 <div class="app">
 
 
 <header>
 
-<div class="logo">
+<div class="brand">
 
 <h1>Santtos TV</h1>
 
@@ -29,26 +28,23 @@
 </div>
 
 
-<div class="clock" id="clock">
-
+<div id="clock">
 00:00:00
-
 </div>
 
 
-<div class="system-status">
+<div class="status">
 
-🟢 Sistema OK
+🟢 SISTEMA ONLINE
 
 |
 
-NDI OFF
+NDI OFFLINE
 
 </div>
 
 
 </header>
-
 
 
 
@@ -62,6 +58,8 @@ NDI OFF
 
 <button>📺 Playlist</button>
 
+<button>🗓 Scheduler</button>
+
 <button>⚙ Configurações</button>
 
 
@@ -70,9 +68,7 @@ NDI OFF
 
 
 
-
 <main>
-
 
 
 <section class="preview">
@@ -93,33 +89,75 @@ SEM SINAL
 
 
 
+<section class="air">
 
-<section class="info-panel">
+
+<h2>NO AR</h2>
 
 
-<div class="card">
+<div class="program">
 
-<h3>NO AR</h3>
+Nenhum conteúdo
 
-<p>Nenhum vídeo</p>
+</div>
+
+
+<div class="time">
+
+00:00:00
 
 </div>
 
 
+<div class="progress">
 
-
-<div class="card">
-
-<h3>PRÓXIMO</h3>
-
-<p>Aguardando programação</p>
+<div></div>
 
 </div>
-
 
 
 </section>
 
+
+
+
+<section class="next">
+
+
+<h2>PRÓXIMO</h2>
+
+
+<div>
+
+Aguardando programação
+
+</div>
+
+
+</section>
+
+
+
+
+<section class="controls">
+
+
+<button>
+▶ PLAY
+</button>
+
+
+<button>
+⏸ PAUSE
+</button>
+
+
+<button>
+■ STOP
+</button>
+
+
+</section>
 
 
 
@@ -129,20 +167,20 @@ SEM SINAL
 
 <h2>LOGS</h2>
 
-<p>Sistema iniciado</p>
+
+<p>
+Sistema iniciado
+</p>
 
 
 </section>
 
 
 
-
 </main>
 
 
-
 </div>
-
 
 
 
