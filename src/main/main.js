@@ -1,164 +1,93 @@
-const { app, BrowserWindow, ipcMain, dialog } = require("electron");
+const {
+    app,
+    BrowserWindow,
+    ipcMain,
+    dialog
+} = require("electron");
+
 const path = require("path");
 
-const { initializeDatabase, addLog } = require("../database/database");
+const {
+    initializeDatabase,
+    addLog
+} = require("../database/database");
 
+const isDevelopment = !app.isPackaged;
 
 function createWindow() {
-
     const win = new BrowserWindow({
+        width: 1500,
+        height: 900,
 
-        width: 1400,
-        height: 850,
+        minWidth: 1100,
+        minHeight: 700,
 
-        minWidth: 1000,
-        minHeight: 600,
+        backgroundColor: "#0b0b0b",
 
-        backgroundColor: "#101010",
+        title: "Santtos TV Automation",
 
         webPreferences: {
-
             nodeIntegration: false,
-
             contextIsolation: true,
-
-            preload: path.join(
-                __dirname,
-                "preload.js"
-            )
-
-        },
-
-        title: "Santtos TV Automation"
-
+            preload: path.join(__dirname, "preload.js")
+        }
     });
 
-
-    win.loadFile(
-
-        path.join(
-            __dirname,
-            "../renderer/index.html"
-        )
-
-    );
-
+    if (isDevelopment) {
+        win.loadURL("http://localhost:5173");
+    } else {
+        win.loadFile(
+            path.join(__dirname, "../../dist/index.html")
+        );
+    }
 }
 
-
-
-function startSystem(){
-
-
-    console.log(
-        "Inicializando Santtos TV Automation..."
-    );
-
+function startSystem() {
+    console.log("Inicializando Santtos TV Automation...");
 
     initializeDatabase();
+    addLog("Sistema iniciado");
 
-
-
-   addLog(
-    "Sistema iniciado"
-);
-
-
-
-    console.log(
-        "Banco de dados OK"
-    );
-
-
+    console.log("Banco de dados OK");
 }
 
+ipcMain.handle("select-video", async () => {
+    const result = await dialog.showOpenDialog({
+        title: "Adicionar vídeo à biblioteca",
 
-ipcMain.handle(
-    "select-video",
-    async ()=>{
+        properties: [
+            "openFile",
+            "multiSelections"
+        ],
 
-
-        const result =
-        await dialog.showOpenDialog({
-
-            properties:[
-                "openFile"
-            ],
-
-            filters:[
-
-                {
-                    name:"Vídeos",
-                    extensions:[
-                        "mp4",
-                        "mov"
-                    ]
-                }
-
-            ]
-
-        });
-
-
-
-        if(result.canceled){
-
-            return null;
-
-        }
-
-
-        return result.filePaths[0];
-
-
-    }
-);
-
-app.whenReady().then(()=>{
-
-
-    startSystem();
-
-
-    createWindow();
-
-
-
-    app.on(
-        "activate",
-        ()=>{
-
-            if(
-                BrowserWindow
-                .getAllWindows()
-                .length === 0
-            ){
-
-                createWindow();
-
+        filters: [
+            {
+                name: "Vídeos compatíveis",
+                extensions: ["mp4", "mov"]
             }
+        ]
+    });
 
-        }
-    );
+    if (result.canceled) {
+        return [];
+    }
 
-
+    return result.filePaths;
 });
 
+app.whenReady().then(() => {
+    startSystem();
+    createWindow();
 
-
-
-
-app.on(
-    "window-all-closed",
-    ()=>{
-
-        if(
-            process.platform !== "darwin"
-        ){
-
-            app.quit();
-
+    app.on("activate", () => {
+        if (BrowserWindow.getAllWindows().length === 0) {
+            createWindow();
         }
+    });
+});
 
+app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+        app.quit();
     }
-);
+});
