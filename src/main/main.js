@@ -12,35 +12,48 @@ const {
     addLog,
     getMedia,
     addMedia,
-    removeMedia
-} = require("../database/database");
+    removeMedia,
+    updateMediaMetadata
+} = require(
+    "../database/database"
+);
 
-const isDevelopment = !app.isPackaged;
+const {
+    probeMedia
+} = require(
+    "../core/media/ffprobe"
+);
+
+const isDevelopment =
+    !app.isPackaged;
 
 let mainWindow = null;
 
 function createWindow() {
-    mainWindow = new BrowserWindow({
-        width: 1500,
-        height: 900,
+    mainWindow =
+        new BrowserWindow({
+            width: 1500,
+            height: 900,
 
-        minWidth: 1100,
-        minHeight: 700,
+            minWidth: 1100,
+            minHeight: 700,
 
-        backgroundColor: "#0b0b0b",
+            backgroundColor:
+                "#0b0b0b",
 
-        title: "Santtos TV Automation",
+            title:
+                "Santtos TV Automation",
 
-        webPreferences: {
-            nodeIntegration: false,
-            contextIsolation: true,
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true,
 
-            preload: path.join(
-                __dirname,
-                "preload.js"
-            )
-        }
-    });
+                preload: path.join(
+                    __dirname,
+                    "preload.js"
+                )
+            }
+        });
 
     if (isDevelopment) {
         mainWindow.loadURL(
@@ -55,9 +68,72 @@ function createWindow() {
         );
     }
 
-    mainWindow.on("closed", () => {
-        mainWindow = null;
-    });
+    mainWindow.on(
+        "closed",
+        () => {
+            mainWindow = null;
+        }
+    );
+}
+
+async function analyzeMediaItems(
+    mediaItems
+) {
+    for (
+        const mediaItem
+        of mediaItems
+    ) {
+        updateMediaMetadata(
+            mediaItem.id,
+            {
+                status:
+                    "analyzing",
+
+                metadataError:
+                    null
+            }
+        );
+
+        try {
+            const metadata =
+                await probeMedia(
+                    mediaItem.path
+                );
+
+            updateMediaMetadata(
+                mediaItem.id,
+                metadata
+            );
+
+            console.log(
+                [
+                    "FFprobe OK:",
+                    mediaItem.name,
+                    `${metadata.width}x${metadata.height}`,
+                    metadata.videoCodec,
+                    `${metadata.fps} fps`,
+                    `${metadata.duration} s`
+                ].join(" | ")
+            );
+        } catch (error) {
+            console.error(
+                `FFprobe falhou em ${mediaItem.name}:`,
+                error
+            );
+
+            updateMediaMetadata(
+                mediaItem.id,
+                {
+                    status: "error",
+
+                    metadataError:
+                        error.message
+                }
+            );
+        }
+    }
+
+    return getMedia();
 }
 
 function registerIpcHandlers() {
@@ -65,26 +141,28 @@ function registerIpcHandlers() {
         "media:select",
         async () => {
             const result =
-                await dialog.showOpenDialog({
-                    title:
-                        "Adicionar vídeos à biblioteca",
+                await dialog
+                    .showOpenDialog({
+                        title:
+                            "Adicionar vídeos à biblioteca",
 
-                    properties: [
-                        "openFile",
-                        "multiSelections"
-                    ],
+                        properties: [
+                            "openFile",
+                            "multiSelections"
+                        ],
 
-                    filters: [
-                        {
-                            name:
-                                "Vídeos compatíveis",
-                            extensions: [
-                                "mp4",
-                                "mov"
-                            ]
-                        }
-                    ]
-                });
+                        filters: [
+                            {
+                                name:
+                                    "Vídeos compatíveis",
+
+                                extensions: [
+                                    "mp4",
+                                    "mov"
+                                ]
+                            }
+                        ]
+                    });
 
             if (result.canceled) {
                 return [];
@@ -97,21 +175,64 @@ function registerIpcHandlers() {
     ipcMain.handle(
         "media:list",
         async () => {
-            return getMedia();
+            const media =
+                getMedia();
+
+            const pendingMedia =
+                media.filter(
+                    (item) =>
+                        item.status ===
+                            "pending-metadata" ||
+                        item.status ===
+                            "error" ||
+                        item.duration ===
+                            null
+                );
+
+            if (
+                pendingMedia.length >
+                0
+            ) {
+                return analyzeMediaItems(
+                    pendingMedia
+                );
+            }
+
+            return media;
         }
     );
 
     ipcMain.handle(
         "media:import",
-        async (_event, filePaths) => {
-            return addMedia(filePaths);
+        async (
+            _event,
+            filePaths
+        ) => {
+            const importResult =
+                addMedia(filePaths);
+
+            const media =
+                await analyzeMediaItems(
+                    importResult
+                        .importedItems
+                );
+
+            return {
+                ...importResult,
+                media
+            };
         }
     );
 
     ipcMain.handle(
         "media:remove",
-        async (_event, mediaId) => {
-            return removeMedia(mediaId);
+        async (
+            _event,
+            mediaId
+        ) => {
+            return removeMedia(
+                mediaId
+            );
         }
     );
 }
@@ -122,9 +243,14 @@ function startSystem() {
     );
 
     initializeDatabase();
-    addLog("Sistema iniciado");
 
-    console.log("Banco de dados OK");
+    addLog(
+        "Sistema iniciado"
+    );
+
+    console.log(
+        "Banco de dados OK"
+    );
 }
 
 app.whenReady().then(() => {
@@ -132,18 +258,28 @@ app.whenReady().then(() => {
     registerIpcHandlers();
     createWindow();
 
-    app.on("activate", () => {
-        if (
-            BrowserWindow.getAllWindows()
-                .length === 0
-        ) {
-            createWindow();
+    app.on(
+        "activate",
+        () => {
+            if (
+                BrowserWindow
+                    .getAllWindows()
+                    .length === 0
+            ) {
+                createWindow();
+            }
         }
-    });
+    );
 });
 
-app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") {
-        app.quit();
+app.on(
+    "window-all-closed",
+    () => {
+        if (
+            process.platform !==
+            "darwin"
+        ) {
+            app.quit();
+        }
     }
-});
+);
