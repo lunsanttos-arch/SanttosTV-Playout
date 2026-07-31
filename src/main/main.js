@@ -1,7 +1,7 @@
 const { app, BrowserWindow } = require("electron");
 const path = require("path");
 
-const { initializeDatabase, db } = require("../database/database");
+const { initializeDatabase, addLog } = require("../database/database");
 
 
 function createWindow() {
@@ -54,17 +54,9 @@ function startSystem(){
 
 
 
-    db.prepare(`
-
-        INSERT INTO logs(message)
-
-        VALUES(?)
-
-    `)
-
-    .run(
-        "Sistema iniciado"
-    );
+   addLog(
+    "Sistema iniciado"
+);
 
 
 
