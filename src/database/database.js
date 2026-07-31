@@ -1,6 +1,5 @@
-const Database = require("better-sqlite3");
-const path = require("path");
 const fs = require("fs");
+const path = require("path");
 
 
 const databaseFolder = path.join(
@@ -10,96 +9,99 @@ const databaseFolder = path.join(
 
 
 if (!fs.existsSync(databaseFolder)) {
+
     fs.mkdirSync(databaseFolder);
+
 }
 
 
-const dbPath = path.join(
+
+const databaseFile = path.join(
     databaseFolder,
-    "santtos-tv.db"
+    "santtos-tv.json"
 );
 
 
 
-const db = new Database(dbPath);
+let data = {
+
+    settings: {},
+
+    media: [],
+
+    playlist: [],
+
+    logs: []
+
+};
+
+
+
+function save(){
+
+    fs.writeFileSync(
+
+        databaseFile,
+
+        JSON.stringify(
+            data,
+            null,
+            2
+        )
+
+    );
+
+}
 
 
 
 function initializeDatabase(){
 
 
-    db.prepare(`
-        CREATE TABLE IF NOT EXISTS settings (
+    if(fs.existsSync(databaseFile)){
 
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+        data = JSON.parse(
 
-            key TEXT UNIQUE,
+            fs.readFileSync(
+                databaseFile
+            )
 
-            value TEXT
-
-        )
-    `).run();
+        );
 
 
+    } else {
 
-    db.prepare(`
-        CREATE TABLE IF NOT EXISTS media (
 
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+        save();
 
-            name TEXT,
 
-            path TEXT,
-
-            duration TEXT,
-
-            resolution TEXT,
-
-            fps TEXT,
-
-            codec TEXT,
-
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-
-        )
-    `).run();
+    }
 
 
 
+    addLog(
+        "Sistema iniciado"
+    );
 
-    db.prepare(`
-        CREATE TABLE IF NOT EXISTS playlist (
 
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-
-            media_id INTEGER,
-
-            start_time TEXT,
-
-            order_position INTEGER,
-
-            FOREIGN KEY(media_id)
-
-            REFERENCES media(id)
-
-        )
-    `).run();
+}
 
 
 
+function addLog(message){
 
 
-    db.prepare(`
-        CREATE TABLE IF NOT EXISTS logs (
+    data.logs.push({
 
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+        message: message,
 
-            message TEXT,
+        date: new Date()
 
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    });
 
-        )
-    `).run();
+
+
+    save();
 
 
 }
@@ -108,8 +110,10 @@ function initializeDatabase(){
 
 module.exports = {
 
-    db,
+    initializeDatabase,
 
-    initializeDatabase
+    addLog,
+
+    data
 
 };
