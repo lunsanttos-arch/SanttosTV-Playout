@@ -476,4 +476,48 @@ button {
         grid-column: 1;
         grid-row: auto;
     }
+    .media-metadata {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+
+    color: #9a9a9a;
+    font-size: 12px;
+}
+
+.media-metadata span:not(:last-child)::after {
+    content: " •";
+    margin-left: 12px;
+    color: #555555;
+}
+
+.compatibility-badge {
+    width: fit-content;
+
+    margin-top: 3px;
+    padding: 4px 8px;
+
+    border-radius: 999px;
+
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.compatibility-badge.compatible {
+    color: #78e59b;
+    background: #14261a;
+    border: 1px solid #285f39;
+}
+
+.compatibility-badge.incompatible {
+    color: #ff8c9e;
+    background: #2c151a;
+    border: 1px solid #6d2d38;
+}
+
+.compatibility-badge.pending {
+    color: #d6b56f;
+    background: #292315;
+    border: 1px solid #64542d;
+}
 }
