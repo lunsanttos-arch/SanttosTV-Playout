@@ -7,7 +7,7 @@
 
 <title>Santtos TV Automation</title>
 
-<link rel="stylesheet" href="./style.css">
+<link rel="stylesheet" href="style.css">
 
 </head>
 
@@ -15,78 +15,140 @@
 <body>
 
 
-<div id="app">
+<div class="app">
 
 
 <header>
 
-<h1>
-Santtos TV Automation
-</h1>
+<div class="logo">
 
-<span>
-Playout v0.1 Alpha
-</span>
+<h1>Santtos TV</h1>
+
+<span>Automation</span>
+
+</div>
+
+
+<div class="clock" id="clock">
+
+00:00:00
+
+</div>
+
+
+<div class="system-status">
+
+🟢 Sistema OK
+
+|
+
+NDI OFF
+
+</div>
+
 
 </header>
+
+
+
+
+<div class="layout">
+
+
+<aside>
+
+
+<button>📁 Biblioteca</button>
+
+<button>📺 Playlist</button>
+
+<button>⚙ Configurações</button>
+
+
+</aside>
+
+
 
 
 
 <main>
 
 
+
 <section class="preview">
 
-<h2>Preview</h2>
 
-<div class="screen">
+<h2>PREVIEW</h2>
+
+
+<div class="video-screen">
 
 SEM SINAL
 
 </div>
 
+
 </section>
 
 
 
-<section class="playlist">
-
-<h2>Playlist</h2>
 
 
-<div class="empty">
+<section class="info-panel">
 
-Nenhuma programação carregada
+
+<div class="card">
+
+<h3>NO AR</h3>
+
+<p>Nenhum vídeo</p>
 
 </div>
 
 
+
+
+<div class="card">
+
+<h3>PRÓXIMO</h3>
+
+<p>Aguardando programação</p>
+
+</div>
+
+
+
 </section>
+
+
 
 
 
 <section class="logs">
 
-<h2>Logs</h2>
 
+<h2>LOGS</h2>
 
-<div>
-Sistema iniciado
-</div>
+<p>Sistema iniciado</p>
 
 
 </section>
+
+
 
 
 </main>
 
 
 
+</div>
+
+
+
+
 <footer>
 
-Santtos TV Automation
-|
-NDI Output: OFFLINE
+Santtos TV Automation | Playout v0.1 Alpha
 
 </footer>
 
@@ -94,6 +156,9 @@ NDI Output: OFFLINE
 
 </div>
 
+
+
+<script src="renderer.js"></script>
 
 
 </body>
