@@ -480,6 +480,24 @@ useEffect(() => {
         ];
     });
 }, [media, removedTimelineIds]);
+function addTimelineItem(
+    mediaItem: MediaItem
+) {
+    const originalMediaId =
+        mediaItem.sourceMediaId ??
+        mediaItem.id;
+
+    const timelineItem: MediaItem = {
+        ...mediaItem,
+
+        id: `${originalMediaId}-${Date.now()}-${Math.random()
+            .toString(16)
+            .slice(2)}`,
+
+        sourceMediaId:
+            originalMediaId
+    };
+
     setTimelineQueue(
         (currentQueue) => [
             ...currentQueue,
@@ -487,40 +505,6 @@ useEffect(() => {
         ]
     );
 }
-    setRemovedTimelineIds(
-        (currentIds) => {
-            const updatedIds =
-                new Set(currentIds);
-
-            updatedIds.delete(
-                mediaItem.id
-            );
-
-            return updatedIds;
-        }
-    );
-
-    setTimelineQueue(
-        (currentQueue) => {
-            const alreadyExists =
-                currentQueue.some(
-                    (item) =>
-                        item.id ===
-                        mediaItem.id
-                );
-
-            if (alreadyExists) {
-                return currentQueue;
-            }
-
-            return [
-                ...currentQueue,
-                mediaItem
-            ];
-        }
-    );
-}
-
     function removeTimelineItem(
     mediaId: string
 ) {
