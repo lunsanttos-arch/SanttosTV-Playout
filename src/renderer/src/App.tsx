@@ -480,6 +480,40 @@ useEffect(() => {
         ];
     });
 }, [media, removedTimelineIds]);
+ const progressPercent =
+    duration > 0
+        ? Math.min(
+              100,
+              Math.max(
+                  0,
+                  (currentTime / duration) *
+                      100
+              )
+          )
+        : 0;
+
+const selectedMediaIndex =
+    selectedMedia
+        ? timelineQueue.findIndex(
+              (item) =>
+                  item.id ===
+                  selectedMedia.id
+          )
+        : -1;
+
+const timelineMedia =
+    selectedMediaIndex >= 0
+        ? timelineQueue.slice(
+              selectedMediaIndex
+          )
+        : timelineQueue;
+
+const nextMedia =
+    selectedMediaIndex >= 0
+        ? timelineQueue[
+              selectedMediaIndex + 1
+          ] ?? null
+        : null;
     const selectedMediaUrl =
     selectedMedia
         ? encodeURI(
