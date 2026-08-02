@@ -950,7 +950,6 @@ function stopVideo() {
                         selectedMedia?.id;
 
                   return (
- return (
     <div
         key={item.id}
         draggable={!isCurrent}
