@@ -1,6 +1,7 @@
 import {
     useEffect,
     useMemo,
+    useRef,
     useState
 } from "react";
 
@@ -409,7 +410,11 @@ function PlayoutPanel({
     onAddVideos,
     onRemoveMedia
 }: PlayoutPanelProps) {
-   const selectedMediaUrl =
+    const videoRef =
+    useRef<HTMLVideoElement | null>(
+        null
+    );
+    const selectedMediaUrl =
     selectedMedia
         ? encodeURI(
               `file:///${selectedMedia.path.replace(
@@ -440,11 +445,12 @@ function PlayoutPanel({
 
                  <div className="program-monitor">
     {selectedMediaUrl ? (
-        <video
-            className="program-video"
-            src={selectedMediaUrl}
-            controls={false}
-        />
+       <video
+    ref={videoRef}
+    className="program-video"
+    src={selectedMediaUrl}
+    controls={false}
+/>
     ) : (
         "SEM SINAL"
     )}
