@@ -919,3 +919,20 @@ button {
     background: #7a2635;
     border-color: #a8384c;
 }
+.add-timeline-button {
+    padding: 8px 10px;
+
+    color: #d7d7d7;
+    background: #252525;
+
+    border: 1px solid #4b4b4b;
+    border-radius: 5px;
+
+    cursor: pointer;
+}
+
+.add-timeline-button:hover {
+    color: #ffffff;
+    background: #324a38;
+    border-color: #4f805a;
+}
