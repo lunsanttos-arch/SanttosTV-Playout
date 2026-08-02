@@ -989,27 +989,7 @@ function stopVideo() {
                                           )}
                                 </span>
                             </div>
-                     {!isCurrent && (
-        <button
-        type="button"
-        className="timeline-remove"
-        title="Remover da timeline"
-        onClick={(event) => {
-            event.stopPropagation();
-
-            removeTimelineItem(
-                item.id
-            );
-        }}
-        onMouseDown={(event) =>
-            event.stopPropagation()
-        }
-        draggable={false}
-    >
-        ×
-    </button>
-)}
-    
+                 {!isCurrent && (
     <button
         type="button"
         className="timeline-remove"
