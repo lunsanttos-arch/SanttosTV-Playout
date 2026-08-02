@@ -14,6 +14,7 @@ type Panel =
 
 interface MediaItem {
     id: string;
+    sourceMediaId?: string;
 
     name: string;
     path: string;
@@ -445,17 +446,23 @@ useEffect(() => {
             );
 
         const remainingItems =
-            currentQueue.filter(
-                (item) =>
-                    availableIds.has(item.id)
+    currentQueue.filter(
+        (item) =>
+            availableIds.has(
+                item.sourceMediaId ??
+                    item.id
+            )
+    );
             );
 
-        const existingIds =
-            new Set(
-                remainingItems.map(
-                    (item) => item.id
-                )
-            );
+      const existingIds =
+    new Set(
+        remainingItems.map(
+            (item) =>
+                item.sourceMediaId ??
+                item.id
+        )
+    );
 
        const newItems =
     media.filter(
@@ -515,9 +522,31 @@ const nextMedia =
           )
         : null;
 
-    function addTimelineItem(
+   function addTimelineItem(
     mediaItem: MediaItem
 ) {
+    const originalMediaId =
+        mediaItem.sourceMediaId ??
+        mediaItem.id;
+
+    const timelineItem: MediaItem = {
+        ...mediaItem,
+
+        id: `${originalMediaId}-${Date.now()}-${Math.random()
+            .toString(16)
+            .slice(2)}`,
+
+        sourceMediaId:
+            originalMediaId
+    };
+
+    setTimelineQueue(
+        (currentQueue) => [
+            ...currentQueue,
+            timelineItem
+        ]
+    );
+}
     setRemovedTimelineIds(
         (currentIds) => {
             const updatedIds =
@@ -898,7 +927,49 @@ function stopVideo() {
                     </section>
                 </div>
 
-           <section className="panel compact-logs-panel">
+          <section
+    className="panel compact-logs-panel"
+    onDragOver={(event) => {
+        const isLibraryMedia =
+            event.dataTransfer.types.includes(
+                "application/x-santtos-library-media"
+            );
+
+        if (!isLibraryMedia) {
+            return;
+        }
+
+        event.preventDefault();
+
+        event.dataTransfer.dropEffect =
+            "copy";
+    }}
+    onDrop={(event) => {
+        const libraryMediaId =
+            event.dataTransfer.getData(
+                "application/x-santtos-library-media"
+            );
+
+        if (!libraryMediaId) {
+            return;
+        }
+
+        event.preventDefault();
+
+        const libraryMedia =
+            media.find(
+                (item) =>
+                    item.id ===
+                    libraryMediaId
+            );
+
+        if (libraryMedia) {
+            addTimelineItem(
+                libraryMedia
+            );
+        }
+    }}
+>
     <div className="panel-title">
         TIMELINE
     </div>
@@ -914,6 +985,16 @@ function stopVideo() {
                     return (
                       <div
     key={item.id}
+        draggable
+onDragStart={(event) => {
+    event.dataTransfer.effectAllowed =
+        "copy";
+
+    event.dataTransfer.setData(
+        "application/x-santtos-library-media",
+        item.id
+    );
+}}
     draggable={!isCurrent}
     className={`timeline-item ${
         isCurrent
