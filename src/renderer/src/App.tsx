@@ -413,7 +413,7 @@ interface PlayoutPanelProps {
         media: MediaItem
     ) => Promise<void>;
 }
-function LibraryPanel({
+function PlayoutPanel({
     media,
     isLoading,
     message,
@@ -421,7 +421,7 @@ function LibraryPanel({
     onSelectMedia,
     onAddVideos,
     onRemoveMedia
-}: LibraryPanelProps) {
+}: PlayoutPanelProps) {
     return (
         <div className="playout-operation-layout">
             <div className="program-column">
@@ -522,154 +522,6 @@ function LibraryPanel({
 />
             </div>
         </div>
-    );
-}
-        <section className="panel module-panel">
-            <div className="module-header">
-                <div>
-                    <div className="panel-title">
-                        BIBLIOTECA
-                    </div>
-
-                    <h1>
-                        Biblioteca de mídia
-                    </h1>
-                </div>
-
-                <button
-                    className="primary-button"
-                    onClick={onAddVideos}
-                    disabled={isLoading}
-                >
-                    {isLoading
-                        ? "Importando..."
-                        : "+ Adicionar vídeos"}
-                </button>
-            </div>
-
-            <div className="library-toolbar">
-                <input
-                    className="search-input"
-                    type="search"
-                    value={search}
-                    placeholder="Pesquisar vídeo..."
-                    onChange={(event) =>
-                        setSearch(
-                            event.target.value
-                        )
-                    }
-                />
-
-                <span>
-                    {filteredMedia.length} de{" "}
-                    {media.length} mídia(s)
-                </span>
-            </div>
-
-            {message && (
-                <div className="library-message">
-                    {message}
-                </div>
-            )}
-
-            {media.length === 0 ? (
-                <div className="empty-state">
-                    Nenhum vídeo cadastrado
-                </div>
-            ) : filteredMedia.length ===
-              0 ? (
-                <div className="empty-state">
-                    Nenhum vídeo encontrado
-                </div>
-            ) : (
-                <div className="media-list">
-                    {filteredMedia.map(
-                        (item) => (
-                          <article
-    className={
-        selectedMedia?.id === item.id
-            ? "media-item selected"
-            : "media-item"
-    }
-    key={item.id}
-    onClick={() =>
-        onSelectMedia(item)
-    }
->
-                                <div className="media-thumbnail">
-                                    {item.extension
-                                        .toUpperCase()}
-                                </div>
-
-                                <div className="media-information">
-                                    <strong>
-                                        {item.name}
-                                    </strong>
-
-                                    <span>
-                                        {item.path}
-                                    </span>
-
-                                   <div className="media-metadata">
-    <span>
-        {item.width && item.height
-            ? `${item.width}×${item.height}`
-            : "Resolução desconhecida"}
-    </span>
-
-    <span>
-        {item.videoCodec ?? "Codec desconhecido"}
-    </span>
-
-    <span>
-        {item.fps !== null
-            ? `${item.fps.toFixed(3)} fps`
-            : "FPS desconhecido"}
-    </span>
-
-    <span>
-        {formatDuration(item.duration)}
-    </span>
-
-    <span>
-        {formatFileSize(item.fileSize)}
-    </span>
-</div>
-
-<div
-    className={
-        item.status === "compatible"
-            ? "compatibility-badge compatible"
-            : item.status === "incompatible"
-              ? "compatibility-badge incompatible"
-              : "compatibility-badge pending"
-    }
->
-    {item.status === "compatible"
-        ? "● Compatível"
-        : item.status === "incompatible"
-          ? "● Incompatível"
-          : "● Analisando"}
-</div>
-                                </div>
-
-                                <button
-                                    className="remove-media-button"
-                                    title="Remover da biblioteca"
-                                    onClick={() =>
-                                        onRemoveMedia(
-                                            item
-                                        )
-                                    }
-                                >
-                                    Remover
-                                </button>
-                            </article>
-                        )
-                    )}
-                </div>
-            )}
-        </section>
     );
 }
 
