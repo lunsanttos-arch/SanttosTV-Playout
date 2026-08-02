@@ -480,6 +480,15 @@ useEffect(() => {
         ];
     });
 }, [media, removedTimelineIds]);
+    const selectedMediaUrl =
+    selectedMedia
+        ? encodeURI(
+              `file:///${selectedMedia.path.replace(
+                  /\\/g,
+                  "/"
+              )}`
+          )
+        : null;
 function addTimelineItem(
     mediaItem: MediaItem
 ) {
