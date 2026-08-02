@@ -400,6 +400,12 @@ interface PlayoutPanelProps {
     isLoading: boolean;
     message: string;
 
+    selectedMedia: MediaItem | null;
+
+    onSelectMedia: (
+        media: MediaItem
+    ) => void;
+
     onAddVideos: () =>
         Promise<void>;
 
@@ -407,8 +413,7 @@ interface PlayoutPanelProps {
         media: MediaItem
     ) => Promise<void>;
 }
-
-function PlayoutPanel({
+function LibraryPanel({
     media,
     isLoading,
     message,
@@ -416,7 +421,7 @@ function PlayoutPanel({
     onSelectMedia,
     onAddVideos,
     onRemoveMedia
-}: PlayoutPanelProps) {
+}: LibraryPanelProps) {
     return (
         <div className="playout-operation-layout">
             <div className="program-column">
