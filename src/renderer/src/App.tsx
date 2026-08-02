@@ -950,56 +950,61 @@ function stopVideo() {
                         selectedMedia?.id;
 
                   return (
+ return (
     <div
         key={item.id}
         draggable={!isCurrent}
-    isCurrent
-    ? "active"
-    : ""
-} ${
-    draggedMediaId === item.id
-        ? "dragging"
-        : ""
-}`}
-        onSelectMedia(item)
-    }
-    onDragStart={(event) => {
-        if (isCurrent) {
+        className={`timeline-item ${
+            isCurrent
+                ? "active"
+                : ""
+        } ${
+            draggedMediaId === item.id
+                ? "dragging"
+                : ""
+        }`}
+        onClick={() =>
+            onSelectMedia(item)
+        }
+        onDragStart={(event) => {
+            if (isCurrent) {
+                event.preventDefault();
+                return;
+            }
+
+            setDraggedMediaId(item.id);
+
+            event.dataTransfer.effectAllowed =
+                "move";
+
+            event.dataTransfer.setData(
+                "text/plain",
+                item.id
+            );
+        }}
+        onDragOver={(event) => {
+            if (isCurrent) {
+                return;
+            }
+
             event.preventDefault();
-            return;
+
+            event.dataTransfer.dropEffect =
+                "move";
+        }}
+        onDrop={(event) => {
+            event.preventDefault();
+
+            if (!isCurrent) {
+                moveTimelineItem(
+                    item.id
+                );
+            }
+        }}
+        onDragEnd={() =>
+            setDraggedMediaId(null)
         }
-
-        setDraggedMediaId(item.id);
-
-        event.dataTransfer.effectAllowed =
-            "move";
-
-        event.dataTransfer.setData(
-            "text/plain",
-            item.id
-        );
-    }}
-    onDragOver={(event) => {
-        if (isCurrent) {
-            return;
-        }
-
-        event.preventDefault();
-
-        event.dataTransfer.dropEffect =
-            "move";
-    }}
-    onDrop={(event) => {
-        event.preventDefault();
-
-        if (!isCurrent) {
-            moveTimelineItem(item.id);
-        }
-    }}
-    onDragEnd={() =>
-        setDraggedMediaId(null)
-    }
->
+    >
                             <div className="timeline-marker" />
 
                             <div className="timeline-position">
