@@ -443,6 +443,11 @@ const timelineMedia =
     selectedMediaIndex >= 0
         ? media.slice(selectedMediaIndex)
         : media;
+    const nextMedia =
+    selectedMediaIndex >= 0
+        ? media[selectedMediaIndex + 1] ??
+          null
+        : null;
     
     const selectedMediaUrl =
     selectedMedia
@@ -654,9 +659,6 @@ function stopVideo() {
         : "Aguardando reprodução"}
 </span>
 
-                        <span>
-                            Aguardando reprodução
-                        </span>
                     </section>
 
                     <section className="panel compact-status-card">
@@ -664,13 +666,19 @@ function stopVideo() {
                             PRÓXIMO
                         </div>
 
-                        <strong>
-                            Nenhum conteúdo
-                        </strong>
+                       <strong>
+    {nextMedia
+        ? nextMedia.name
+        : "Nenhum conteúdo"}
+</strong>
 
-                        <span>
-                            Aguardando seleção
-                        </span>
+<span>
+    {nextMedia
+        ? formatDuration(
+              nextMedia.duration
+          )
+        : "Fim da timeline"}
+</span>
                     </section>
                 </div>
 
