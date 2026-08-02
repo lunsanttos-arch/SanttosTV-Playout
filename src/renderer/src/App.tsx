@@ -420,6 +420,44 @@ function PlayoutPanel({
     const [duration, setDuration] =
     useState(0);
 
+    const [timelineQueue, setTimelineQueue] =
+    useState<MediaItem[]>(media);
+
+useEffect(() => {
+    setTimelineQueue((currentQueue) => {
+        const availableIds =
+            new Set(
+                media.map(
+                    (item) => item.id
+                )
+            );
+
+        const remainingItems =
+            currentQueue.filter(
+                (item) =>
+                    availableIds.has(item.id)
+            );
+
+        const existingIds =
+            new Set(
+                remainingItems.map(
+                    (item) => item.id
+                )
+            );
+
+        const newItems =
+            media.filter(
+                (item) =>
+                    !existingIds.has(item.id)
+            );
+
+        return [
+            ...remainingItems,
+            ...newItems
+        ];
+    });
+}, [media]);
+    
     const progressPercent =
     duration > 0
         ? Math.min(
@@ -431,9 +469,9 @@ function PlayoutPanel({
               )
           )
         : 0;
-    const selectedMediaIndex =
+   const selectedMediaIndex =
     selectedMedia
-        ? media.findIndex(
+        ? timelineQueue.findIndex(
               (item) =>
                   item.id === selectedMedia.id
           )
@@ -441,12 +479,16 @@ function PlayoutPanel({
 
 const timelineMedia =
     selectedMediaIndex >= 0
-        ? media.slice(selectedMediaIndex)
-        : media;
-    const nextMedia =
+        ? timelineQueue.slice(
+              selectedMediaIndex
+          )
+        : timelineQueue;
+
+const nextMedia =
     selectedMediaIndex >= 0
-        ? media[selectedMediaIndex + 1] ??
-          null
+        ? timelineQueue[
+              selectedMediaIndex + 1
+          ] ?? null
         : null;
     
     const selectedMediaUrl =
