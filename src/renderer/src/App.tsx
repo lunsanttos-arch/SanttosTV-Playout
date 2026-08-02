@@ -423,6 +423,32 @@ function PlayoutPanel({
               )}`
           )
         : null;
+    function playVideo() {
+    videoRef.current
+        ?.play()
+        .catch((error) => {
+            console.error(
+                "Erro ao reproduzir vídeo:",
+                error
+            );
+        });
+}
+
+function pauseVideo() {
+    videoRef.current?.pause();
+}
+
+function stopVideo() {
+    const video =
+        videoRef.current;
+
+    if (!video) {
+        return;
+    }
+
+    video.pause();
+    video.currentTime = 0;
+}
     return (
         <div className="playout-operation-layout">
             <div className="program-column">
@@ -457,17 +483,26 @@ function PlayoutPanel({
 </div>
 
                     <div className="program-controls">
-                        <button title="Reproduzir">
-                            ▶
-                        </button>
+                    <button
+    title="Reproduzir"
+    onClick={playVideo}
+>
+    ▶
+</button>
 
-                        <button title="Pausar">
-                            ⏸
-                        </button>
+<button
+    title="Pausar"
+    onClick={pauseVideo}
+>
+    ⏸
+</button>
 
-                        <button title="Parar">
-                            ■
-                        </button>
+<button
+    title="Parar"
+    onClick={stopVideo}
+>
+    ■
+</button>
 
                         <div className="program-time">
                             00:00:00 / 00:00:00
