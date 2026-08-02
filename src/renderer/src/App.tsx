@@ -630,10 +630,17 @@ function LibraryPanel({
                 <div className="media-list">
                     {filteredMedia.map(
                         (item) => (
-                            <article
-                                className="media-item"
-                                key={item.id}
-                            >
+                          <article
+    className={
+        selectedMedia?.id === item.id
+            ? "media-item selected"
+            : "media-item"
+    }
+    key={item.id}
+    onClick={() =>
+        onSelectMedia(item)
+    }
+>
                                 <div className="media-thumbnail">
                                     {item.extension
                                         .toUpperCase()}
