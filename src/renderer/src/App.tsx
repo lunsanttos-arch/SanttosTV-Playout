@@ -428,6 +428,13 @@ function PlayoutPanel({
     setDraggedMediaId
 ] = useState<string | null>(null);
 
+    const [
+    removedTimelineIds,
+    setRemovedTimelineIds
+] = useState<Set<string>>(
+    () => new Set()
+);
+
 useEffect(() => {
     setTimelineQueue((currentQueue) => {
         const availableIds =
@@ -450,18 +457,20 @@ useEffect(() => {
                 )
             );
 
-        const newItems =
-            media.filter(
-                (item) =>
-                    !existingIds.has(item.id)
-            );
-
+       const newItems =
+    media.filter(
+        (item) =>
+            !existingIds.has(item.id) &&
+            !removedTimelineIds.has(
+                item.id
+            )
+    );
         return [
             ...remainingItems,
             ...newItems
         ];
     });
-}, [media]);
+}, [media, removedTimelineIds]);
     
     const progressPercent =
     duration > 0
@@ -505,6 +514,36 @@ const nextMedia =
               )}`
           )
         : null;
+
+    function removeTimelineItem(
+    mediaId: string
+) {
+    if (
+        mediaId === selectedMedia?.id
+    ) {
+        return;
+    }
+
+    setRemovedTimelineIds(
+        (currentIds) => {
+            const updatedIds =
+                new Set(currentIds);
+
+            updatedIds.add(mediaId);
+
+            return updatedIds;
+        }
+    );
+
+    setTimelineQueue(
+        (currentQueue) =>
+            currentQueue.filter(
+                (item) =>
+                    item.id !== mediaId
+            )
+    );
+}
+    
    function moveTimelineItem(
     targetMediaId: string
 ) {
@@ -836,9 +875,8 @@ function stopVideo() {
                         selectedMedia?.id;
 
                     return (
-                       <button
+                      <div
     key={item.id}
-    type="button"
     draggable={!isCurrent}
     className={`timeline-item ${
         isCurrent
@@ -914,7 +952,27 @@ function stopVideo() {
                                           )}
                                 </span>
                             </div>
-                        </button>
+                          {!isCurrent && (
+    <button
+        type="button"
+        className="timeline-remove"
+        title="Remover da timeline"
+        onClick={(event) => {
+            event.stopPropagation();
+
+            removeTimelineItem(
+                item.id
+            );
+        }}
+        onMouseDown={(event) =>
+            event.stopPropagation()
+        }
+        draggable={false}
+    >
+        ×
+    </button>
+)}
+                        </div>
                     );
                 }
             )}
