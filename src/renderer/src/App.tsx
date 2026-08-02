@@ -248,11 +248,18 @@ export default function App() {
                 />
 
                 <main className="main-content">
-                    {activePanel ===
-                        "playout" && (
-                        <PlayoutPanel />
-                    )}
-
+                   {activePanel ===
+    "playout" && (
+    <PlayoutPanel
+        media={media}
+        isLoading={isLoading}
+        message={message}
+        onAddVideos={addVideos}
+        onRemoveMedia={
+            handleRemoveMedia
+        }
+    />
+)}
                     {activePanel ===
                         "library" && (
                         <LibraryPanel
@@ -383,8 +390,43 @@ function Sidebar({
     );
 }
 
-function PlayoutPanel() {
-    return (
+interface PlayoutPanelProps {
+    media: MediaItem[];
+    isLoading: boolean;
+    message: string;
+
+    onAddVideos: () =>
+        Promise<void>;
+
+    onRemoveMedia: (
+        media: MediaItem
+    ) => Promise<void>;
+}
+
+function PlayoutPanel({
+    media,
+    isLoading,
+    message,
+    onAddVideos,
+    onRemoveMedia
+}: PlayoutPanelProps) {
+return (
+    <>
+        <div className="playout-grid">
+            {/* mantenha aqui todo o conteúdo atual do playout */}
+        </div>
+
+        <LibraryPanel
+            media={media}
+            isLoading={isLoading}
+            message={message}
+            onAddVideos={onAddVideos}
+            onRemoveMedia={
+                onRemoveMedia
+            }
+        />
+    </>
+);
         <div className="playout-grid">
             <section className="panel preview-panel">
                 <div className="panel-title">
