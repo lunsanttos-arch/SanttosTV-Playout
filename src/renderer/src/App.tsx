@@ -991,18 +991,26 @@ function stopVideo() {
                             </div>
                           {!isCurrent && (
 
+ {!isCurrent && (
     <button
-    type="button"
-    className="add-timeline-button"
-    title="Adicionar ao final da timeline"
-    onClick={(event) => {
-        event.stopPropagation();
+        type="button"
+        className="timeline-remove"
+        title="Remover da timeline"
+        onClick={(event) => {
+            event.stopPropagation();
 
-        onAddToTimeline(item);
-    }}
->
-    + Timeline
-</button>
+            removeTimelineItem(
+                item.id
+            );
+        }}
+        onMouseDown={(event) =>
+            event.stopPropagation()
+        }
+        draggable={false}
+    >
+        ×
+    </button>
+)}
     
     <button
         type="button"
@@ -1254,9 +1262,21 @@ function LibraryPanel({
                                     event.stopPropagation();
                                     onRemoveMedia(item);
                                 }}
-                            >
+                            >                            
                                 Remover
                             </button>
+                            <button
+    type="button"
+    className="add-timeline-button"
+    title="Adicionar ao final da timeline"
+    onClick={(event) => {
+        event.stopPropagation();
+
+        onAddToTimeline(item);
+    }}
+>
+    + Timeline
+</button>
                         </article>
                     ))}
                 </div>
