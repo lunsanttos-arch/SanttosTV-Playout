@@ -936,3 +936,16 @@ button {
     background: #324a38;
     border-color: #4f805a;
 }
+.playout-library-column .media-item {
+    cursor: grab;
+}
+
+.playout-library-column .media-item:active {
+    cursor: grabbing;
+}
+
+.compact-logs-panel {
+    transition:
+        border-color 0.15s ease,
+        background 0.15s ease;
+}
