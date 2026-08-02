@@ -646,6 +646,15 @@ function stopVideo() {
 >
     ■
 </button>
+    <button
+    type="button"
+    title="Próximo vídeo"
+    onClick={playNextMedia}
+    disabled={!nextMedia}
+>
+    ⏭
+</button>
+                        
 
                        <div className="program-time">
     {formatDuration(currentTime)}
