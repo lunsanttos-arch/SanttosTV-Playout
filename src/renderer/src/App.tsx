@@ -482,20 +482,18 @@ function stopVideo() {
                     </div>
 
                  <div className="program-monitor">
-    {selectedMediaUrl ? (
-       <video
-   <video
-    id="program-video"
-    ref={videoRef}
-    className="program-video"
-    src={selectedMediaUrl}
-    controls
-    preload="auto"
-/>
-/>
-    ) : (
-        "SEM SINAL"
-    )}
+  {selectedMediaUrl ? (
+    <video
+        id="program-video"
+        ref={videoRef}
+        className="program-video"
+        src={selectedMediaUrl}
+        controls
+        preload="auto"
+    />
+) : (
+    "SEM SINAL"
+)}
 </div>
 
                     <div className="program-controls">
