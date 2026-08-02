@@ -748,3 +748,17 @@ button {
         min-height: 500px;
     }
 }
+.media-item {
+    cursor: pointer;
+}
+
+.media-item:hover {
+    background: #242424;
+    border-color: #4b4b4b;
+}
+
+.media-item.selected {
+    background: #2a171c;
+    border-color: #a52c43;
+    box-shadow: 0 0 0 1px #5e1c29;
+}
