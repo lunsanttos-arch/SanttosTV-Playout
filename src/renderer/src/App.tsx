@@ -674,77 +674,66 @@ function stopVideo() {
                     </section>
                 </div>
 
-             <section className="panel compact-logs-panel">
+           <section className="panel compact-logs-panel">
     <div className="panel-title">
         TIMELINE
     </div>
 
-    {selectedMedia ? (
-        <div className="timeline-item active">
-            <div className="timeline-marker" />
+    {timelineMedia.length > 0 ? (
+        <div className="timeline-list">
+            {timelineMedia.map(
+                (item, index) => {
+                    const isCurrent =
+                        item.id ===
+                        selectedMedia?.id;
 
-            <div className="timeline-content">
-                <strong>
-                    {selectedMedia.name}
-                </strong>
+                    return (
+                        <button
+                            key={item.id}
+                            type="button"
+                            className={`timeline-item ${
+                                isCurrent
+                                    ? "active"
+                                    : ""
+                            }`}
+                            onClick={() =>
+                                onSelectMedia(item)
+                            }
+                        >
+                            <div className="timeline-marker" />
 
-                <span>
-               {timelineMedia.length > 0 ? (
-    <div className="timeline-list">
-        {timelineMedia.map(
-            (item, index) => {
-                const isCurrent =
-                    item.id ===
-                    selectedMedia?.id;
-
-                return (
-                    <button
-                        key={item.id}
-                        type="button"
-                        className={`timeline-item ${
-                            isCurrent
-                                ? "active"
-                                : ""
-                        }`}
-                        onClick={() =>
-                            onSelectMedia(item)
-                        }
-                    >
-                        <div className="timeline-marker" />
-
-                        <div className="timeline-position">
-                            {isCurrent
-                                ? "NO AR"
-                                : `${index + 1}`}
-                        </div>
-
-                        <div className="timeline-content">
-                            <strong>
-                                {item.name}
-                            </strong>
-
-                            <span>
+                            <div className="timeline-position">
                                 {isCurrent
-                                    ? `${formatDuration(
-                                          currentTime
-                                      )} / ${formatDuration(
-                                          duration
-                                      )}`
-                                    : formatDuration(
-                                          item.duration
-                                      )}
-                            </span>
-                        </div>
-                    </button>
-                );
-            }
-        )}
-    </div>
-) : (
-    <span>
-        Nenhuma mídia na timeline
-    </span>
-)}
+                                    ? "NO AR"
+                                    : `${index + 1}`}
+                            </div>
+
+                            <div className="timeline-content">
+                                <strong>
+                                    {item.name}
+                                </strong>
+
+                                <span>
+                                    {isCurrent
+                                        ? `${formatDuration(
+                                              currentTime
+                                          )} / ${formatDuration(
+                                              duration
+                                          )}`
+                                        : formatDuration(
+                                              item.duration
+                                          )}
+                                </span>
+                            </div>
+                        </button>
+                    );
+                }
+            )}
+        </div>
+    ) : (
+        <span>
+            Nenhuma mídia na timeline
+        </span>
     )}
 </section>
             </div>
