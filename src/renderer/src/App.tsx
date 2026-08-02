@@ -515,6 +515,43 @@ const nextMedia =
           )
         : null;
 
+    function addTimelineItem(
+    mediaItem: MediaItem
+) {
+    setRemovedTimelineIds(
+        (currentIds) => {
+            const updatedIds =
+                new Set(currentIds);
+
+            updatedIds.delete(
+                mediaItem.id
+            );
+
+            return updatedIds;
+        }
+    );
+
+    setTimelineQueue(
+        (currentQueue) => {
+            const alreadyExists =
+                currentQueue.some(
+                    (item) =>
+                        item.id ===
+                        mediaItem.id
+                );
+
+            if (alreadyExists) {
+                return currentQueue;
+            }
+
+            return [
+                ...currentQueue,
+                mediaItem
+            ];
+        }
+    );
+}
+
     function removeTimelineItem(
     mediaId: string
 ) {
@@ -953,6 +990,20 @@ function stopVideo() {
                                 </span>
                             </div>
                           {!isCurrent && (
+
+    <button
+    type="button"
+    className="add-timeline-button"
+    title="Adicionar ao final da timeline"
+    onClick={(event) => {
+        event.stopPropagation();
+
+        onAddToTimeline(item);
+    }}
+>
+    + Timeline
+</button>
+    
     <button
         type="button"
         className="timeline-remove"
@@ -986,7 +1037,7 @@ function stopVideo() {
             </div>
 
             <div className="playout-library-column">
-            <LibraryPanel
+<LibraryPanel
     media={media}
     isLoading={isLoading}
     message={message}
@@ -994,6 +1045,9 @@ function stopVideo() {
     onSelectMedia={onSelectMedia}
     onAddVideos={onAddVideos}
     onRemoveMedia={onRemoveMedia}
+    onAddToTimeline={
+        addTimelineItem
+    }
 />
             </div>
         </div>
@@ -1016,6 +1070,10 @@ interface LibraryPanelProps {
     onRemoveMedia: (
         media: MediaItem
     ) => Promise<void>;
+
+    onAddToTimeline: (
+    media: MediaItem
+) => void;
 }
 
 function LibraryPanel({
@@ -1025,7 +1083,8 @@ function LibraryPanel({
     selectedMedia,
     onSelectMedia,
     onAddVideos,
-    onRemoveMedia
+    onRemoveMedia,
+    onAddToTimeline
 }: LibraryPanelProps) {
     const [search, setSearch] =
         useState("");
