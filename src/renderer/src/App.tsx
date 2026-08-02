@@ -446,100 +446,40 @@ useEffect(() => {
             );
 
         const remainingItems =
-    currentQueue.filter(
-        (item) =>
-            availableIds.has(
-                item.sourceMediaId ??
-                    item.id
-            )
-    );
+            currentQueue.filter(
+                (item) =>
+                    availableIds.has(
+                        item.sourceMediaId ??
+                            item.id
+                    )
             );
 
-      const existingIds =
-    new Set(
-        remainingItems.map(
-            (item) =>
-                item.sourceMediaId ??
-                item.id
-        )
-    );
+        const existingIds =
+            new Set(
+                remainingItems.map(
+                    (item) =>
+                        item.sourceMediaId ??
+                        item.id
+                )
+            );
 
-       const newItems =
-    media.filter(
-        (item) =>
-            !existingIds.has(item.id) &&
-            !removedTimelineIds.has(
-                item.id
-            )
-    );
+        const newItems =
+            media.filter(
+                (item) =>
+                    !existingIds.has(
+                        item.id
+                    ) &&
+                    !removedTimelineIds.has(
+                        item.id
+                    )
+            );
+
         return [
             ...remainingItems,
             ...newItems
         ];
     });
 }, [media, removedTimelineIds]);
-    
-    const progressPercent =
-    duration > 0
-        ? Math.min(
-              100,
-              Math.max(
-                  0,
-                  (currentTime / duration) *
-                      100
-              )
-          )
-        : 0;
-   const selectedMediaIndex =
-    selectedMedia
-        ? timelineQueue.findIndex(
-              (item) =>
-                  item.id === selectedMedia.id
-          )
-        : -1;
-
-const timelineMedia =
-    selectedMediaIndex >= 0
-        ? timelineQueue.slice(
-              selectedMediaIndex
-          )
-        : timelineQueue;
-
-const nextMedia =
-    selectedMediaIndex >= 0
-        ? timelineQueue[
-              selectedMediaIndex + 1
-          ] ?? null
-        : null;
-    
-    const selectedMediaUrl =
-    selectedMedia
-        ? encodeURI(
-              `file:///${selectedMedia.path.replace(
-                  /\\/g,
-                  "/"
-              )}`
-          )
-        : null;
-
-   function addTimelineItem(
-    mediaItem: MediaItem
-) {
-    const originalMediaId =
-        mediaItem.sourceMediaId ??
-        mediaItem.id;
-
-    const timelineItem: MediaItem = {
-        ...mediaItem,
-
-        id: `${originalMediaId}-${Date.now()}-${Math.random()
-            .toString(16)
-            .slice(2)}`,
-
-        sourceMediaId:
-            originalMediaId
-    };
-
     setTimelineQueue(
         (currentQueue) => [
             ...currentQueue,
