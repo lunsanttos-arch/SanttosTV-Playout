@@ -170,6 +170,7 @@ async function analyzeMediaItems(
     );
 
     return getMedia();
+}
 
 function registerIpcHandlers() {
     ipcMain.handle(
