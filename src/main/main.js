@@ -47,10 +47,11 @@ function createWindow() {
                 "Santtos TV Automation",
 
             webPreferences: {
-                nodeIntegration: false,
-                contextIsolation: true,
+    nodeIntegration: false,
+    contextIsolation: true,
+    webSecurity: false,
 
-                preload: path.join(
+    preload: path.join(
                     __dirname,
                     "preload.js"
                 )
