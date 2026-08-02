@@ -265,24 +265,7 @@ export default function App() {
         }
     />
 )}
-                    {activePanel ===
-                        "library" && (
-                        <LibraryPanel
-                            media={media}
-                            isLoading={
-                                isLoading
-                            }
-                            message={message}
-                            onAddVideos={
-                                addVideos
-                            }
-                            onRemoveMedia={
-                                handleRemoveMedia
-                            }
-                        />
-                    )}
-
-                    {activePanel ===
+                            {activePanel ===
                         "playlist" && (
                         <EmptyPanel
                             title="Playlist"
