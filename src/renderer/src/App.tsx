@@ -1219,17 +1219,36 @@ function LibraryPanel({
     onClick={() =>
         onSelectMedia(item)
     }
+<article
+    key={item.id}
+    draggable
+    onDragStart={(event) => {
+        event.dataTransfer.effectAllowed =
+            "copy";
+
+        event.dataTransfer.setData(
+            "application/x-santtos-library-media",
+            item.id
+        );
+
+        event.dataTransfer.setData(
+            "text/plain",
+            item.id
+        );
+    }}
+    className={
+        selectedMedia?.id ===
+        item.id
+            ? "media-item selected"
+            : "media-item"
+    }
+    onClick={() =>
+        onSelectMedia(item)
+    }
 >
-                                selectedMedia?.id ===
-                                item.id
-                                    ? "media-item selected"
-                                    : "media-item"
-                            }
-                            onClick={() =>
-                                onSelectMedia(item)
-                            }
-                        >
-                            <div className="media-thumbnail">
+    <div className="media-thumbnail">
+        {item.extension.toUpperCase()}
+    </div>
                                 {item.extension.toUpperCase()}
                             </div>
 
