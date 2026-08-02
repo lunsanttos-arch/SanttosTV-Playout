@@ -952,16 +952,10 @@ function stopVideo() {
                     return (
                       <div
     key={item.id}
-        draggable
-onDragStart={(event) => {
-    event.dataTransfer.effectAllowed =
-        "copy";
-
-    event.dataTransfer.setData(
-        "application/x-santtos-library-media",
-        item.id
-    );
-}}
+       <div
+    key={item.id}
+    draggable={!isCurrent}
+    className={`timeline-item ${
     draggable={!isCurrent}
     className={`timeline-item ${
         isCurrent
@@ -1201,9 +1195,33 @@ function LibraryPanel({
             ) : (
                 <div className="media-list">
                     {filteredMedia.map((item) => (
-                        <article
-                            key={item.id}
-                            className={
+                  <article
+    key={item.id}
+    draggable
+    onDragStart={(event) => {
+        event.dataTransfer.effectAllowed =
+            "copy";
+
+        event.dataTransfer.setData(
+            "application/x-santtos-library-media",
+            item.id
+        );
+
+        event.dataTransfer.setData(
+            "text/plain",
+            item.id
+        );
+    }}
+    className={
+        selectedMedia?.id ===
+        item.id
+            ? "media-item selected"
+            : "media-item"
+    }
+    onClick={() =>
+        onSelectMedia(item)
+    }
+>
                                 selectedMedia?.id ===
                                 item.id
                                     ? "media-item selected"
