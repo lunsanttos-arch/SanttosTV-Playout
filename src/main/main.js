@@ -29,6 +29,8 @@ const isDevelopment =
 
 let mainWindow = null;
 
+const analysesInProgress = new Map();
+
 function createWindow() {
     mainWindow =
         new BrowserWindow({
@@ -76,9 +78,99 @@ function createWindow() {
     );
 }
 
+async function analyzeMediaItem(mediaItem) {
+    const existingAnalysis =
+        analysesInProgress.get(mediaItem.id);
+
+    if (existingAnalysis) {
+        return existingAnalysis;
+    }
+
+    const analysisPromise =
+        (async () => {
+            updateMediaMetadata(
+                mediaItem.id,
+                {
+                    status: "analyzing",
+                    metadataError: null,
+                    analysisStartedAt:
+                        new Date().toISOString()
+                }
+            );
+
+            try {
+                const metadata =
+                    await probeMedia(
+                        mediaItem.path
+                    );
+
+                updateMediaMetadata(
+                    mediaItem.id,
+                    {
+                        ...metadata,
+
+                        analysisCompletedAt:
+                            new Date()
+                                .toISOString()
+                    }
+                );
+
+                console.log(
+                    [
+                        "FFprobe OK:",
+                        mediaItem.name,
+                        `${metadata.width}x${metadata.height}`,
+                        metadata.videoCodec,
+                        `${metadata.fps} fps`,
+                        `${metadata.duration} s`
+                    ].join(" | ")
+                );
+            } catch (error) {
+                console.error(
+                    `FFprobe falhou em ${mediaItem.name}:`,
+                    error
+                );
+
+                updateMediaMetadata(
+                    mediaItem.id,
+                    {
+                        status: "error",
+
+                        metadataError:
+                            error.message,
+
+                        analysisCompletedAt:
+                            new Date()
+                                .toISOString()
+                    }
+                );
+            } finally {
+                analysesInProgress.delete(
+                    mediaItem.id
+                );
+            }
+        })();
+
+    analysesInProgress.set(
+        mediaItem.id,
+        analysisPromise
+    );
+
+    return analysisPromise;
+}
+
+
 async function analyzeMediaItems(
     mediaItems
 ) {
+    await Promise.all(
+        mediaItems.map(
+            analyzeMediaItem
+        )
+    );
+
+    return getMedia();
+}
     for (
         const mediaItem
         of mediaItems
@@ -179,15 +271,11 @@ function registerIpcHandlers() {
                 getMedia();
 
             const pendingMedia =
-                media.filter(
-                    (item) =>
-                        item.status ===
-                            "pending-metadata" ||
-                        item.status ===
-                            "error" ||
-                        item.duration ===
-                            null
-                );
+    media.filter(
+        (item) =>
+            item.status ===
+                "pending-metadata"
+    );
 
             if (
                 pendingMedia.length >
