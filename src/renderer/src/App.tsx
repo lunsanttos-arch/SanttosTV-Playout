@@ -525,6 +525,212 @@ function PlayoutPanel({
     );
 }
 
+interface LibraryPanelProps {
+    media: MediaItem[];
+    isLoading: boolean;
+    message: string;
+    selectedMedia: MediaItem | null;
+
+    onSelectMedia: (
+        media: MediaItem
+    ) => void;
+
+    onAddVideos: () =>
+        Promise<void>;
+
+    onRemoveMedia: (
+        media: MediaItem
+    ) => Promise<void>;
+}
+
+function LibraryPanel({
+    media,
+    isLoading,
+    message,
+    selectedMedia,
+    onSelectMedia,
+    onAddVideos,
+    onRemoveMedia
+}: LibraryPanelProps) {
+    const [search, setSearch] =
+        useState("");
+
+    const filteredMedia = useMemo(
+        () => {
+            const normalizedSearch =
+                search.trim().toLowerCase();
+
+            if (!normalizedSearch) {
+                return media;
+            }
+
+            return media.filter((item) =>
+                item.name
+                    .toLowerCase()
+                    .includes(normalizedSearch)
+            );
+        },
+        [media, search]
+    );
+
+    return (
+        <section className="panel module-panel">
+            <div className="module-header">
+                <div>
+                    <div className="panel-title">
+                        BIBLIOTECA
+                    </div>
+
+                    <h1>
+                        Biblioteca de mídia
+                    </h1>
+                </div>
+
+                <button
+                    className="primary-button"
+                    onClick={onAddVideos}
+                    disabled={isLoading}
+                >
+                    {isLoading
+                        ? "Importando..."
+                        : "+ Adicionar vídeos"}
+                </button>
+            </div>
+
+            <div className="library-toolbar">
+                <input
+                    className="search-input"
+                    type="search"
+                    value={search}
+                    placeholder="Pesquisar vídeo..."
+                    onChange={(event) =>
+                        setSearch(
+                            event.target.value
+                        )
+                    }
+                />
+
+                <span>
+                    {filteredMedia.length} de{" "}
+                    {media.length} mídia(s)
+                </span>
+            </div>
+
+            {message && (
+                <div className="library-message">
+                    {message}
+                </div>
+            )}
+
+            {media.length === 0 ? (
+                <div className="empty-state">
+                    Nenhum vídeo cadastrado
+                </div>
+            ) : filteredMedia.length === 0 ? (
+                <div className="empty-state">
+                    Nenhum vídeo encontrado
+                </div>
+            ) : (
+                <div className="media-list">
+                    {filteredMedia.map((item) => (
+                        <article
+                            key={item.id}
+                            className={
+                                selectedMedia?.id ===
+                                item.id
+                                    ? "media-item selected"
+                                    : "media-item"
+                            }
+                            onClick={() =>
+                                onSelectMedia(item)
+                            }
+                        >
+                            <div className="media-thumbnail">
+                                {item.extension.toUpperCase()}
+                            </div>
+
+                            <div className="media-information">
+                                <strong>
+                                    {item.name}
+                                </strong>
+
+                                <span>
+                                    {item.path}
+                                </span>
+
+                                <div className="media-metadata">
+                                    <span>
+                                        {item.width &&
+                                        item.height
+                                            ? `${item.width}×${item.height}`
+                                            : "Resolução desconhecida"}
+                                    </span>
+
+                                    <span>
+                                        {item.videoCodec ??
+                                            "Codec desconhecido"}
+                                    </span>
+
+                                    <span>
+                                        {item.fps !== null
+                                            ? `${item.fps.toFixed(
+                                                  3
+                                              )} fps`
+                                            : "FPS desconhecido"}
+                                    </span>
+
+                                    <span>
+                                        {formatDuration(
+                                            item.duration
+                                        )}
+                                    </span>
+
+                                    <span>
+                                        {formatFileSize(
+                                            item.fileSize
+                                        )}
+                                    </span>
+                                </div>
+
+                                <div
+                                    className={
+                                        item.status ===
+                                        "compatible"
+                                            ? "compatibility-badge compatible"
+                                            : item.status ===
+                                                "incompatible"
+                                              ? "compatibility-badge incompatible"
+                                              : "compatibility-badge pending"
+                                    }
+                                >
+                                    {item.status ===
+                                    "compatible"
+                                        ? "● Compatível"
+                                        : item.status ===
+                                            "incompatible"
+                                          ? "● Incompatível"
+                                          : "● Analisando"}
+                                </div>
+                            </div>
+
+                            <button
+                                className="remove-media-button"
+                                title="Remover da biblioteca"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    onRemoveMedia(item);
+                                }}
+                            >
+                                Remover
+                            </button>
+                        </article>
+                    ))}
+                </div>
+            )}
+        </section>
+    );
+}
+
 interface EmptyPanelProps {
     title: string;
     message: string;
