@@ -878,3 +878,19 @@ button.timeline-item {
     overflow-y: auto;
     overflow-x: hidden;
 }
+.timeline-item:not(.active) {
+    cursor: grab;
+}
+
+.timeline-item:not(.active):active {
+    cursor: grabbing;
+}
+
+.timeline-item.dragging {
+    opacity: 0.4;
+    border-style: dashed;
+}
+
+.timeline-item.active {
+    cursor: default;
+}
