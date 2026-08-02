@@ -170,63 +170,6 @@ async function analyzeMediaItems(
     );
 
     return getMedia();
-}
-    for (
-        const mediaItem
-        of mediaItems
-    ) {
-        updateMediaMetadata(
-            mediaItem.id,
-            {
-                status:
-                    "analyzing",
-
-                metadataError:
-                    null
-            }
-        );
-
-        try {
-            const metadata =
-                await probeMedia(
-                    mediaItem.path
-                );
-
-            updateMediaMetadata(
-                mediaItem.id,
-                metadata
-            );
-
-            console.log(
-                [
-                    "FFprobe OK:",
-                    mediaItem.name,
-                    `${metadata.width}x${metadata.height}`,
-                    metadata.videoCodec,
-                    `${metadata.fps} fps`,
-                    `${metadata.duration} s`
-                ].join(" | ")
-            );
-        } catch (error) {
-            console.error(
-                `FFprobe falhou em ${mediaItem.name}:`,
-                error
-            );
-
-            updateMediaMetadata(
-                mediaItem.id,
-                {
-                    status: "error",
-
-                    metadataError:
-                        error.message
-                }
-            );
-        }
-    }
-
-    return getMedia();
-}
 
 function registerIpcHandlers() {
     ipcMain.handle(
