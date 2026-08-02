@@ -411,67 +411,105 @@ function PlayoutPanel({
     onRemoveMedia
 }: PlayoutPanelProps) {
     return (
-        <>
-            <div className="playout-grid">
-                <section className="panel preview-panel">
-                    <div className="panel-title">
-                        PROGRAM
+        <div className="playout-operation-layout">
+            <div className="program-column">
+                <section className="panel program-card">
+                    <div className="program-header">
+                        <div>
+                            <div className="panel-title">
+                                PROGRAM
+                            </div>
+
+                            <strong>
+                                Saída principal
+                            </strong>
+                        </div>
+
+                        <span className="program-status">
+                            ● OFF AIR
+                        </span>
                     </div>
 
-                    <div className="video-screen">
+                    <div className="program-monitor">
                         SEM SINAL
                     </div>
-                </section>
 
-                <section className="panel on-air-panel">
-                    <div className="panel-title">
-                        NO AR
+                    <div className="program-controls">
+                        <button title="Reproduzir">
+                            ▶
+                        </button>
+
+                        <button title="Pausar">
+                            ⏸
+                        </button>
+
+                        <button title="Parar">
+                            ■
+                        </button>
+
+                        <div className="program-time">
+                            00:00:00 / 00:00:00
+                        </div>
                     </div>
 
-                    <strong>
-                        Nenhum conteúdo
-                    </strong>
-
-                    <span>00:00:00</span>
-
-                    <div className="progress-bar">
+                    <div className="program-progress">
                         <div />
                     </div>
                 </section>
 
-                <section className="panel next-panel">
-                    <div className="panel-title">
-                        PRÓXIMO
-                    </div>
+                <div className="playout-status-row">
+                    <section className="panel compact-status-card">
+                        <div className="panel-title">
+                            NO AR
+                        </div>
 
-                    <span>
-                        Aguardando programação
-                    </span>
-                </section>
+                        <strong>
+                            Nenhum conteúdo
+                        </strong>
 
-                <section className="panel controls-panel">
-                    <button>▶ PLAY</button>
-                    <button>⏸ PAUSE</button>
-                    <button>■ STOP</button>
-                </section>
+                        <span>
+                            Aguardando reprodução
+                        </span>
+                    </section>
 
-                <section className="panel logs-panel">
+                    <section className="panel compact-status-card">
+                        <div className="panel-title">
+                            PRÓXIMO
+                        </div>
+
+                        <strong>
+                            Nenhum conteúdo
+                        </strong>
+
+                        <span>
+                            Aguardando seleção
+                        </span>
+                    </section>
+                </div>
+
+                <section className="panel compact-logs-panel">
                     <div className="panel-title">
                         LOGS
                     </div>
 
-                    <span>Sistema iniciado</span>
+                    <span>
+                        Sistema iniciado
+                    </span>
                 </section>
             </div>
 
-            <LibraryPanel
-                media={media}
-                isLoading={isLoading}
-                message={message}
-                onAddVideos={onAddVideos}
-                onRemoveMedia={onRemoveMedia}
-            />
-        </>
+            <div className="playout-library-column">
+                <LibraryPanel
+                    media={media}
+                    isLoading={isLoading}
+                    message={message}
+                    onAddVideos={onAddVideos}
+                    onRemoveMedia={
+                        onRemoveMedia
+                    }
+                />
+            </div>
+        </div>
     );
 }
 interface LibraryPanelProps {
