@@ -81,6 +81,9 @@ export default function App() {
     const [message, setMessage] =
         useState("");
 
+    const [selectedMedia, setSelectedMedia] =
+    useState<MediaItem | null>(null);
+
     useEffect(() => {
         const updateClock = () => {
             setClock(
@@ -254,6 +257,8 @@ export default function App() {
         media={media}
         isLoading={isLoading}
         message={message}
+        selectedMedia={selectedMedia}
+        onSelectMedia={setSelectedMedia}
         onAddVideos={addVideos}
         onRemoveMedia={
             handleRemoveMedia
@@ -407,6 +412,8 @@ function PlayoutPanel({
     media,
     isLoading,
     message,
+    selectedMedia,
+    onSelectMedia,
     onAddVideos,
     onRemoveMedia
 }: PlayoutPanelProps) {
