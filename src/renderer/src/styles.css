@@ -826,7 +826,7 @@ button {
     overflow-y: auto;
 }
 
-button.timeline-item {
+.timeline-item {
     width: 100%;
     color: inherit;
     font: inherit;
@@ -893,4 +893,29 @@ button.timeline-item {
 
 .timeline-item.active {
     cursor: default;
+}
+.timeline-content {
+    flex: 1;
+}
+
+.timeline-remove {
+    width: 30px;
+    height: 30px;
+    flex-shrink: 0;
+
+    padding: 0;
+
+    color: #b9b9b9;
+    background: transparent;
+
+    border: 1px solid #484848;
+    border-radius: 5px;
+
+    cursor: pointer;
+}
+
+.timeline-remove:hover {
+    color: #ffffff;
+    background: #7a2635;
+    border-color: #a8384c;
 }
