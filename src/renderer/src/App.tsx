@@ -949,15 +949,19 @@ function stopVideo() {
                         item.id ===
                         selectedMedia?.id;
 
-                    return (
-                      <div
-    key={item.id}
-       <div
-    key={item.id}
-    draggable={!isCurrent}
-    className={`timeline-item ${
-    draggable={!isCurrent}
-    className={`timeline-item ${
+                  return (
+    <div
+        key={item.id}
+        draggable={!isCurrent}
+        className={`timeline-item ${
+            isCurrent
+                ? "active"
+                : ""
+        } ${
+            draggedMediaId === item.id
+                ? "dragging"
+                : ""
+        }`}
         isCurrent
             ? "active"
             : ""
