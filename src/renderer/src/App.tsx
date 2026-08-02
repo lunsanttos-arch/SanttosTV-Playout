@@ -423,6 +423,11 @@ function PlayoutPanel({
     const [timelineQueue, setTimelineQueue] =
     useState<MediaItem[]>(media);
 
+    const [
+    draggedMediaId,
+    setDraggedMediaId
+] = useState<string | null>(null);
+
 useEffect(() => {
     setTimelineQueue((currentQueue) => {
         const availableIds =
@@ -500,7 +505,65 @@ const nextMedia =
               )}`
           )
         : null;
-   function getProgramVideo() {
+   function moveTimelineItem(
+    targetMediaId: string
+) {
+    if (
+        !draggedMediaId ||
+        draggedMediaId === targetMediaId
+    ) {
+        setDraggedMediaId(null);
+        return;
+    }
+
+    setTimelineQueue((currentQueue) => {
+        const sourceIndex =
+            currentQueue.findIndex(
+                (item) =>
+                    item.id === draggedMediaId
+            );
+
+        const targetIndex =
+            currentQueue.findIndex(
+                (item) =>
+                    item.id === targetMediaId
+            );
+
+        const firstMovableIndex =
+            selectedMediaIndex >= 0
+                ? selectedMediaIndex + 1
+                : 0;
+
+        if (
+            sourceIndex < firstMovableIndex ||
+            targetIndex < firstMovableIndex
+        ) {
+            return currentQueue;
+        }
+
+        const reorderedQueue = [
+            ...currentQueue
+        ];
+
+        const [movedItem] =
+            reorderedQueue.splice(
+                sourceIndex,
+                1
+            );
+
+        reorderedQueue.splice(
+            targetIndex,
+            0,
+            movedItem
+        );
+
+        return reorderedQueue;
+    });
+
+    setDraggedMediaId(null);
+}
+    
+    function getProgramVideo() {
     return document.getElementById(
         "program-video"
     ) as HTMLVideoElement | null;
@@ -773,18 +836,59 @@ function stopVideo() {
                         selectedMedia?.id;
 
                     return (
-                        <button
-                            key={item.id}
-                            type="button"
-                            className={`timeline-item ${
-                                isCurrent
-                                    ? "active"
-                                    : ""
-                            }`}
-                            onClick={() =>
-                                onSelectMedia(item)
-                            }
-                        >
+                       <button
+    key={item.id}
+    type="button"
+    draggable={!isCurrent}
+    className={`timeline-item ${
+        isCurrent
+            ? "active"
+            : ""
+    } ${
+        draggedMediaId === item.id
+            ? "dragging"
+            : ""
+    }`}
+    onClick={() =>
+        onSelectMedia(item)
+    }
+    onDragStart={(event) => {
+        if (isCurrent) {
+            event.preventDefault();
+            return;
+        }
+
+        setDraggedMediaId(item.id);
+
+        event.dataTransfer.effectAllowed =
+            "move";
+
+        event.dataTransfer.setData(
+            "text/plain",
+            item.id
+        );
+    }}
+    onDragOver={(event) => {
+        if (isCurrent) {
+            return;
+        }
+
+        event.preventDefault();
+
+        event.dataTransfer.dropEffect =
+            "move";
+    }}
+    onDrop={(event) => {
+        event.preventDefault();
+
+        if (!isCurrent) {
+            moveTimelineItem(item.id);
+        }
+    }}
+    onDragEnd={() =>
+        setDraggedMediaId(null)
+    }
+>
                             <div className="timeline-marker" />
 
                             <div className="timeline-position">
