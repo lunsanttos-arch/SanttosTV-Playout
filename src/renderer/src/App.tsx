@@ -414,6 +414,12 @@ function PlayoutPanel({
     useRef<HTMLVideoElement | null>(
         null
     );
+    const [currentTime, setCurrentTime] =
+    useState(0);
+
+    const [duration, setDuration] =
+    useState(0);
+    
     const selectedMediaUrl =
     selectedMedia
         ? encodeURI(
@@ -536,14 +542,29 @@ function stopVideo() {
 
                  <div className="program-monitor">
   {selectedMediaUrl ? (
-    <video
-        id="program-video"
-        ref={videoRef}
-        className="program-video"
-        src={selectedMediaUrl}
-        controls
-        preload="auto"
-    />
+   <video
+    id="program-video"
+    ref={videoRef}
+    className="program-video"
+    src={selectedMediaUrl}
+    controls
+    preload="auto"
+    onTimeUpdate={(event) =>
+        setCurrentTime(
+            event.currentTarget.currentTime
+        )
+    }
+    onLoadedMetadata={(event) =>
+        setDuration(
+            event.currentTarget.duration
+        )
+    }
+    onDurationChange={(event) =>
+        setDuration(
+            event.currentTarget.duration
+        )
+    }
+/>
 ) : (
     "SEM SINAL"
 )}
@@ -571,9 +592,11 @@ function stopVideo() {
     ■
 </button>
 
-                        <div className="program-time">
-                            00:00:00 / 00:00:00
-                        </div>
+                       <div className="program-time">
+    {formatDuration(currentTime)}
+    {" / "}
+    {formatDuration(duration)}
+</div>
                     </div>
 
                     <div className="program-progress">
