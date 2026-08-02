@@ -475,7 +475,8 @@ function stopVideo() {
     ref={videoRef}
     className="program-video"
     src={selectedMediaUrl}
-    controls={false}
+   controls
+preload="auto"
 />
     ) : (
         "SEM SINAL"
