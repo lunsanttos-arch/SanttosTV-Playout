@@ -611,15 +611,33 @@ function stopVideo() {
                     </section>
                 </div>
 
-                <section className="panel compact-logs-panel">
-                    <div className="panel-title">
-                        LOGS
-                    </div>
+             <section className="panel compact-logs-panel">
+    <div className="panel-title">
+        TIMELINE
+    </div>
 
-                    <span>
-                        Sistema iniciado
-                    </span>
-                </section>
+    {selectedMedia ? (
+        <div className="timeline-item active">
+            <div className="timeline-marker" />
+
+            <div className="timeline-content">
+                <strong>
+                    {selectedMedia.name}
+                </strong>
+
+                <span>
+                    {formatDuration(
+                        selectedMedia.duration
+                    )}
+                </span>
+            </div>
+        </div>
+    ) : (
+        <span>
+            Nenhuma mídia selecionada
+        </span>
+    )}
+</section>
             </div>
 
             <div className="playout-library-column">
