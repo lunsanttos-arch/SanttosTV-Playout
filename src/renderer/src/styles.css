@@ -847,3 +847,7 @@ button.timeline-item {
 .timeline-item.active .timeline-position {
     color: #ff667f;
 }
+.program-controls button:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
