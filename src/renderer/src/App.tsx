@@ -524,7 +524,6 @@ function LibraryPanel({
         </div>
     );
 }
-    return (
         <section className="panel module-panel">
             <div className="module-header">
                 <div>
