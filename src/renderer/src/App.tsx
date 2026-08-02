@@ -429,24 +429,77 @@ function PlayoutPanel({
     ) as HTMLVideoElement | null;
 }
 
-function playVideo() {
+async function playVideo() {
     const video = getProgramVideo();
 
     if (!video) {
-        console.error(
+        window.alert(
             "Player PROGRAM não encontrado."
         );
         return;
     }
 
-    video.play().catch((error) => {
+    try {
+        if (video.readyState < 2) {
+            video.load();
+
+            await new Promise<void>(
+                (resolve, reject) => {
+                    const handleReady = () => {
+                        cleanup();
+                        resolve();
+                    };
+
+                    const handleError = () => {
+                        cleanup();
+                        reject(
+                            new Error(
+                                "O arquivo não pôde ser carregado."
+                            )
+                        );
+                    };
+
+                    const cleanup = () => {
+                        video.removeEventListener(
+                            "canplay",
+                            handleReady
+                        );
+
+                        video.removeEventListener(
+                            "error",
+                            handleError
+                        );
+                    };
+
+                    video.addEventListener(
+                        "canplay",
+                        handleReady
+                    );
+
+                    video.addEventListener(
+                        "error",
+                        handleError
+                    );
+                }
+            );
+        }
+
+        await video.play();
+    } catch (error) {
         console.error(
             "Erro ao reproduzir vídeo:",
             error
         );
-    });
-}
 
+        window.alert(
+            `Não foi possível reproduzir o vídeo.\n\n${
+                error instanceof Error
+                    ? error.message
+                    : String(error)
+            }`
+        );
+    }
+}
 function pauseVideo() {
     getProgramVideo()?.pause();
 }
