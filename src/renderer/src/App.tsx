@@ -409,10 +409,13 @@ function PlayoutPanel({
     onAddVideos,
     onRemoveMedia
 }: PlayoutPanelProps) {
-    const selectedMediaUrl =
+   const selectedMediaUrl =
     selectedMedia
-        ? window.santtosAPI.getMediaFileUrl(
-              selectedMedia.path
+        ? encodeURI(
+              `file:///${selectedMedia.path.replace(
+                  /\\/g,
+                  "/"
+              )}`
           )
         : null;
     return (
