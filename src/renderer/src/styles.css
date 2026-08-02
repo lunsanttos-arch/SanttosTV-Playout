@@ -817,3 +817,33 @@ button {
     color: #929292;
     font-size: 12px;
 }
+.timeline-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    max-height: 230px;
+    overflow-y: auto;
+}
+
+button.timeline-item {
+    width: 100%;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.timeline-position {
+    width: 42px;
+    flex-shrink: 0;
+
+    color: #929292;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+}
+
+.timeline-item.active .timeline-position {
+    color: #ff667f;
+}
