@@ -506,15 +506,15 @@ function PlayoutPanel({
             </div>
 
             <div className="playout-library-column">
-                <LibraryPanel
-                    media={media}
-                    isLoading={isLoading}
-                    message={message}
-                    onAddVideos={onAddVideos}
-                    onRemoveMedia={
-                        onRemoveMedia
-                    }
-                />
+            <LibraryPanel
+    media={media}
+    isLoading={isLoading}
+    message={message}
+    selectedMedia={selectedMedia}
+    onSelectMedia={onSelectMedia}
+    onAddVideos={onAddVideos}
+    onRemoveMedia={onRemoveMedia}
+/>
             </div>
         </div>
     );
@@ -523,6 +523,12 @@ interface LibraryPanelProps {
     media: MediaItem[];
     isLoading: boolean;
     message: string;
+
+    selectedMedia: MediaItem | null;
+
+    onSelectMedia: (
+        media: MediaItem
+    ) => void;
 
     onAddVideos: () =>
         Promise<void>;
