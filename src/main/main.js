@@ -57,6 +57,7 @@ function createWindow() {
                 )
             }
         });
+    mainWindow.maximize();
 
     if (isDevelopment) {
         mainWindow.loadURL(
