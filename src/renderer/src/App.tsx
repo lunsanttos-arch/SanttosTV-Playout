@@ -423,24 +423,36 @@ function PlayoutPanel({
               )}`
           )
         : null;
-    function playVideo() {
-    videoRef.current
-        ?.play()
-        .catch((error) => {
-            console.error(
-                "Erro ao reproduzir vídeo:",
-                error
-            );
-        });
+   function getProgramVideo() {
+    return document.getElementById(
+        "program-video"
+    ) as HTMLVideoElement | null;
+}
+
+function playVideo() {
+    const video = getProgramVideo();
+
+    if (!video) {
+        console.error(
+            "Player PROGRAM não encontrado."
+        );
+        return;
+    }
+
+    video.play().catch((error) => {
+        console.error(
+            "Erro ao reproduzir vídeo:",
+            error
+        );
+    });
 }
 
 function pauseVideo() {
-    videoRef.current?.pause();
+    getProgramVideo()?.pause();
 }
 
 function stopVideo() {
-    const video =
-        videoRef.current;
+    const video = getProgramVideo();
 
     if (!video) {
         return;
@@ -472,11 +484,14 @@ function stopVideo() {
                  <div className="program-monitor">
     {selectedMediaUrl ? (
        <video
+   <video
+    id="program-video"
     ref={videoRef}
     className="program-video"
     src={selectedMediaUrl}
-   controls
-preload="auto"
+    controls
+    preload="auto"
+/>
 />
     ) : (
         "SEM SINAL"
