@@ -132,7 +132,7 @@ button {
     flex: 1;
 
     padding: 15px;
-    overflow: auto;
+   overflow: hidden;
 }
 
 .playout-grid {
@@ -850,4 +850,31 @@ button.timeline-item {
 .program-controls button:disabled {
     opacity: 0.35;
     cursor: not-allowed;
+}
+.playout-operation-layout {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.program-column {
+    height: 100%;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.compact-logs-panel {
+    min-height: 0;
+    overflow: hidden;
+
+    display: flex;
+    flex-direction: column;
+}
+
+.timeline-list {
+    min-height: 0;
+    max-height: none;
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
