@@ -61,6 +61,10 @@ declare global {
             removeMedia: (
                 mediaId: string
             ) => Promise<RemoveResult>;
+
+            getMediaFileUrl: (
+                filePath: string
+) => string;
         };
     }
 }
@@ -405,6 +409,12 @@ function PlayoutPanel({
     onAddVideos,
     onRemoveMedia
 }: PlayoutPanelProps) {
+    const selectedMediaUrl =
+    selectedMedia
+        ? window.santtosAPI.getMediaFileUrl(
+              selectedMedia.path
+          )
+        : null;
     return (
         <div className="playout-operation-layout">
             <div className="program-column">
@@ -425,9 +435,17 @@ function PlayoutPanel({
                         </span>
                     </div>
 
-                    <div className="program-monitor">
-                        SEM SINAL
-                    </div>
+                 <div className="program-monitor">
+    {selectedMediaUrl ? (
+        <video
+            className="program-video"
+            src={selectedMediaUrl}
+            controls={false}
+        />
+    ) : (
+        "SEM SINAL"
+    )}
+</div>
 
                     <div className="program-controls">
                         <button title="Reproduzir">
