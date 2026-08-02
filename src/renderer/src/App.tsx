@@ -431,6 +431,18 @@ function PlayoutPanel({
               )
           )
         : 0;
+    const selectedMediaIndex =
+    selectedMedia
+        ? media.findIndex(
+              (item) =>
+                  item.id === selectedMedia.id
+          )
+        : -1;
+
+const timelineMedia =
+    selectedMediaIndex >= 0
+        ? media.slice(selectedMediaIndex)
+        : media;
     
     const selectedMediaUrl =
     selectedMedia
@@ -677,16 +689,62 @@ function stopVideo() {
                 </strong>
 
                 <span>
-                    {formatDuration(
-                        selectedMedia.duration
-                    )}
-                </span>
-            </div>
-        </div>
-    ) : (
-        <span>
-            Nenhuma mídia selecionada
-        </span>
+               {timelineMedia.length > 0 ? (
+    <div className="timeline-list">
+        {timelineMedia.map(
+            (item, index) => {
+                const isCurrent =
+                    item.id ===
+                    selectedMedia?.id;
+
+                return (
+                    <button
+                        key={item.id}
+                        type="button"
+                        className={`timeline-item ${
+                            isCurrent
+                                ? "active"
+                                : ""
+                        }`}
+                        onClick={() =>
+                            onSelectMedia(item)
+                        }
+                    >
+                        <div className="timeline-marker" />
+
+                        <div className="timeline-position">
+                            {isCurrent
+                                ? "NO AR"
+                                : `${index + 1}`}
+                        </div>
+
+                        <div className="timeline-content">
+                            <strong>
+                                {item.name}
+                            </strong>
+
+                            <span>
+                                {isCurrent
+                                    ? `${formatDuration(
+                                          currentTime
+                                      )} / ${formatDuration(
+                                          duration
+                                      )}`
+                                    : formatDuration(
+                                          item.duration
+                                      )}
+                            </span>
+                        </div>
+                    </button>
+                );
+            }
+        )}
+    </div>
+) : (
+    <span>
+        Nenhuma mídia na timeline
+    </span>
+)}
     )}
 </section>
             </div>
