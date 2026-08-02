@@ -989,10 +989,8 @@ function stopVideo() {
                                           )}
                                 </span>
                             </div>
-                          {!isCurrent && (
-
- {!isCurrent && (
-    <button
+                     {!isCurrent && (
+        <button
         type="button"
         className="timeline-remove"
         title="Remover da timeline"
