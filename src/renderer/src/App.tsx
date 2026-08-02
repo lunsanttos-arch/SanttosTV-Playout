@@ -535,7 +535,32 @@ async function playVideo() {
         );
     }
 }
-function pauseVideo() {
+function playNextMedia() {
+    if (!nextMedia) {
+        setCurrentTime(0);
+        return;
+    }
+
+    setCurrentTime(0);
+    setDuration(0);
+
+    onSelectMedia(nextMedia);
+
+    window.setTimeout(() => {
+        const video =
+            getProgramVideo();
+
+        video
+            ?.play()
+            .catch((error) => {
+                console.error(
+                    "Erro ao iniciar próximo vídeo:",
+                    error
+                );
+            });
+    }, 150);
+}
+    function pauseVideo() {
     getProgramVideo()?.pause();
 }
 
@@ -593,6 +618,7 @@ function stopVideo() {
             event.currentTarget.duration
         )
     }
+   onEnded={playNextMedia}
 />
 ) : (
     "SEM SINAL"
