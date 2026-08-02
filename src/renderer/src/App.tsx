@@ -524,24 +524,6 @@ function LibraryPanel({
         </div>
     );
 }
-interface LibraryPanelProps {
-    media: MediaItem[];
-    isLoading: boolean;
-    message: string;
-
-    selectedMedia: MediaItem | null;
-
-    onSelectMedia: (
-        media: MediaItem
-    ) => void;
-
-    onAddVideos: () =>
-        Promise<void>;
-
-    onRemoveMedia: (
-        media: MediaItem
-    ) => Promise<void>;
-}
 
 function LibraryPanel({
     media,
