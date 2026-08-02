@@ -419,6 +419,18 @@ function PlayoutPanel({
 
     const [duration, setDuration] =
     useState(0);
+
+    const progressPercent =
+    duration > 0
+        ? Math.min(
+              100,
+              Math.max(
+                  0,
+                  (currentTime / duration) *
+                      100
+              )
+          )
+        : 0;
     
     const selectedMediaUrl =
     selectedMedia
@@ -599,9 +611,13 @@ function stopVideo() {
 </div>
                     </div>
 
-                    <div className="program-progress">
-                        <div />
-                    </div>
+                   <div className="program-progress">
+    <div
+        style={{
+            width: `${progressPercent}%`
+        }}
+    />
+</div>
                 </section>
 
                 <div className="playout-status-row">
@@ -610,9 +626,21 @@ function stopVideo() {
                             NO AR
                         </div>
 
-                        <strong>
-                            Nenhum conteúdo
-                        </strong>
+                       <strong>
+    {selectedMedia
+        ? selectedMedia.name
+        : "Nenhum conteúdo"}
+</strong>
+
+<span>
+    {selectedMedia
+        ? `${formatDuration(
+              currentTime
+          )} de ${formatDuration(
+              duration
+          )}`
+        : "Aguardando reprodução"}
+</span>
 
                         <span>
                             Aguardando reprodução
