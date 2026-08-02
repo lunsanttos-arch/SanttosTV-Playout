@@ -3,6 +3,10 @@ const {
     ipcRenderer
 } = require("electron");
 
+const {
+    pathToFileURL
+} = require("url");
+
 contextBridge.exposeInMainWorld(
     "santtosAPI",
     {
@@ -26,6 +30,13 @@ contextBridge.exposeInMainWorld(
             ipcRenderer.invoke(
                 "media:remove",
                 mediaId
-            )
+            ),
+
+        getMediaFileUrl: (
+            filePath
+        ) =>
+            pathToFileURL(
+                filePath
+            ).toString()
     }
 );
