@@ -524,8 +524,67 @@ const nextMedia =
           )
         : null;
 function addTimelineItem(
-    mediaItem: MediaItem
+    mediaItem: MediaItem,
+    targetMediaId?: string
 ) {
+    const originalMediaId =
+        mediaItem.sourceMediaId ??
+        mediaItem.id;
+
+    const timelineItem: MediaItem = {
+        ...mediaItem,
+
+        id: `${originalMediaId}-${Date.now()}-${Math.random()
+            .toString(16)
+            .slice(2)}`,
+
+        sourceMediaId:
+            originalMediaId
+    };
+
+    setTimelineQueue(
+        (currentQueue) => {
+            if (!targetMediaId) {
+                return [
+                    ...currentQueue,
+                    timelineItem
+                ];
+            }
+
+            const targetIndex =
+                currentQueue.findIndex(
+                    (item) =>
+                        item.id ===
+                        targetMediaId
+                );
+
+            if (targetIndex < 0) {
+                return [
+                    ...currentQueue,
+                    timelineItem
+                ];
+            }
+
+            const insertIndex =
+                targetMediaId ===
+                selectedMedia?.id
+                    ? targetIndex + 1
+                    : targetIndex;
+
+            const updatedQueue = [
+                ...currentQueue
+            ];
+
+            updatedQueue.splice(
+                insertIndex,
+                0,
+                timelineItem
+            );
+
+            return updatedQueue;
+        }
+    );
+}
     const originalMediaId =
         mediaItem.sourceMediaId ??
         mediaItem.id;
@@ -981,25 +1040,66 @@ function stopVideo() {
                 item.id
             );
         }}
-        onDragOver={(event) => {
-            if (isCurrent) {
-                return;
-            }
+       onDragOver={(event) => {
+    const isLibraryMedia =
+        event.dataTransfer.types.includes(
+            "application/x-santtos-library-media"
+        );
 
-            event.preventDefault();
+    if (isLibraryMedia) {
+        event.preventDefault();
 
-            event.dataTransfer.dropEffect =
-                "move";
-        }}
-        onDrop={(event) => {
-            event.preventDefault();
+        event.dataTransfer.dropEffect =
+            "copy";
 
-            if (!isCurrent) {
-                moveTimelineItem(
-                    item.id
-                );
-            }
-        }}
+        return;
+    }
+
+    if (isCurrent) {
+        return;
+    }
+
+    event.preventDefault();
+
+    event.dataTransfer.dropEffect =
+        "move";
+}}
+       onDrop={(event) => {
+    const libraryMediaId =
+        event.dataTransfer.getData(
+            "application/x-santtos-library-media"
+        );
+
+    if (libraryMediaId) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const libraryMedia =
+            media.find(
+                (mediaItem) =>
+                    mediaItem.id ===
+                    libraryMediaId
+            );
+
+        if (libraryMedia) {
+            addTimelineItem(
+                libraryMedia,
+                item.id
+            );
+        }
+
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (!isCurrent) {
+        moveTimelineItem(
+            item.id
+        );
+    }
+}}
         onDragEnd={() =>
             setDraggedMediaId(null)
         }
