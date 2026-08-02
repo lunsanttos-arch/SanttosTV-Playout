@@ -524,37 +524,6 @@ function LibraryPanel({
         </div>
     );
 }
-
-function LibraryPanel({
-    media,
-    isLoading,
-    message,
-    onAddVideos,
-    onRemoveMedia
-}: LibraryPanelProps) {
-    const [search, setSearch] =
-        useState("");
-
-    const filteredMedia = useMemo(
-        () => {
-            const normalizedSearch =
-                search.trim().toLowerCase();
-
-            if (!normalizedSearch) {
-                return media;
-            }
-
-            return media.filter((item) =>
-                item.name
-                    .toLowerCase()
-                    .includes(
-                        normalizedSearch
-                    )
-            );
-        },
-        [media, search]
-    );
-
     return (
         <section className="panel module-panel">
             <div className="module-header">
