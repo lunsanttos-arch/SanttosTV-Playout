@@ -527,6 +527,30 @@ function addTimelineItem(
     mediaItem: MediaItem,
     targetMediaId?: string
 ) {
+    const originalMediaId =
+        mediaItem.sourceMediaId ??
+        mediaItem.id;
+
+    const timelineItem: MediaItem = {
+        ...mediaItem,
+
+        id: `${originalMediaId}-${Date.now()}-${Math.random()
+            .toString(16)
+            .slice(2)}`,
+
+        sourceMediaId:
+            originalMediaId
+    };
+
+    setTimelineQueue(
+        (currentQueue) => {
+            if (!targetMediaId) {
+                return [
+                    ...currentQueue,
+                    timelineItem
+                ];
+            }
+
             const targetIndex =
                 currentQueue.findIndex(
                     (item) =>
@@ -561,7 +585,6 @@ function addTimelineItem(
         }
     );
 }
-
     function removeTimelineItem(
     mediaId: string
 ) {
