@@ -65,6 +65,12 @@ declare global {
                 mediaId: string
             ) => Promise<RemoveResult>;
 
+            getNdiStatus: () =>
+    Promise<{
+        online: boolean;
+        source: string;
+    }>;
+
             getMediaFileUrl: (
                 filePath: string
 ) => string;
@@ -93,18 +99,30 @@ const [ndiOnline, setNdiOnline] =
     const [selectedMedia, setSelectedMedia] =
     useState<MediaItem | null>(null);
 
-    useEffect(() => {
-        const updateClock = () => {
-            setClock(
-                new Date().toLocaleTimeString(
-                    "pt-BR"
-                )
-            );
-        };
+   useEffect(() => {
+    const updateClock = () => {
+        setClock(
+            new Date().toLocaleTimeString(
+                "pt-BR"
+            )
+        );
+    };
 
-        updateClock();
+    updateClock();
 
-        useEffect(() => {
+    const timer =
+        window.setInterval(
+            updateClock,
+            1000
+        );
+
+    return () =>
+        window.clearInterval(
+            timer
+        );
+}, []);
+
+useEffect(() => {
     const updateNdiStatus =
         async () => {
             try {
@@ -138,7 +156,6 @@ const [ndiOnline, setNdiOnline] =
             timer
         );
 }, []);
-
         const timer = window.setInterval(
             updateClock,
             1000
