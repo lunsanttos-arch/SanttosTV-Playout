@@ -514,6 +514,53 @@ const nextMedia =
               selectedMediaIndex + 1
           ] ?? null
         : null;
+const timelineStartTimes = (() => {
+    const startTimes =
+        new Map<string, string>();
+
+    let cursor: Date;
+
+    if (selectedMediaIndex >= 0) {
+        cursor = new Date(
+            Date.now() -
+                currentTime * 1000
+        );
+    } else {
+        cursor = new Date();
+    }
+
+    timelineMedia.forEach(
+        (item, index) => {
+            startTimes.set(
+                item.id,
+                cursor.toLocaleTimeString(
+                    "pt-BR",
+                    {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit"
+                    }
+                )
+            );
+
+            const itemDuration =
+                index === 0 &&
+                selectedMediaIndex >= 0
+                    ? duration > 0
+                        ? duration
+                        : item.duration ?? 0
+                    : item.duration ?? 0;
+
+            cursor = new Date(
+                cursor.getTime() +
+                    itemDuration * 1000
+            );
+        }
+    );
+
+    return startTimes;
+})();
+    
     const selectedMediaUrl =
     selectedMedia
         ? encodeURI(
@@ -1106,6 +1153,14 @@ function stopVideo() {
                                               item.duration
                                           )}
                                 </span>
+                                <span className="timeline-air-time">
+    {isCurrent
+        ? "ENTROU "
+        : "ENTRA "}
+    {timelineStartTimes.get(
+        item.id
+    ) ?? "--:--:--"}
+</span>
                             </div>
                  {!isCurrent && (
     <button
