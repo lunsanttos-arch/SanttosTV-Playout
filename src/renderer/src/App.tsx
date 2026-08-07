@@ -584,6 +584,21 @@ const timelineStartTimes = (() => {
               )}`
           )
         : null;
+    useEffect(() => {
+    const video =
+        videoRef.current;
+
+    if (!video || !selectedMediaUrl) {
+        return;
+    }
+
+    video.pause();
+    video.currentTime = 0;
+    video.load();
+
+    setCurrentTime(0);
+}, [selectedMediaUrl]);
+    
 function addTimelineItem(
     mediaItem: MediaItem,
     targetMediaId?: string
