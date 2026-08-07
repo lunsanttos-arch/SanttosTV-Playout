@@ -726,6 +726,49 @@ function addTimelineItem(
 }
 
 async function playVideo() {
+    if (!selectedMedia) {
+        const firstMedia =
+            timelineQueue[0];
+
+        if (!firstMedia) {
+            window.alert(
+                "Não há vídeos na Timeline."
+            );
+            return;
+        }
+
+        onSelectMedia(firstMedia);
+
+        window.setTimeout(
+            async () => {
+                const video =
+                    getProgramVideo();
+
+                if (!video) {
+                    return;
+                }
+
+                try {
+                    video.load();
+
+                    await video.play();
+                } catch (error) {
+                    console.error(
+                        "Erro ao iniciar primeiro vídeo:",
+                        error
+                    );
+
+                    window.alert(
+                        "Não foi possível iniciar o primeiro vídeo."
+                    );
+                }
+            },
+            150
+        );
+
+        return;
+    }
+
     const video = getProgramVideo();
 
     if (!video) {
@@ -748,6 +791,7 @@ async function playVideo() {
 
                     const handleError = () => {
                         cleanup();
+
                         reject(
                             new Error(
                                 "O arquivo não pôde ser carregado."
