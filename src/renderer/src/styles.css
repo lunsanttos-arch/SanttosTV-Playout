@@ -949,3 +949,109 @@ button {
         border-color 0.15s ease,
         background 0.15s ease;
 }
+/* ===== NOVO LAYOUT DO PLAYOUT ===== */
+
+.playout-operation-layout {
+    grid-template-columns:
+        minmax(700px, 1.75fr)
+        minmax(300px, 0.65fr);
+
+    gap: 12px;
+}
+
+.program-column {
+    display: grid;
+
+    grid-template-columns:
+        minmax(380px, 1fr)
+        minmax(360px, 1fr);
+
+    grid-template-rows:
+        auto
+        minmax(0, 1fr);
+
+    gap: 12px;
+
+    height: 100%;
+    min-height: 0;
+}
+
+/* Preview / PROGRAM */
+.program-card {
+    grid-column: 1;
+    grid-row: 1;
+
+    min-width: 0;
+}
+
+/* NO AR + PRÓXIMO ao lado do preview */
+.playout-status-row {
+    grid-column: 2;
+    grid-row: 1;
+
+    align-self: stretch;
+
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.compact-status-card {
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+}
+
+/* Timeline ocupa toda a largura abaixo */
+.compact-logs-panel {
+    grid-column: 1 / 3;
+    grid-row: 2;
+
+    min-height: 0;
+}
+
+/* Preview um pouco mais compacto */
+.program-monitor {
+    max-height: 290px;
+}
+
+.program-video {
+    max-height: 290px;
+}
+
+/* Biblioteca menor e mais compacta */
+.playout-library-column {
+    min-width: 280px;
+}
+
+.playout-library-column .module-header h1 {
+    font-size: 16px;
+}
+
+.playout-library-column .media-thumbnail {
+    width: 70px;
+    height: 40px;
+}
+
+.playout-library-column .media-item {
+    gap: 7px;
+    padding: 7px;
+}
+
+.playout-library-column .media-information strong {
+    font-size: 12px;
+}
+
+.playout-library-column .media-information span {
+    font-size: 10px;
+}
+
+.playout-library-column .media-metadata {
+    font-size: 10px;
+}
+
+.playout-library-column .remove-media-button,
+.playout-library-column .add-timeline-button {
+    padding: 5px 7px;
+    font-size: 10px;
+}
