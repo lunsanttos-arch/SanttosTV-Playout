@@ -32,6 +32,11 @@ contextBridge.exposeInMainWorld(
                 mediaId
             ),
 
+        getNdiStatus: () =>
+    ipcRenderer.invoke(
+        "ndi:status"
+    ),
+
         getMediaFileUrl: (
             filePath
         ) =>
