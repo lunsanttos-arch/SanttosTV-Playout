@@ -480,6 +480,20 @@ useEffect(() => {
         ];
     });
 }, [media, removedTimelineIds]);
+    useEffect(() => {
+    if (
+        !selectedMedia &&
+        timelineQueue.length > 0
+    ) {
+        onSelectMedia(
+            timelineQueue[0]
+        );
+    }
+}, [
+    timelineQueue,
+    selectedMedia,
+    onSelectMedia
+]);
  const progressPercent =
     duration > 0
         ? Math.min(
