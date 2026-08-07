@@ -8,6 +8,10 @@ const {
 const path = require("path");
 
 const {
+    spawn
+} = require("child_process");
+
+const {
     initializeDatabase,
     addLog,
     getMedia,
@@ -28,6 +32,8 @@ const isDevelopment =
     !app.isPackaged;
 
 let mainWindow = null;
+
+let ndiProcess = null;
 
 const analysesInProgress = new Map();
 
@@ -271,6 +277,124 @@ function registerIpcHandlers() {
     );
 }
 
+function startNdiSender() {
+    if (ndiProcess) {
+        return;
+    }
+
+    const ndiExecutable =
+        path.join(
+            __dirname,
+            "../core/ndi/ndi_test.exe"
+        );
+
+    console.log(
+        "Iniciando sender NDI..."
+    );
+
+    try {
+        ndiProcess = spawn(
+            ndiExecutable,
+            [],
+            {
+                cwd: path.dirname(
+                    ndiExecutable
+                ),
+
+                windowsHide: true,
+
+                stdio: [
+                    "ignore",
+                    "pipe",
+                    "pipe"
+                ]
+            }
+        );
+
+        ndiProcess.stdout.on(
+            "data",
+            (data) => {
+                const message =
+                    data
+                        .toString()
+                        .trim();
+
+                if (message) {
+                    console.log(
+                        `[NDI] ${message}`
+                    );
+                }
+            }
+        );
+
+        ndiProcess.stderr.on(
+            "data",
+            (data) => {
+                const message =
+                    data
+                        .toString()
+                        .trim();
+
+                if (message) {
+                    console.error(
+                        `[NDI] ${message}`
+                    );
+                }
+            }
+        );
+
+        ndiProcess.on(
+            "error",
+            (error) => {
+                console.error(
+                    "Falha ao iniciar NDI:",
+                    error
+                );
+
+                ndiProcess = null;
+            }
+        );
+
+        ndiProcess.on(
+            "exit",
+            (
+                code,
+                signal
+            ) => {
+                console.log(
+                    `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
+                );
+
+                ndiProcess = null;
+            }
+        );
+    } catch (error) {
+        console.error(
+            "Erro ao iniciar sender NDI:",
+            error
+        );
+
+        ndiProcess = null;
+    }
+}
+
+function stopNdiSender() {
+    if (
+        !ndiProcess ||
+        ndiProcess.killed
+    ) {
+        return;
+    }
+
+    console.log(
+        "Encerrando sender NDI..."
+    );
+
+    ndiProcess.kill();
+
+    ndiProcess = null;
+}
+
 function startSystem() {
     console.log(
         "Inicializando Santtos TV Automation..."
@@ -289,6 +413,7 @@ function startSystem() {
 
 app.whenReady().then(() => {
     startSystem();
+    startNdiSender();
     registerIpcHandlers();
     createWindow();
 
@@ -305,6 +430,13 @@ app.whenReady().then(() => {
         }
     );
 });
+
+app.on(
+    "before-quit",
+    () => {
+        stopNdiSender();
+    }
+);
 
 app.on(
     "window-all-closed",
