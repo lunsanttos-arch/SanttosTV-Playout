@@ -75,7 +75,9 @@ declare global {
 export default function App() {
     const [clock, setClock] =
         useState("00:00:00");
-
+const [ndiOnline, setNdiOnline] =
+    useState(false);
+    
     const [activePanel, setActivePanel] =
         useState<Panel>("playout");
 
@@ -101,6 +103,41 @@ export default function App() {
         };
 
         updateClock();
+
+        useEffect(() => {
+    const updateNdiStatus =
+        async () => {
+            try {
+                const status =
+                    await window.santtosAPI
+                        .getNdiStatus();
+
+                setNdiOnline(
+                    status.online
+                );
+            } catch (error) {
+                console.error(
+                    "Erro ao consultar NDI:",
+                    error
+                );
+
+                setNdiOnline(false);
+            }
+        };
+
+    updateNdiStatus();
+
+    const timer =
+        window.setInterval(
+            updateNdiStatus,
+            1000
+        );
+
+    return () =>
+        window.clearInterval(
+            timer
+        );
+}, []);
 
         const timer = window.setInterval(
             updateClock,
@@ -144,6 +181,12 @@ export default function App() {
 
             setIsLoading(true);
 
+           getNdiStatus: () =>
+    Promise<{
+        online: boolean;
+        source: string;
+    }>;
+            
             const result =
                 await window.santtosAPI
                     .importMedia(
@@ -245,7 +288,17 @@ export default function App() {
                         ● SISTEMA ONLINE
                     </span>
 
-                    <span>NDI OFFLINE</span>
+                   <span
+    className={
+        ndiOnline
+            ? "status-online"
+            : ""
+    }
+>
+    {ndiOnline
+        ? "● NDI ONLINE"
+        : "NDI OFFLINE"}
+</span>
                 </div>
             </header>
 
