@@ -744,6 +744,57 @@ function addTimelineItem(
         });
     }
 }
+    function cutQueueTo(
+    mediaId: string
+) {
+    setTimelineQueue(
+        (currentQueue) => {
+            const targetIndex =
+                currentQueue.findIndex(
+                    (item) =>
+                        item.id === mediaId
+                );
+
+            if (targetIndex < 0) {
+                return currentQueue;
+            }
+
+            const currentIndex =
+                selectedMedia
+                    ? currentQueue.findIndex(
+                          (item) =>
+                              item.id ===
+                              selectedMedia.id
+                      )
+                    : -1;
+
+            if (
+                currentIndex >= 0 &&
+                targetIndex <= currentIndex
+            ) {
+                return currentQueue;
+            }
+
+            if (currentIndex >= 0) {
+                return [
+                    ...currentQueue.slice(
+                        0,
+                        currentIndex + 1
+                    ),
+
+                    ...currentQueue.slice(
+                        targetIndex
+                    )
+                ];
+            }
+
+            return currentQueue.slice(
+                targetIndex
+            );
+        }
+    );
+}
+    
    function moveToNext(
     mediaId: string
 ) {
@@ -1259,7 +1310,14 @@ function stopVideo() {
                 ? "dragging"
                 : ""
         }`}
-       
+        
+       onDoubleClick={() => {
+    if (!isCurrent) {
+        cutQueueTo(
+            item.id
+        );
+    }
+}}
         onDragStart={(event) => {
             if (isCurrent) {
                 event.preventDefault();
@@ -1373,9 +1431,12 @@ function stopVideo() {
     ) ?? "--:--:--"}
 </span>
                             </div>
-           <div
+         <div
     className="timeline-actions"
     onClick={(event) =>
+        event.stopPropagation()
+    }
+    onDoubleClick={(event) =>
         event.stopPropagation()
     }
 >
