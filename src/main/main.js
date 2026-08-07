@@ -35,6 +35,8 @@ let mainWindow = null;
 
 let ndiProcess = null;
 
+let ndiReady = false;
+
 const analysesInProgress = new Map();
 
 function createWindow() {
@@ -181,6 +183,20 @@ async function analyzeMediaItems(
 }
 
 function registerIpcHandlers() {
+  ipcMain.handle(
+    "ndi:status",
+    async () => {
+        return {
+            online:
+                ndiReady &&
+                Boolean(ndiProcess) &&
+                !ndiProcess.killed,
+
+            source:
+                "Santtos TV - PROGRAM"
+        };
+    }
+);
     ipcMain.handle(
         "media:select",
         async () => {
@@ -282,6 +298,8 @@ function startNdiSender() {
         return;
     }
 
+    ndiReady = false;
+
     const ndiExecutable =
         path.join(
             __dirname,
@@ -311,21 +329,33 @@ function startNdiSender() {
             }
         );
 
-        ndiProcess.stdout.on(
-            "data",
-            (data) => {
-                const message =
-                    data
-                        .toString()
-                        .trim();
+      ndiProcess.stdout.on(
+    "data",
+    (data) => {
+        const message =
+            data
+                .toString()
+                .trim();
 
-                if (message) {
-                    console.log(
-                        `[NDI] ${message}`
-                    );
-                }
-            }
-        );
+        if (
+            message.includes(
+                "NDI ONLINE:"
+            )
+        ) {
+            ndiReady = true;
+
+            console.log(
+                "Santtos NDI confirmado ONLINE"
+            );
+        }
+
+        if (message) {
+            console.log(
+                `[NDI] ${message}`
+            );
+        }
+    }
+);
 
         ndiProcess.stderr.on(
             "data",
@@ -344,6 +374,7 @@ function startNdiSender() {
         );
 
         ndiProcess.on(
+        ndiReady = false;
             "error",
             (error) => {
                 console.error(
@@ -355,7 +386,8 @@ function startNdiSender() {
             }
         );
 
-        ndiProcess.on(
+       ndiReady = false;
+ndiProcess = null;
             "exit",
             (
                 code,
