@@ -1,14 +1,30 @@
-
 #include <Processing.NDI.Lib.h>
 
 #include <cstdint>
 #include <iostream>
+#include <mutex>
+#include <thread>
 #include <vector>
+
+#include <fcntl.h>
+#include <io.h>
 
 int main()
 {
+    constexpr int width = 1920;
+    constexpr int height = 1080;
+
+    constexpr std::size_t frameSize =
+        static_cast<std::size_t>(
+            width
+        ) *
+        static_cast<std::size_t>(
+            height
+        ) *
+        4;
+
     std::cout
-        << "Santtos TV - iniciando NDI..."
+        << "Santtos TV - iniciando engine NDI..."
         << std::endl;
 
     if (!NDIlib_initialize())
@@ -46,89 +62,86 @@ int main()
         return 1;
     }
 
-    constexpr int width = 1920;
-    constexpr int height = 1080;
-
-    std::vector<std::uint8_t> frame(
-        width * height * 4
-    );
+    std::vector<std::uint8_t>
+        currentFrame(
+            frameSize,
+            0
+        );
 
     /*
-        Barras verticais simples em BGRA.
-
-        O objetivo agora nao e qualidade:
-        e provar que o sender NDI funciona.
+        Começamos com uma tela preta BGRA.
+        Alpha precisa ficar em 255.
     */
-
-    for (int y = 0; y < height; ++y)
+    for (
+        std::size_t offset = 3;
+        offset < frameSize;
+        offset += 4
+    )
     {
-        for (int x = 0; x < width; ++x)
-        {
-            const int bar =
-                (x * 7) / width;
-
-            std::uint8_t r = 0;
-            std::uint8_t g = 0;
-            std::uint8_t b = 0;
-
-            switch (bar)
-            {
-                case 0:
-                    r = 255;
-                    g = 255;
-                    b = 255;
-                    break;
-
-                case 1:
-                    r = 255;
-                    g = 255;
-                    b = 0;
-                    break;
-
-                case 2:
-                    r = 0;
-                    g = 255;
-                    b = 255;
-                    break;
-
-                case 3:
-                    r = 0;
-                    g = 255;
-                    b = 0;
-                    break;
-
-                case 4:
-                    r = 255;
-                    g = 0;
-                    b = 255;
-                    break;
-
-                case 5:
-                    r = 255;
-                    g = 0;
-                    b = 0;
-                    break;
-
-                default:
-                    r = 0;
-                    g = 0;
-                    b = 255;
-                    break;
-            }
-
-            const std::size_t offset =
-                static_cast<std::size_t>(
-                    (y * width + x) * 4
-                );
-
-            frame[offset + 0] = b;
-            frame[offset + 1] = g;
-            frame[offset + 2] = r;
-            frame[offset + 3] = 255;
-        }
+        currentFrame[offset] = 255;
     }
 
-    NDIlib_video_frame_v2_t videoFrame = {};
+    std::mutex frameMutex;
+
+    /*
+        stdin será usado como entrada de vídeo.
+
+        Cada pacote recebido deve conter
+        exatamente um frame:
+
+        1920 x 1080 x 4 bytes
+        formato BGRA.
+    */
+    std::thread inputThread(
+        [&]()
+        {
+            _setmode(
+                _fileno(stdin),
+                _O_BINARY
+            );
+
+            std::vector<std::uint8_t>
+                incomingFrame(
+                    frameSize
+                );
+
+            while (true)
+            {
+                std::cin.read(
+                    reinterpret_cast<char*>(
+                        incomingFrame.data()
+                    ),
+                    static_cast<std::streamsize>(
+                        frameSize
+                    )
+                );
+
+                if (
+                    std::cin.gcount() !=
+                    static_cast<std::streamsize>(
+                        frameSize
+                    )
+                )
+                {
+                    break;
+                }
+
+                {
+                    std::lock_guard<std::mutex>
+                        lock(frameMutex);
+
+                    currentFrame.swap(
+                        incomingFrame
+                    );
+                }
+            }
+        }
+    );
+
+    inputThread.detach();
+
+    NDIlib_video_frame_v2_t
+        videoFrame = {};
 
     videoFrame.xres = width;
     videoFrame.yres = height;
@@ -148,9 +161,6 @@ int main()
     videoFrame.timecode =
         NDIlib_send_timecode_synthesize;
 
-    videoFrame.p_data =
-        frame.data();
-
     videoFrame.line_stride_in_bytes =
         width * 4;
 
@@ -159,15 +169,21 @@ int main()
         << std::endl;
 
     std::cout
-        << "1920x1080 29.97p"
+        << "1920x1080 29.97p BGRA"
         << std::endl;
 
     std::cout
-        << "Pressione CTRL+C para encerrar."
+        << "Aguardando frames do PROGRAM..."
         << std::endl;
 
     while (true)
     {
+        std::lock_guard<std::mutex>
+            lock(frameMutex);
+
+        videoFrame.p_data =
+            currentFrame.data();
+
         NDIlib_send_send_video_v2(
             sender,
             &videoFrame
