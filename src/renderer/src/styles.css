@@ -1056,3 +1056,9 @@ button {
     padding: 5px 7px;
     font-size: 10px;
 }
+.timeline-air-time {
+    color: #d6b56f !important;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.3px;
+}
