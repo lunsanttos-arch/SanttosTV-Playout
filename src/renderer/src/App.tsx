@@ -1664,6 +1664,13 @@ function LibraryPanel({
         onClick={() =>
             onSelectMedia(item)
         }
+        onDoubleClick={(event) => {
+    event.stopPropagation();
+
+    onAddToTimeline(
+        item
+    );
+}}
     >
         <div className="media-thumbnail">
             {item.extension.toUpperCase()}
