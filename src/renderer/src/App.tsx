@@ -15,6 +15,7 @@ type Panel =
 interface MediaItem {
     id: string;
     sourceMediaId?: string;
+    loop?: boolean;
 
     name: string;
     path: string;
@@ -689,7 +690,125 @@ function addTimelineItem(
             )
     );
 }
-    
+    function toggleTimelineLoop(
+    mediaId: string
+) {
+    setTimelineQueue(
+        (currentQueue) =>
+            currentQueue.map(
+                (item) =>
+                    item.id === mediaId
+                        ? {
+                              ...item,
+                              loop: !item.loop
+                          }
+                        : item
+            )
+    );
+
+    if (
+        selectedMedia?.id ===
+        mediaId
+    ) {
+        onSelectMedia({
+            ...selectedMedia,
+            loop:
+                !selectedMedia.loop
+        });
+    }
+}
+    function toggleTimelineLoop(
+    mediaId: string
+) {
+    setTimelineQueue(
+        (currentQueue) =>
+            currentQueue.map(
+                (item) =>
+                    item.id === mediaId
+                        ? {
+                              ...item,
+                              loop: !item.loop
+                          }
+                        : item
+            )
+    );
+
+    if (
+        selectedMedia?.id ===
+        mediaId
+    ) {
+        onSelectMedia({
+            ...selectedMedia,
+            loop:
+                !selectedMedia.loop
+        });
+    }
+}
+   function moveToNext(
+    mediaId: string
+) {
+    setTimelineQueue(
+        (currentQueue) => {
+            const sourceIndex =
+                currentQueue.findIndex(
+                    (item) =>
+                        item.id === mediaId
+                );
+
+            if (sourceIndex < 0) {
+                return currentQueue;
+            }
+
+            const currentIndex =
+                selectedMedia
+                    ? currentQueue.findIndex(
+                          (item) =>
+                              item.id ===
+                              selectedMedia.id
+                      )
+                    : -1;
+
+            const nextIndex =
+                currentIndex >= 0
+                    ? currentIndex + 1
+                    : 0;
+
+            if (
+                sourceIndex === nextIndex
+            ) {
+                return currentQueue;
+            }
+
+            const updatedQueue = [
+                ...currentQueue
+            ];
+
+            const [movedItem] =
+                updatedQueue.splice(
+                    sourceIndex,
+                    1
+                );
+
+            let insertIndex =
+                nextIndex;
+
+            if (
+                sourceIndex <
+                nextIndex
+            ) {
+                insertIndex--;
+            }
+
+            updatedQueue.splice(
+                insertIndex,
+                0,
+                movedItem
+            );
+
+            return updatedQueue;
+        }
+    );
+} 
    function moveTimelineItem(
     targetMediaId: string
 ) {
@@ -870,6 +989,27 @@ async function playVideo() {
     }
 }
 function playNextMedia() {
+    if (selectedMedia?.loop) {
+    const video =
+        getProgramVideo();
+
+    if (!video) {
+        return;
+    }
+
+    video.currentTime = 0;
+
+    video
+        .play()
+        .catch((error) => {
+            console.error(
+                "Erro ao repetir vídeo:",
+                error
+            );
+        });
+
+    return;
+}
     if (!nextMedia) {
         setCurrentTime(0);
         return;
@@ -1119,9 +1259,7 @@ function stopVideo() {
                 ? "dragging"
                 : ""
         }`}
-        onClick={() =>
-            onSelectMedia(item)
-        }
+       
         onDragStart={(event) => {
             if (isCurrent) {
                 event.preventDefault();
@@ -1235,26 +1373,66 @@ function stopVideo() {
     ) ?? "--:--:--"}
 </span>
                             </div>
-                 {!isCurrent && (
+           <div
+    className="timeline-actions"
+    onClick={(event) =>
+        event.stopPropagation()
+    }
+>
+    {!isCurrent && (
+        <button
+            type="button"
+            className="timeline-next-button"
+            title="Colocar como próximo"
+            onClick={() =>
+                moveToNext(
+                    item.id
+                )
+            }
+            draggable={false}
+        >
+            ⏭
+        </button>
+    )}
+
     <button
         type="button"
-        className="timeline-remove"
-        title="Remover da timeline"
-        onClick={(event) => {
-            event.stopPropagation();
-
-            removeTimelineItem(
+        className={
+            item.loop
+                ? "timeline-loop-button active"
+                : "timeline-loop-button"
+        }
+        title={
+            item.loop
+                ? "Desativar loop"
+                : "Ativar loop"
+        }
+        onClick={() =>
+            toggleTimelineLoop(
                 item.id
-            );
-        }}
-        onMouseDown={(event) =>
-            event.stopPropagation()
+            )
         }
         draggable={false}
     >
-        ×
+        ↻
     </button>
-)}
+
+    {!isCurrent && (
+        <button
+            type="button"
+            className="timeline-remove"
+            title="Remover da timeline"
+            onClick={() =>
+                removeTimelineItem(
+                    item.id
+                )
+            }
+            draggable={false}
+        >
+            ×
+        </button>
+    )}
+</div>
                         </div>
                     );
                 }
