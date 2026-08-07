@@ -1062,3 +1062,43 @@ button {
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.3px;
 }
+.timeline-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.timeline-next-button,
+.timeline-loop-button {
+    width: 30px;
+    height: 30px;
+
+    padding: 0;
+
+    color: #b9b9b9;
+    background: transparent;
+
+    border: 1px solid #484848;
+    border-radius: 5px;
+
+    cursor: pointer;
+}
+
+.timeline-next-button:hover {
+    color: #ffffff;
+    background: #263a50;
+    border-color: #476c91;
+}
+
+.timeline-loop-button:hover {
+    color: #ffffff;
+    background: #3b3522;
+    border-color: #756833;
+}
+
+.timeline-loop-button.active {
+    color: #ffffff;
+    background: #735a18;
+    border-color: #d6b56f;
+}
