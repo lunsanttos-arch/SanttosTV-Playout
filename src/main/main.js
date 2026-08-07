@@ -373,33 +373,34 @@ function startNdiSender() {
             }
         );
 
-        ndiProcess.on(
+  ndiProcess.on(
+    "error",
+    (error) => {
+        console.error(
+            "Falha ao iniciar NDI:",
+            error
+        );
+
         ndiReady = false;
-            "error",
-            (error) => {
-                console.error(
-                    "Falha ao iniciar NDI:",
-                    error
-                );
+        ndiProcess = null;
+    }
+);
 
-                ndiProcess = null;
-            }
+ndiProcess.on(
+    "exit",
+    (
+        code,
+        signal
+    ) => {
+        console.log(
+            `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
         );
 
-       ndiReady = false;
-ndiProcess = null;
-            "exit",
-            (
-                code,
-                signal
-            ) => {
-                console.log(
-                    `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
-                );
-
-                ndiProcess = null;
-            }
-        );
+        ndiReady = false;
+        ndiProcess = null;
+    }
+);
+        
     } catch (error) {
         console.error(
             "Erro ao iniciar sender NDI:",
