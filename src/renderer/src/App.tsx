@@ -160,7 +160,7 @@ useEffect(() => {
         window.clearInterval(
             timer
         );
-}, []);
+}, [selectedMediaUrl]);
 
 
     async function loadMedia() {
@@ -650,39 +650,11 @@ const timelineStartTimes = (() => {
           )
         : null;
 
-    useEffect(() => {
-    const width = 1920;
-    const height = 1080;
-
-    const frame =
-        new Uint8Array(
-            width *
-            height *
-            4
-        );
-
-    for (
-        let index = 0;
-        index < frame.length;
-        index += 4
-    ) {
-        /*
-            BGRA:
-            azul = 255
-            verde = 0
-            vermelho = 0
-            alpha = 255
-        */
-        frame[index] = 255;
-        frame[index + 1] = 0;
-        frame[index + 2] = 0;
-        frame[index + 3] = 255;
-    }
-
     const timer =
         window.setTimeout(
             () => {
-                window.santtosAPI
+             
+        window.santtosAPI
                     .sendNdiFrame(
                         frame
                     );
