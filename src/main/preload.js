@@ -36,7 +36,12 @@ contextBridge.exposeInMainWorld(
     ipcRenderer.invoke(
         "ndi:status"
     ),
-
+        
+sendNdiFrame: (frameData) =>
+    ipcRenderer.send(
+        "ndi:frame",
+        frameData
+    ),
         getMediaFileUrl: (
             filePath
         ) =>
