@@ -70,7 +70,11 @@ declare global {
         online: boolean;
         source: string;
     }>;
-
+            
+sendNdiFrame: (
+    frameData: Uint8Array
+) => void;
+            
             getMediaFileUrl: (
                 filePath: string
 ) => string;
@@ -659,6 +663,152 @@ const timelineStartTimes = (() => {
 
     setCurrentTime(0);
 }, [selectedMediaUrl]);
+
+    useEffect(() => {
+    const video =
+        videoRef.current;
+
+    if (!video) {
+        return;
+    }
+
+    const canvas =
+        document.createElement(
+            "canvas"
+        );
+
+    canvas.width = 1920;
+    canvas.height = 1080;
+
+    const context =
+        canvas.getContext(
+            "2d",
+            {
+                willReadFrequently:
+                    true
+            }
+        );
+
+    if (!context) {
+        return;
+    }
+
+    const sendFrame = () => {
+        if (
+            video.readyState < 2 ||
+            video.videoWidth === 0 ||
+            video.videoHeight === 0
+        ) {
+            return;
+        }
+
+        context.fillStyle =
+            "#000000";
+
+        context.fillRect(
+            0,
+            0,
+            1920,
+            1080
+        );
+
+        const sourceAspect =
+            video.videoWidth /
+            video.videoHeight;
+
+        const outputAspect =
+            1920 / 1080;
+
+        let drawWidth = 1920;
+        let drawHeight = 1080;
+        let drawX = 0;
+        let drawY = 0;
+
+        if (
+            sourceAspect >
+            outputAspect
+        ) {
+            drawHeight =
+                1920 /
+                sourceAspect;
+
+            drawY =
+                (1080 -
+                    drawHeight) /
+                2;
+        } else {
+            drawWidth =
+                1080 *
+                sourceAspect;
+
+            drawX =
+                (1920 -
+                    drawWidth) /
+                2;
+        }
+
+        context.drawImage(
+            video,
+            drawX,
+            drawY,
+            drawWidth,
+            drawHeight
+        );
+
+        const imageData =
+            context.getImageData(
+                0,
+                0,
+                1920,
+                1080
+            );
+
+        const pixels =
+            imageData.data;
+
+        /*
+            Canvas entrega RGBA.
+
+            Nosso engine NDI está
+            esperando BGRA.
+
+            Então trocamos R e B.
+        */
+        for (
+            let index = 0;
+            index < pixels.length;
+            index += 4
+        ) {
+            const red =
+                pixels[index];
+
+            pixels[index] =
+                pixels[index + 2];
+
+            pixels[index + 2] =
+                red;
+        }
+
+        window.santtosAPI
+            .sendNdiFrame(
+                new Uint8Array(
+                    pixels.buffer
+                )
+            );
+    };
+
+    const timer =
+        window.setInterval(
+            sendFrame,
+            100
+        );
+
+    return () => {
+        window.clearInterval(
+            timer
+        );
+    };
+}, []);
     
 function addTimelineItem(
     mediaItem: MediaItem,
