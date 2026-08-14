@@ -185,51 +185,53 @@ async function analyzeMediaItems(
 }
 
 function registerIpcHandlers() {
-  ipcMain.handle(
-    "ndi:status",
-      ipcMain.on(
-    "ndi:frame",
-    (
-        _event,
-        frameData
-    ) => {
-        if (
-            !ndiProcess ||
-            !ndiProcess.stdin ||
-            ndiProcess.stdin.destroyed ||
-            !ndiReady ||
-            ndiFrameBusy
-        ) {
-            return;
+    ipcMain.handle(
+        "ndi:status",
+        async () => {
+            return {
+                online:
+                    ndiReady &&
+                    Boolean(ndiProcess) &&
+                    !ndiProcess.killed,
+
+                source:
+                    "Santtos TV - PROGRAM"
+            };
         }
+    );
 
-        const frameBuffer =
-            Buffer.from(
-                frameData
-            );
-
-        ndiFrameBusy = true;
-
-        ndiProcess.stdin.write(
-            frameBuffer,
-            () => {
-                ndiFrameBusy = false;
+    ipcMain.on(
+        "ndi:frame",
+        (
+            _event,
+            frameData
+        ) => {
+            if (
+                !ndiProcess ||
+                !ndiProcess.stdin ||
+                ndiProcess.stdin.destroyed ||
+                !ndiReady ||
+                ndiFrameBusy
+            ) {
+                return;
             }
-        );
-    }
-);
-    async () => {
-        return {
-            online:
-                ndiReady &&
-                Boolean(ndiProcess) &&
-                !ndiProcess.killed,
 
-            source:
-                "Santtos TV - PROGRAM"
-        };
-    }
-);
+            const frameBuffer =
+                Buffer.from(
+                    frameData
+                );
+
+            ndiFrameBusy = true;
+
+            ndiProcess.stdin.write(
+                frameBuffer,
+                () => {
+                    ndiFrameBusy = false;
+                }
+            );
+        }
+    );
+
     ipcMain.handle(
         "media:select",
         async () => {
