@@ -361,7 +361,7 @@ function startNdiSender() {
     "pipe",
     "pipe"
 ]
-                ]
+            
             }
         );
 
