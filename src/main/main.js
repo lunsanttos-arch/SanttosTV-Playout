@@ -37,6 +37,8 @@ let ndiProcess = null;
 
 let ndiReady = false;
 
+let ndiFrameBusy = false;
+
 const analysesInProgress = new Map();
 
 function createWindow() {
@@ -185,6 +187,37 @@ async function analyzeMediaItems(
 function registerIpcHandlers() {
   ipcMain.handle(
     "ndi:status",
+      ipcMain.on(
+    "ndi:frame",
+    (
+        _event,
+        frameData
+    ) => {
+        if (
+            !ndiProcess ||
+            !ndiProcess.stdin ||
+            ndiProcess.stdin.destroyed ||
+            !ndiReady ||
+            ndiFrameBusy
+        ) {
+            return;
+        }
+
+        const frameBuffer =
+            Buffer.from(
+                frameData
+            );
+
+        ndiFrameBusy = true;
+
+        ndiProcess.stdin.write(
+            frameBuffer,
+            () => {
+                ndiFrameBusy = false;
+            }
+        );
+    }
+);
     async () => {
         return {
             online:
@@ -321,10 +354,11 @@ function startNdiSender() {
 
                 windowsHide: true,
 
-                stdio: [
-                    "ignore",
-                    "pipe",
-                    "pipe"
+               stdio: [
+    "pipe",
+    "pipe",
+    "pipe"
+]
                 ]
             }
         );
@@ -422,7 +456,9 @@ function stopNdiSender() {
     console.log(
         "Encerrando sender NDI..."
     );
-
+    
+ndiFrameBusy = false;
+ndiReady = false;
     ndiProcess.kill();
 
     ndiProcess = null;
