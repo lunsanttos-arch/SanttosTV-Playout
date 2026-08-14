@@ -650,23 +650,6 @@ const timelineStartTimes = (() => {
           )
         : null;
 
-    const timer =
-        window.setTimeout(
-            () => {
-             
-        window.santtosAPI
-                    .sendNdiFrame(
-                        frame
-                    );
-            },
-            2000
-        );
-
-    return () =>
-        window.clearTimeout(
-            timer
-        );
-}, []);
     
     useEffect(() => {
     const video =
