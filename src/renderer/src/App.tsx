@@ -179,12 +179,6 @@ useEffect(() => {
             }
 
             setIsLoading(true);
-
-           getNdiStatus: () =>
-    Promise<{
-        online: boolean;
-        source: string;
-    }>;
             
             const result =
                 await window.santtosAPI
