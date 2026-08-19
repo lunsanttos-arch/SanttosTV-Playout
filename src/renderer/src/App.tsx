@@ -791,18 +791,18 @@ const timelineStartTimes = (() => {
             );
     };
 
-     =
-        window.setInterval(
-            sendFrame,
-            100
-        );
+  const timer =
+    window.setInterval(
+        sendFrame,
+        100
+    );
 
     return () => {
         window.clearInterval(
             timer
         );
     };
-}, []);
+}, [selectedMediaUrl]);
     
 function addTimelineItem(
     mediaItem: MediaItem,
