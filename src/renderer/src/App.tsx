@@ -115,18 +115,6 @@ const [ndiOnline, setNdiOnline] =
 
     updateClock();
 
-    const timer =
-        window.setInterval(
-            updateClock,
-            1000
-        );
-
-    return () =>
-        window.clearInterval(
-            timer
-        );
-}, []);
-
 useEffect(() => {
     const updateNdiStatus =
         async () => {
@@ -799,7 +787,7 @@ const timelineStartTimes = (() => {
             );
     };
 
-    const timer =
+     =
         window.setInterval(
             sendFrame,
             100
