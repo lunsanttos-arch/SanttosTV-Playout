@@ -105,6 +105,7 @@ const [ndiOnline, setNdiOnline] =
 
    useEffect(() => {
        
+useEffect(() => {
     const updateClock = () => {
         setClock(
             new Date().toLocaleTimeString(
@@ -114,6 +115,18 @@ const [ndiOnline, setNdiOnline] =
     };
 
     updateClock();
+
+    const timer =
+        window.setInterval(
+            updateClock,
+            1000
+        );
+
+    return () =>
+        window.clearInterval(
+            timer
+        );
+}, []);
 
 useEffect(() => {
     const updateNdiStatus =
@@ -148,8 +161,7 @@ useEffect(() => {
         window.clearInterval(
             timer
         );
-}, [selectedMediaUrl]);
-
+}, []);
 
     async function loadMedia() {
         try {
