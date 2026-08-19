@@ -102,8 +102,6 @@ const [ndiOnline, setNdiOnline] =
 
     const [selectedMedia, setSelectedMedia] =
     useState<MediaItem | null>(null);
-
-   useEffect(() => {
        
 useEffect(() => {
     const updateClock = () => {
