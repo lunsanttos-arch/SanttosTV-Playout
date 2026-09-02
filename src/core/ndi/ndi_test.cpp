@@ -2,8 +2,6 @@
 
 #include <cstdint>
 #include <iostream>
-#include <mutex>
-#include <thread>
 #include <vector>
 
 #include <fcntl.h>
@@ -15,12 +13,8 @@ int main()
     constexpr int height = 1080;
 
     constexpr std::size_t frameSize =
-        static_cast<std::size_t>(
-            width
-        ) *
-        static_cast<std::size_t>(
-            height
-        ) *
+        static_cast<std::size_t>(width) *
+        static_cast<std::size_t>(height) *
         4;
 
     std::cout
@@ -32,17 +26,13 @@ int main()
         std::cerr
             << "ERRO: NDI nao pode ser inicializado."
             << std::endl;
-
         return 1;
     }
 
     NDIlib_send_create_t senderSettings = {};
-
     senderSettings.p_ndi_name =
         "Santtos TV - PROGRAM";
-
     senderSettings.p_groups = nullptr;
-
     senderSettings.clock_video = true;
     senderSettings.clock_audio = false;
 
@@ -58,111 +48,45 @@ int main()
             << std::endl;
 
         NDIlib_destroy();
-
         return 1;
     }
 
-    std::vector<std::uint8_t>
-        currentFrame(
-            frameSize,
-            0
-        );
+    _setmode(
+        _fileno(stdin),
+        _O_BINARY
+    );
 
-    /*
-        Começamos com uma tela preta BGRA.
-        Alpha precisa ficar em 255.
-    */
+    std::vector<std::uint8_t>
+        frame(frameSize, 0);
+
     for (
         std::size_t offset = 3;
         offset < frameSize;
         offset += 4
     )
     {
-        currentFrame[offset] = 255;
+        frame[offset] = 255;
     }
-
-    std::mutex frameMutex;
-
-    /*
-        stdin será usado como entrada de vídeo.
-
-        Cada pacote recebido deve conter
-        exatamente um frame:
-
-        1920 x 1080 x 4 bytes
-        formato BGRA.
-    */
-    std::thread inputThread(
-        [&]()
-        {
-            _setmode(
-                _fileno(stdin),
-                _O_BINARY
-            );
-
-            std::vector<std::uint8_t>
-                incomingFrame(
-                    frameSize
-                );
-
-            while (true)
-            {
-                std::cin.read(
-                    reinterpret_cast<char*>(
-                        incomingFrame.data()
-                    ),
-                    static_cast<std::streamsize>(
-                        frameSize
-                    )
-                );
-
-                if (
-                    std::cin.gcount() !=
-                    static_cast<std::streamsize>(
-                        frameSize
-                    )
-                )
-                {
-                    break;
-                }
-
-                {
-                    std::lock_guard<std::mutex>
-                        lock(frameMutex);
-
-                    currentFrame.swap(
-                        incomingFrame
-                    );
-                }
-            }
-        }
-    );
-
-    inputThread.detach();
 
     NDIlib_video_frame_v2_t
         videoFrame = {};
 
     videoFrame.xres = width;
     videoFrame.yres = height;
-
     videoFrame.FourCC =
         NDIlib_FourCC_type_BGRA;
-
     videoFrame.frame_rate_N = 30000;
     videoFrame.frame_rate_D = 1001;
-
     videoFrame.picture_aspect_ratio =
         16.0f / 9.0f;
-
     videoFrame.frame_format_type =
         NDIlib_frame_format_type_progressive;
-
     videoFrame.timecode =
         NDIlib_send_timecode_synthesize;
-
     videoFrame.line_stride_in_bytes =
         width * 4;
+    videoFrame.p_data =
+        frame.data();
 
     std::cout
         << "NDI ONLINE: Santtos TV - PROGRAM"
@@ -176,14 +100,38 @@ int main()
         << "Aguardando frames do PROGRAM..."
         << std::endl;
 
+    // Mantem uma imagem preta valida ate o primeiro frame chegar.
+    NDIlib_send_send_video_v2(
+        sender,
+        &videoFrame
+    );
+
     while (true)
     {
-        std::lock_guard<std::mutex>
-            lock(frameMutex);
+        std::cin.read(
+            reinterpret_cast<char*>(
+                frame.data()
+            ),
+            static_cast<std::streamsize>(
+                frameSize
+            )
+        );
+
+        if (
+            std::cin.gcount() !=
+            static_cast<std::streamsize>(
+                frameSize
+            )
+        )
+        {
+            break;
+        }
 
         videoFrame.p_data =
-            currentFrame.data();
+            frame.data();
 
+        // Cada frame completo lido do FFmpeg e enviado uma unica vez.
+        // clock_video=true faz o NDI aplicar o pacing de 29.97 fps.
         NDIlib_send_send_video_v2(
             sender,
             &videoFrame
