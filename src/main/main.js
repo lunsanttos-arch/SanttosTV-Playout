@@ -132,7 +132,6 @@ async function analyzeMediaItem(mediaItem) {
                     mediaItem.id,
                     {
                         ...metadata,
-
                         analysisCompletedAt:
                             new Date()
                                 .toISOString()
@@ -290,7 +289,6 @@ function startNativePlayback(filePath) {
         "-loglevel",
         "warning",
         "-nostdin",
-        "-re",
         "-i",
         filePath,
         "-map",
