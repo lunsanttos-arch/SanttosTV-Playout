@@ -52,6 +52,7 @@ interface NdiCommandResult {
     ok: boolean;
     error?: string;
     filePath?: string;
+    startSeconds?: number;
 }
 
 declare global {
@@ -79,7 +80,8 @@ declare global {
                 }>;
 
             playNdiFile: (
-                filePath: string
+                filePath: string,
+                startSeconds?: number
             ) => Promise<NdiCommandResult>;
 
             stopNdiFile: () =>
@@ -500,6 +502,9 @@ function PlayoutPanel({
     const [duration, setDuration] =
         useState(0);
 
+    const [isPlaying, setIsPlaying] =
+        useState(false);
+
     const [timelineQueue, setTimelineQueue] =
         useState<MediaItem[]>(media);
 
@@ -680,6 +685,7 @@ function PlayoutPanel({
         video.load();
 
         setCurrentTime(0);
+        setIsPlaying(false);
     }, [selectedMediaUrl]);
 
     function addTimelineItem(
@@ -984,12 +990,14 @@ function PlayoutPanel({
     }
 
     async function startNativeNdi(
-        mediaItem: MediaItem
+        mediaItem: MediaItem,
+        startSeconds = 0
     ) {
         const result =
             await window.santtosAPI
                 .playNdiFile(
-                    mediaItem.path
+                    mediaItem.path,
+                    startSeconds
                 );
 
         if (!result.ok) {
@@ -1084,15 +1092,19 @@ function PlayoutPanel({
             }
 
             await startNativeNdi(
-                mediaToPlay
+                mediaToPlay,
+                video.currentTime
             );
 
             await video.play();
+            setIsPlaying(true);
         } catch (error) {
             console.error(
                 "Erro ao reproduzir vídeo:",
                 error
             );
+
+            setIsPlaying(false);
 
             window.alert(
                 `Não foi possível reproduzir o vídeo.\n\n${
@@ -1117,15 +1129,18 @@ function PlayoutPanel({
                 video.currentTime = 0;
 
                 await startNativeNdi(
-                    selectedMedia
+                    selectedMedia,
+                    0
                 );
 
                 await video.play();
+                setIsPlaying(true);
             } catch (error) {
                 console.error(
                     "Erro ao repetir vídeo:",
                     error
                 );
+                setIsPlaying(false);
             }
 
             return;
@@ -1133,11 +1148,15 @@ function PlayoutPanel({
 
         if (!nextMedia) {
             setCurrentTime(0);
+            setIsPlaying(false);
+            await window.santtosAPI
+                .stopNdiFile();
             return;
         }
 
         setCurrentTime(0);
         setDuration(0);
+        setIsPlaying(false);
 
         onSelectMedia(nextMedia);
 
@@ -1152,15 +1171,18 @@ function PlayoutPanel({
 
                 try {
                     await startNativeNdi(
-                        nextMedia
+                        nextMedia,
+                        0
                     );
 
                     await video.play();
+                    setIsPlaying(true);
                 } catch (error) {
                     console.error(
                         "Erro ao iniciar próximo vídeo:",
                         error
                     );
+                    setIsPlaying(false);
                 }
             },
             150
@@ -1168,7 +1190,11 @@ function PlayoutPanel({
     }
 
     async function pauseVideo() {
-        getProgramVideo()?.pause();
+        const video =
+            getProgramVideo();
+
+        video?.pause();
+        setIsPlaying(false);
 
         try {
             await window.santtosAPI
@@ -1184,6 +1210,8 @@ function PlayoutPanel({
     async function stopVideo() {
         const video =
             getProgramVideo();
+
+        setIsPlaying(false);
 
         try {
             await window.santtosAPI
@@ -1204,6 +1232,31 @@ function PlayoutPanel({
         setCurrentTime(0);
     }
 
+    async function syncSeekedPosition() {
+        const video =
+            getProgramVideo();
+
+        if (
+            !video ||
+            !selectedMedia ||
+            !isPlaying
+        ) {
+            return;
+        }
+
+        try {
+            await startNativeNdi(
+                selectedMedia,
+                video.currentTime
+            );
+        } catch (error) {
+            console.error(
+                "Erro ao sincronizar seek com NDI:",
+                error
+            );
+        }
+    }
+
     return (
         <div className="playout-operation-layout">
             <div className="program-column">
@@ -1220,7 +1273,9 @@ function PlayoutPanel({
                         </div>
 
                         <span className="program-status">
-                            ● OFF AIR
+                            {isPlaying
+                                ? "● ON AIR"
+                                : "● OFF AIR"}
                         </span>
                     </div>
 
@@ -1247,6 +1302,9 @@ function PlayoutPanel({
                                     setDuration(
                                         event.currentTarget.duration
                                     )
+                                }
+                                onSeeked={
+                                    syncSeekedPosition
                                 }
                                 onEnded={playNextMedia}
                             />
