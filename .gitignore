@@ -1,0 +1,29 @@
+node_modules/
+build/
+dist/
+
+# Local database/runtime data
+database/
+*.db
+*.sqlite
+*.sqlite3
+
+# Native build artifacts
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exp
+
+# Locally compiled NDI runtime artifacts
+src/core/ndi/*.obj
+src/core/ndi/*.exe
+src/core/ndi/Processing.NDI.Lib.x64.dll
+
+# Logs and temp files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+Thumbs.db
