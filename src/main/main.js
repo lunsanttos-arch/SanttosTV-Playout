@@ -246,7 +246,10 @@ function stopNativePlayback() {
     }
 }
 
-function startNativePlayback(filePath) {
+function startNativePlayback(
+    filePath,
+    startSeconds = 0
+) {
     if (
         typeof filePath !== "string" ||
         filePath.length === 0
@@ -261,6 +264,14 @@ function startNativePlayback(filePath) {
             `Arquivo não encontrado: ${filePath}`
         );
     }
+
+    const normalizedStartSeconds =
+        Number.isFinite(Number(startSeconds))
+            ? Math.max(
+                  0,
+                  Number(startSeconds)
+              )
+            : 0;
 
     if (
         !ndiReady ||
@@ -288,7 +299,17 @@ function startNativePlayback(filePath) {
         "-hide_banner",
         "-loglevel",
         "warning",
-        "-nostdin",
+        "-nostdin"
+    ];
+
+    if (normalizedStartSeconds > 0) {
+        args.push(
+            "-ss",
+            normalizedStartSeconds.toFixed(3)
+        );
+    }
+
+    args.push(
         "-i",
         filePath,
         "-map",
@@ -303,10 +324,10 @@ function startNativePlayback(filePath) {
         "-f",
         "rawvideo",
         "pipe:1"
-    ];
+    );
 
     console.log(
-        `Iniciando playout FFmpeg: ${path.basename(filePath)}`
+        `Iniciando playout FFmpeg: ${path.basename(filePath)} @ ${normalizedStartSeconds.toFixed(3)}s`
     );
 
     const processRef = spawn(
@@ -399,7 +420,9 @@ function startNativePlayback(filePath) {
 
     return {
         ok: true,
-        filePath
+        filePath,
+        startSeconds:
+            normalizedStartSeconds
     };
 }
 
@@ -425,11 +448,13 @@ function registerIpcHandlers() {
         "ndi:play-file",
         async (
             _event,
-            filePath
+            filePath,
+            startSeconds = 0
         ) => {
             try {
                 return startNativePlayback(
-                    filePath
+                    filePath,
+                    startSeconds
                 );
             } catch (error) {
                 console.error(
