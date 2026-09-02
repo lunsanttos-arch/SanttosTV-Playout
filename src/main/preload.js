@@ -33,15 +33,27 @@ contextBridge.exposeInMainWorld(
             ),
 
         getNdiStatus: () =>
-    ipcRenderer.invoke(
-        "ndi:status"
-    ),
-        
-sendNdiFrame: (frameData) =>
-    ipcRenderer.send(
-        "ndi:frame",
-        frameData
-    ),
+            ipcRenderer.invoke(
+                "ndi:status"
+            ),
+
+        playNdiFile: (filePath) =>
+            ipcRenderer.invoke(
+                "ndi:play-file",
+                filePath
+            ),
+
+        stopNdiFile: () =>
+            ipcRenderer.invoke(
+                "ndi:stop-file"
+            ),
+
+        sendNdiFrame: (frameData) =>
+            ipcRenderer.send(
+                "ndi:frame",
+                frameData
+            ),
+
         getMediaFileUrl: (
             filePath
         ) =>

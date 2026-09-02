@@ -6,10 +6,13 @@ const {
 } = require("electron");
 
 const path = require("path");
+const fs = require("fs");
 
 const {
     spawn
 } = require("child_process");
+
+const ffmpegStatic = require("ffmpeg-static");
 
 const {
     initializeDatabase,
@@ -40,12 +43,12 @@ const NDI_FRAME_SIZE =
     NDI_BYTES_PER_PIXEL;
 
 let mainWindow = null;
-
 let ndiProcess = null;
+let ffmpegProcess = null;
 
 let ndiReady = false;
-
 let ndiFrameBusy = false;
+let nativePlaybackActive = false;
 
 const analysesInProgress = new Map();
 
@@ -156,10 +159,8 @@ async function analyzeMediaItem(mediaItem) {
                     mediaItem.id,
                     {
                         status: "error",
-
                         metadataError:
                             error.message,
-
                         analysisCompletedAt:
                             new Date()
                                 .toISOString()
@@ -192,6 +193,218 @@ async function analyzeMediaItems(
     return getMedia();
 }
 
+function resolveFfmpegPath() {
+    if (!ffmpegStatic) {
+        throw new Error(
+            "FFmpeg runtime não encontrado."
+        );
+    }
+
+    const resolvedPath = app.isPackaged
+        ? ffmpegStatic.replace(
+              "app.asar",
+              "app.asar.unpacked"
+          )
+        : ffmpegStatic;
+
+    if (!fs.existsSync(resolvedPath)) {
+        throw new Error(
+            `FFmpeg não encontrado em ${resolvedPath}`
+        );
+    }
+
+    return resolvedPath;
+}
+
+function stopNativePlayback() {
+    if (!ffmpegProcess) {
+        nativePlaybackActive = false;
+        return;
+    }
+
+    const processToStop =
+        ffmpegProcess;
+
+    console.log(
+        "Encerrando playout FFmpeg..."
+    );
+
+    if (
+        processToStop.stdout &&
+        ndiProcess &&
+        ndiProcess.stdin
+    ) {
+        processToStop.stdout.unpipe(
+            ndiProcess.stdin
+        );
+    }
+
+    ffmpegProcess = null;
+    nativePlaybackActive = false;
+
+    if (!processToStop.killed) {
+        processToStop.kill();
+    }
+}
+
+function startNativePlayback(filePath) {
+    if (
+        typeof filePath !== "string" ||
+        filePath.length === 0
+    ) {
+        throw new Error(
+            "Arquivo de playout inválido."
+        );
+    }
+
+    if (!fs.existsSync(filePath)) {
+        throw new Error(
+            `Arquivo não encontrado: ${filePath}`
+        );
+    }
+
+    if (
+        !ndiReady ||
+        !ndiProcess ||
+        !ndiProcess.stdin ||
+        ndiProcess.stdin.destroyed
+    ) {
+        throw new Error(
+            "Engine NDI ainda não está pronto."
+        );
+    }
+
+    stopNativePlayback();
+
+    const ffmpegPath =
+        resolveFfmpegPath();
+
+    const videoFilter = [
+        "scale=1920:1080:force_original_aspect_ratio=decrease",
+        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
+        "fps=30000/1001"
+    ].join(",");
+
+    const args = [
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-nostdin",
+        "-re",
+        "-i",
+        filePath,
+        "-map",
+        "0:v:0",
+        "-an",
+        "-sn",
+        "-dn",
+        "-vf",
+        videoFilter,
+        "-pix_fmt",
+        "bgra",
+        "-f",
+        "rawvideo",
+        "pipe:1"
+    ];
+
+    console.log(
+        `Iniciando playout FFmpeg: ${path.basename(filePath)}`
+    );
+
+    const processRef = spawn(
+        ffmpegPath,
+        args,
+        {
+            windowsHide: true,
+            stdio: [
+                "ignore",
+                "pipe",
+                "pipe"
+            ]
+        }
+    );
+
+    ffmpegProcess = processRef;
+    nativePlaybackActive = true;
+    ndiFrameBusy = false;
+
+    processRef.stdout.pipe(
+        ndiProcess.stdin,
+        {
+            end: false
+        }
+    );
+
+    processRef.stderr.on(
+        "data",
+        (data) => {
+            const message =
+                data
+                    .toString()
+                    .trim();
+
+            if (message) {
+                console.warn(
+                    `[FFmpeg] ${message}`
+                );
+            }
+        }
+    );
+
+    processRef.on(
+        "error",
+        (error) => {
+            console.error(
+                "Falha no playout FFmpeg:",
+                error
+            );
+
+            if (
+                ffmpegProcess ===
+                processRef
+            ) {
+                ffmpegProcess = null;
+                nativePlaybackActive = false;
+            }
+        }
+    );
+
+    processRef.on(
+        "exit",
+        (
+            code,
+            signal
+        ) => {
+            if (
+                ndiProcess &&
+                ndiProcess.stdin &&
+                processRef.stdout
+            ) {
+                processRef.stdout.unpipe(
+                    ndiProcess.stdin
+                );
+            }
+
+            console.log(
+                `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`
+            );
+
+            if (
+                ffmpegProcess ===
+                processRef
+            ) {
+                ffmpegProcess = null;
+                nativePlaybackActive = false;
+            }
+        }
+    );
+
+    return {
+        ok: true,
+        filePath
+    };
+}
+
 function registerIpcHandlers() {
     ipcMain.handle(
         "ndi:status",
@@ -203,7 +416,45 @@ function registerIpcHandlers() {
                     !ndiProcess.killed,
 
                 source:
-                    "Santtos TV - PROGRAM"
+                    "Santtos TV - PROGRAM",
+
+                nativePlaybackActive
+            };
+        }
+    );
+
+    ipcMain.handle(
+        "ndi:play-file",
+        async (
+            _event,
+            filePath
+        ) => {
+            try {
+                return startNativePlayback(
+                    filePath
+                );
+            } catch (error) {
+                console.error(
+                    "Não foi possível iniciar o playout nativo:",
+                    error
+                );
+
+                return {
+                    ok: false,
+                    error:
+                        error.message
+                };
+            }
+        }
+    );
+
+    ipcMain.handle(
+        "ndi:stop-file",
+        async () => {
+            stopNativePlayback();
+
+            return {
+                ok: true
             };
         }
     );
@@ -215,6 +466,7 @@ function registerIpcHandlers() {
             frameData
         ) => {
             if (
+                nativePlaybackActive ||
                 !ndiProcess ||
                 !ndiProcess.stdin ||
                 ndiProcess.stdin.destroyed ||
@@ -455,6 +707,7 @@ function startNdiSender() {
                     error
                 );
 
+                stopNativePlayback();
                 ndiReady = false;
                 ndiFrameBusy = false;
                 ndiProcess = null;
@@ -471,6 +724,7 @@ function startNdiSender() {
                     `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
                 );
 
+                stopNativePlayback();
                 ndiReady = false;
                 ndiFrameBusy = false;
                 ndiProcess = null;
@@ -482,6 +736,7 @@ function startNdiSender() {
             error
         );
 
+        stopNativePlayback();
         ndiReady = false;
         ndiFrameBusy = false;
         ndiProcess = null;
@@ -489,6 +744,8 @@ function startNdiSender() {
 }
 
 function stopNdiSender() {
+    stopNativePlayback();
+
     if (
         !ndiProcess ||
         ndiProcess.killed
@@ -504,7 +761,6 @@ function stopNdiSender() {
     ndiReady = false;
 
     ndiProcess.kill();
-
     ndiProcess = null;
 }
 
@@ -547,6 +803,7 @@ app.whenReady().then(() => {
 app.on(
     "before-quit",
     () => {
+        stopNativePlayback();
         stopNdiSender();
     }
 );
