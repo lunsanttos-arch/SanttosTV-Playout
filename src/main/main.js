@@ -31,6 +31,14 @@ const {
 const isDevelopment =
     !app.isPackaged;
 
+const NDI_FRAME_WIDTH = 1920;
+const NDI_FRAME_HEIGHT = 1080;
+const NDI_BYTES_PER_PIXEL = 4;
+const NDI_FRAME_SIZE =
+    NDI_FRAME_WIDTH *
+    NDI_FRAME_HEIGHT *
+    NDI_BYTES_PER_PIXEL;
+
 let mainWindow = null;
 
 let ndiProcess = null;
@@ -57,16 +65,17 @@ function createWindow() {
                 "Santtos TV Automation",
 
             webPreferences: {
-    nodeIntegration: false,
-    contextIsolation: true,
-    webSecurity: false,
+                nodeIntegration: false,
+                contextIsolation: true,
+                webSecurity: false,
 
-    preload: path.join(
+                preload: path.join(
                     __dirname,
                     "preload.js"
                 )
             }
         });
+
     mainWindow.maximize();
 
     if (isDevelopment) {
@@ -171,7 +180,6 @@ async function analyzeMediaItem(mediaItem) {
     return analysisPromise;
 }
 
-
 async function analyzeMediaItems(
     mediaItems
 ) {
@@ -221,12 +229,30 @@ function registerIpcHandlers() {
                     frameData
                 );
 
+            if (
+                frameBuffer.length !==
+                NDI_FRAME_SIZE
+            ) {
+                console.warn(
+                    `Frame NDI ignorado: ${frameBuffer.length} bytes recebidos, ${NDI_FRAME_SIZE} esperados.`
+                );
+
+                return;
+            }
+
             ndiFrameBusy = true;
 
             ndiProcess.stdin.write(
                 frameBuffer,
-                () => {
+                (error) => {
                     ndiFrameBusy = false;
+
+                    if (error) {
+                        console.error(
+                            "Erro ao enviar frame para o engine NDI:",
+                            error
+                        );
+                    }
                 }
             );
         }
@@ -274,11 +300,11 @@ function registerIpcHandlers() {
                 getMedia();
 
             const pendingMedia =
-    media.filter(
-        (item) =>
-            item.status ===
-                "pending-metadata"
-    );
+                media.filter(
+                    (item) =>
+                        item.status ===
+                        "pending-metadata"
+                );
 
             if (
                 pendingMedia.length >
@@ -334,6 +360,7 @@ function startNdiSender() {
     }
 
     ndiReady = false;
+    ndiFrameBusy = false;
 
     const ndiExecutable =
         path.join(
@@ -356,42 +383,53 @@ function startNdiSender() {
 
                 windowsHide: true,
 
-               stdio: [
-    "pipe",
-    "pipe",
-    "pipe"
-]
-            
+                stdio: [
+                    "pipe",
+                    "pipe",
+                    "pipe"
+                ]
             }
         );
 
-      ndiProcess.stdout.on(
-    "data",
-    (data) => {
-        const message =
-            data
-                .toString()
-                .trim();
+        ndiProcess.stdin.on(
+            "error",
+            (error) => {
+                ndiFrameBusy = false;
 
-        if (
-            message.includes(
-                "NDI ONLINE:"
-            )
-        ) {
-            ndiReady = true;
+                console.error(
+                    "Erro no stdin do engine NDI:",
+                    error
+                );
+            }
+        );
 
-            console.log(
-                "Santtos NDI confirmado ONLINE"
-            );
-        }
+        ndiProcess.stdout.on(
+            "data",
+            (data) => {
+                const message =
+                    data
+                        .toString()
+                        .trim();
 
-        if (message) {
-            console.log(
-                `[NDI] ${message}`
-            );
-        }
-    }
-);
+                if (
+                    message.includes(
+                        "NDI ONLINE:"
+                    )
+                ) {
+                    ndiReady = true;
+
+                    console.log(
+                        "Santtos NDI confirmado ONLINE"
+                    );
+                }
+
+                if (message) {
+                    console.log(
+                        `[NDI] ${message}`
+                    );
+                }
+            }
+        );
 
         ndiProcess.stderr.on(
             "data",
@@ -409,40 +447,43 @@ function startNdiSender() {
             }
         );
 
-  ndiProcess.on(
-    "error",
-    (error) => {
-        console.error(
-            "Falha ao iniciar NDI:",
-            error
+        ndiProcess.on(
+            "error",
+            (error) => {
+                console.error(
+                    "Falha ao iniciar NDI:",
+                    error
+                );
+
+                ndiReady = false;
+                ndiFrameBusy = false;
+                ndiProcess = null;
+            }
         );
 
-        ndiReady = false;
-        ndiProcess = null;
-    }
-);
+        ndiProcess.on(
+            "exit",
+            (
+                code,
+                signal
+            ) => {
+                console.log(
+                    `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
+                );
 
-ndiProcess.on(
-    "exit",
-    (
-        code,
-        signal
-    ) => {
-        console.log(
-            `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
+                ndiReady = false;
+                ndiFrameBusy = false;
+                ndiProcess = null;
+            }
         );
-
-        ndiReady = false;
-        ndiProcess = null;
-    }
-);
-        
     } catch (error) {
         console.error(
             "Erro ao iniciar sender NDI:",
             error
         );
 
+        ndiReady = false;
+        ndiFrameBusy = false;
         ndiProcess = null;
     }
 }
@@ -458,9 +499,10 @@ function stopNdiSender() {
     console.log(
         "Encerrando sender NDI..."
     );
-    
-ndiFrameBusy = false;
-ndiReady = false;
+
+    ndiFrameBusy = false;
+    ndiReady = false;
+
     ndiProcess.kill();
 
     ndiProcess = null;
