@@ -37,10 +37,14 @@ contextBridge.exposeInMainWorld(
                 "ndi:status"
             ),
 
-        playNdiFile: (filePath) =>
+        playNdiFile: (
+            filePath,
+            startSeconds = 0
+        ) =>
             ipcRenderer.invoke(
                 "ndi:play-file",
-                filePath
+                filePath,
+                startSeconds
             ),
 
         stopNdiFile: () =>
