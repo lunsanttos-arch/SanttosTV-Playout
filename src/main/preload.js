@@ -32,16 +32,6 @@ contextBridge.exposeInMainWorld(
                 mediaId
             ),
 
-        updateMediaHashtag: (
-            mediaId,
-            hashtag
-        ) =>
-            ipcRenderer.invoke(
-                "media:set-hashtag",
-                mediaId,
-                hashtag
-            ),
-
         getTimeline: () =>
             ipcRenderer.invoke(
                 "timeline:list"
@@ -51,6 +41,17 @@ contextBridge.exposeInMainWorld(
             ipcRenderer.invoke(
                 "timeline:save",
                 timelineItems
+            ),
+
+        getSettings: () =>
+            ipcRenderer.invoke(
+                "settings:get"
+            ),
+
+        saveHashtagStyle: (style) =>
+            ipcRenderer.invoke(
+                "settings:set-hashtag-style",
+                style
             ),
 
         getNdiStatus: () =>
