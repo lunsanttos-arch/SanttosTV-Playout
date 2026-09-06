@@ -68,12 +68,24 @@ export default function WatermarkSettingsTab() {
                 await api.selectWatermark();
 
             if (!result?.ok) {
+                if (!result?.canceled) {
+                    setStatus(
+                        result?.error ??
+                            "Não foi possível selecionar a imagem."
+                    );
+                }
                 return;
             }
 
-            setDraft(result.watermarkStyle);
+            patch({
+                filePath: result.filePath
+            });
             setStatus(
-                "Imagem selecionada. Ajuste tamanho e posição e salve."
+                `Imagem validada${
+                    result.image
+                        ? ` (${result.image.width}x${result.image.height})`
+                        : ""
+                }. Ajuste tamanho e posição e salve.`
             );
         } catch (error) {
             console.error(error);
@@ -95,7 +107,8 @@ export default function WatermarkSettingsTab() {
 
             if (!result?.ok) {
                 throw new Error(
-                    "Falha ao salvar marca d'água."
+                    result?.error ??
+                        "Falha ao salvar marca d'água."
                 );
             }
 
@@ -269,6 +282,11 @@ export default function WatermarkSettingsTab() {
                             }
                             style={previewStyle}
                             alt="Preview da marca d'água"
+                            onError={() =>
+                                setStatus(
+                                    "A imagem foi selecionada, mas o preview não conseguiu carregá-la. Tente PNG ou WebP."
+                                )
+                            }
                         />
                     ) : (
                         <div className="watermark-preview-empty">

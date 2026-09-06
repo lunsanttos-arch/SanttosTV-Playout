@@ -2,7 +2,8 @@ const {
     app,
     BrowserWindow,
     ipcMain,
-    dialog
+    dialog,
+    nativeImage
 } = require("electron");
 
 const path = require("path");
@@ -679,6 +680,57 @@ function startNativePlayback(
     };
 }
 
+function validateWatermarkImage(filePath) {
+    if (typeof filePath !== "string" || !filePath) {
+        throw new Error("Arquivo de marca d'água inválido.");
+    }
+
+    if (!fs.existsSync(filePath)) {
+        throw new Error("A imagem selecionada não foi encontrada.");
+    }
+
+    const extension = path.extname(filePath).toLowerCase();
+    if (![".png", ".webp", ".jpg", ".jpeg"].includes(extension)) {
+        throw new Error("Formato de imagem não suportado.");
+    }
+
+    const stat = fs.statSync(filePath);
+    const maxFileBytes = 25 * 1024 * 1024;
+    if (!stat.isFile() || stat.size <= 0) {
+        throw new Error("O arquivo selecionado não é uma imagem válida.");
+    }
+    if (stat.size > maxFileBytes) {
+        throw new Error("A marca d'água deve ter no máximo 25 MB.");
+    }
+
+    const image = nativeImage.createFromPath(filePath);
+    if (!image || image.isEmpty()) {
+        throw new Error("Não foi possível decodificar a imagem selecionada.");
+    }
+
+    const size = image.getSize();
+    const maxDimension = 8192;
+    const maxPixels = 32000000;
+    if (
+        size.width <= 0 ||
+        size.height <= 0 ||
+        size.width > maxDimension ||
+        size.height > maxDimension ||
+        size.width * size.height > maxPixels
+    ) {
+        throw new Error(
+            `Imagem grande demais (${size.width}x${size.height}). Use até 8192 px por lado.`
+        );
+    }
+
+    return {
+        filePath,
+        width: size.width,
+        height: size.height,
+        fileSize: stat.size
+    };
+}
+
 function registerIpcHandlers() {
     ipcMain.handle(
         "ndi:status",
@@ -757,58 +809,102 @@ function registerIpcHandlers() {
     ipcMain.handle(
         "watermark:select",
         async () => {
-            const result =
-                await dialog.showOpenDialog({
-                    title:
-                        "Selecionar marca d'água",
-                    properties: [
-                        "openFile"
-                    ],
-                    filters: [
+            try {
+                const result =
+                    await dialog.showOpenDialog(
+                        mainWindow ?? undefined,
                         {
-                            name: "Imagens",
-                            extensions: [
-                                "png",
-                                "webp",
-                                "jpg",
-                                "jpeg"
+                            title:
+                                "Selecionar marca d'água",
+                            properties: [
+                                "openFile"
+                            ],
+                            filters: [
+                                {
+                                    name: "Imagens",
+                                    extensions: [
+                                        "png",
+                                        "webp",
+                                        "jpg",
+                                        "jpeg"
+                                    ]
+                                }
                             ]
                         }
-                    ]
-                });
+                    );
 
-            if (
-                result.canceled ||
-                result.filePaths.length === 0
-            ) {
+                if (
+                    result.canceled ||
+                    result.filePaths.length === 0
+                ) {
+                    return {
+                        ok: false,
+                        canceled: true
+                    };
+                }
+
+                const validation =
+                    validateWatermarkImage(
+                        result.filePaths[0]
+                    );
+
+                return {
+                    ok: true,
+                    filePath: validation.filePath,
+                    image: {
+                        width: validation.width,
+                        height: validation.height,
+                        fileSize: validation.fileSize
+                    }
+                };
+            } catch (error) {
+                console.error(
+                    "Falha ao selecionar marca d'água:",
+                    error
+                );
+
                 return {
                     ok: false,
-                    canceled: true
+                    canceled: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Não foi possível abrir a imagem."
                 };
             }
-
-            const current =
-                getSettings().watermarkStyle;
-
-            return {
-                ok: true,
-                watermarkStyle:
-                    updateWatermarkStyle({
-                        ...current,
-                        filePath:
-                            result.filePaths[0]
-                    })
-            };
         }
     );
 
     ipcMain.handle(
         "settings:set-watermark-style",
-        async (_event, style) => ({
-            ok: true,
-            watermarkStyle:
-                updateWatermarkStyle(style)
-        })
+        async (_event, style) => {
+            try {
+                if (style?.filePath) {
+                    validateWatermarkImage(
+                        style.filePath
+                    );
+                }
+
+                return {
+                    ok: true,
+                    watermarkStyle:
+                        updateWatermarkStyle(style)
+                };
+            } catch (error) {
+                console.error(
+                    "Falha ao salvar marca d'água:",
+                    error
+                );
+
+                return {
+                    ok: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Não foi possível salvar a marca d'água."
+                };
+            }
+        }
     );
 
     ipcMain.handle(
