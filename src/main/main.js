@@ -223,9 +223,17 @@ function escapeDrawtextText(value) {
 }
 
 function buildVideoFilter(hashtag) {
+    /*
+        IMPORTANTE:
+        Todo asset e primeiro normalizado para o canvas final
+        do PROGRAM (1920x1080). Somente depois disso o GC/hashtag
+        e aplicado. Assim a posicao e o tamanho nunca dependem
+        da proporcao ou resolucao do arquivo de origem.
+    */
     const filters = [
         "scale=1920:1080:force_original_aspect_ratio=decrease",
         "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
+        "setsar=1",
         "fps=30000/1001"
     ];
 
@@ -254,7 +262,7 @@ function buildVideoFilter(hashtag) {
             );
 
         filters.push(
-            `drawtext=fontfile='${fontPath}':text='${escapedText}':x=60:y=50:fontsize=48:fontcolor=white:borderw=3:bordercolor=black@0.75`
+            `drawtext=fontfile='${fontPath}':text='${escapedText}':x=55:y=28:fontsize=34:fontcolor=white@0.68:borderw=2:bordercolor=black@0.35`
         );
     }
 
