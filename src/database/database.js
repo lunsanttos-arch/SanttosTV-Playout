@@ -12,12 +12,33 @@ const databaseFile = path.join(
     "santtos-tv.json"
 );
 
+const DEFAULT_HASHTAG_STYLE = {
+    fontFamily: "Arial",
+    fontSize: 28,
+    color: "#ffffff",
+    opacity: 0.68,
+    x: 55,
+    y: 32,
+    bold: true,
+    outlineWidth: 1,
+    outlineColor: "#000000",
+    outlineOpacity: 0.35,
+    shadowEnabled: true,
+    shadowColor: "#000000",
+    shadowOpacity: 0.35,
+    shadowX: 2,
+    shadowY: 2
+};
+
 const initialData = {
     settings: {
         channelName: "Santtos TV",
         resolution: "1920x1080",
         fps: "59.94",
-        ndiName: "Santtos TV Playout"
+        ndiName: "Santtos TV Playout",
+        hashtagStyle: {
+            ...DEFAULT_HASHTAG_STYLE
+        }
     },
 
     media: [],
@@ -46,6 +67,140 @@ function saveDatabase() {
     );
 }
 
+function normalizeNumber(
+    value,
+    fallback,
+    min,
+    max
+) {
+    const numberValue = Number(value);
+
+    if (!Number.isFinite(numberValue)) {
+        return fallback;
+    }
+
+    return Math.min(
+        max,
+        Math.max(min, numberValue)
+    );
+}
+
+function normalizeHexColor(value, fallback) {
+    if (
+        typeof value === "string" &&
+        /^#[0-9a-fA-F]{6}$/.test(value)
+    ) {
+        return value.toLowerCase();
+    }
+
+    return fallback;
+}
+
+function normalizeHashtagStyle(value = {}) {
+    const allowedFonts = new Set([
+        "Arial",
+        "Segoe UI",
+        "Tahoma",
+        "Verdana",
+        "Calibri"
+    ]);
+
+    return {
+        fontFamily:
+            allowedFonts.has(value.fontFamily)
+                ? value.fontFamily
+                : DEFAULT_HASHTAG_STYLE.fontFamily,
+
+        fontSize: normalizeNumber(
+            value.fontSize,
+            DEFAULT_HASHTAG_STYLE.fontSize,
+            10,
+            160
+        ),
+
+        color: normalizeHexColor(
+            value.color,
+            DEFAULT_HASHTAG_STYLE.color
+        ),
+
+        opacity: normalizeNumber(
+            value.opacity,
+            DEFAULT_HASHTAG_STYLE.opacity,
+            0,
+            1
+        ),
+
+        x: normalizeNumber(
+            value.x,
+            DEFAULT_HASHTAG_STYLE.x,
+            0,
+            1920
+        ),
+
+        y: normalizeNumber(
+            value.y,
+            DEFAULT_HASHTAG_STYLE.y,
+            0,
+            1080
+        ),
+
+        bold:
+            typeof value.bold === "boolean"
+                ? value.bold
+                : DEFAULT_HASHTAG_STYLE.bold,
+
+        outlineWidth: normalizeNumber(
+            value.outlineWidth,
+            DEFAULT_HASHTAG_STYLE.outlineWidth,
+            0,
+            12
+        ),
+
+        outlineColor: normalizeHexColor(
+            value.outlineColor,
+            DEFAULT_HASHTAG_STYLE.outlineColor
+        ),
+
+        outlineOpacity: normalizeNumber(
+            value.outlineOpacity,
+            DEFAULT_HASHTAG_STYLE.outlineOpacity,
+            0,
+            1
+        ),
+
+        shadowEnabled:
+            typeof value.shadowEnabled === "boolean"
+                ? value.shadowEnabled
+                : DEFAULT_HASHTAG_STYLE.shadowEnabled,
+
+        shadowColor: normalizeHexColor(
+            value.shadowColor,
+            DEFAULT_HASHTAG_STYLE.shadowColor
+        ),
+
+        shadowOpacity: normalizeNumber(
+            value.shadowOpacity,
+            DEFAULT_HASHTAG_STYLE.shadowOpacity,
+            0,
+            1
+        ),
+
+        shadowX: normalizeNumber(
+            value.shadowX,
+            DEFAULT_HASHTAG_STYLE.shadowX,
+            -30,
+            30
+        ),
+
+        shadowY: normalizeNumber(
+            value.shadowY,
+            DEFAULT_HASHTAG_STYLE.shadowY,
+            -30,
+            30
+        )
+    };
+}
+
 function loadDatabase() {
     ensureDatabaseFolder();
 
@@ -62,6 +217,8 @@ function loadDatabase() {
         );
 
         const parsedData = JSON.parse(fileContent);
+        const parsedSettings =
+            parsedData.settings ?? {};
 
         data = {
             ...structuredClone(initialData),
@@ -69,7 +226,11 @@ function loadDatabase() {
 
             settings: {
                 ...initialData.settings,
-                ...(parsedData.settings ?? {})
+                ...parsedSettings,
+                hashtagStyle:
+                    normalizeHashtagStyle(
+                        parsedSettings.hashtagStyle
+                    )
             },
 
             media: Array.isArray(parsedData.media)
@@ -128,6 +289,21 @@ function loadDatabase() {
 
 function initializeDatabase() {
     loadDatabase();
+}
+
+function getSettings() {
+    return structuredClone(data.settings);
+}
+
+function updateHashtagStyle(style) {
+    data.settings.hashtagStyle =
+        normalizeHashtagStyle(style);
+
+    saveDatabase();
+
+    return structuredClone(
+        data.settings.hashtagStyle
+    );
 }
 
 function addLog(message, level = "info") {
@@ -418,6 +594,8 @@ function updateMediaMetadata(
 
 module.exports = {
     initializeDatabase,
+    getSettings,
+    updateHashtagStyle,
     addLog,
     getMedia,
     getTimeline,
