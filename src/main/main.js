@@ -14,6 +14,7 @@ const {
     initializeDatabase,
     getSettings,
     updateOutputSettings,
+    updateWatermarkStyle,
     updateHashtagStyle,
     addLog,
     getMedia,
@@ -278,54 +279,178 @@ function resolveHashtagFont(style) {
         .replace(":", "\\:");
 }
 
-function buildVideoFilter(hashtag) {
-    // O asset é normalizado primeiro para o PROGRAM 1920x1080.
-    // O sender NDI atual ainda trabalha em 1080p29.97 fixo.
-    // O novo perfil de output já fica salvo para a próxima etapa
-    // e será a base também da saída SRT.
-    const filters = [
-        "scale=1920:1080:force_original_aspect_ratio=decrease",
-        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
-        "setsar=1",
-        "fps=30000/1001"
+function buildFadeAlphaExpression(
+    fadeIn,
+    fadeOut,
+    remainingSeconds,
+    fadeSeconds
+) {
+    const d = Math.max(
+        0,
+        Number(fadeSeconds) || 0
+    );
+    const remaining = Math.max(
+        0,
+        Number(remainingSeconds) || 0
+    );
+
+    if (d <= 0) {
+        return "1";
+    }
+
+    const parts = [];
+
+    if (fadeIn) {
+        parts.push(
+            `if(lt(t\\,${d.toFixed(3)})\\,t/${d.toFixed(3)}\\,1)`
+        );
+    }
+
+    if (fadeOut && remaining > d) {
+        const fadeStart = Math.max(
+            0,
+            remaining - d
+        );
+        parts.push(
+            `if(gt(t\\,${fadeStart.toFixed(3)})\\,max(0\\,(${remaining.toFixed(3)}-t)/${d.toFixed(3)})\\,1)`
+        );
+    }
+
+    if (parts.length === 0) {
+        return "1";
+    }
+
+    if (parts.length === 1) {
+        return parts[0];
+    }
+
+    return `min(${parts[0]}\\,${parts[1]})`;
+}
+
+function buildProgramFilterGraph(
+    hashtag,
+    overlayState,
+    hasWatermarkInput
+) {
+    const state =
+        overlayState &&
+        typeof overlayState === "object"
+            ? overlayState
+            : {};
+
+    const remaining = Math.max(
+        0,
+        (Number(state.durationSeconds) || 0) -
+            (Number(state.startSeconds) || 0)
+    );
+
+    const chains = [
+        "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30000/1001[base]"
     ];
 
-    const normalizedHashtag =
+    let current = "base";
+
+    if (hasWatermarkInput) {
+        const wm = getSettings().watermarkStyle;
+        const fade = Math.max(
+            0,
+            Number(wm.fadeMs) / 1000
+        );
+        const filters = [
+            `scale=${Math.round(wm.widthPx)}:-1`,
+            "format=rgba",
+            `colorchannelmixer=aa=${Math.max(
+                0,
+                Math.min(
+                    1,
+                    Number(wm.opacity) || 0
+                )
+            ).toFixed(3)}`
+        ];
+
+        if (
+            state.watermarkFadeIn &&
+            fade > 0
+        ) {
+            filters.push(
+                `fade=t=in:st=0:d=${fade.toFixed(3)}:alpha=1`
+            );
+        }
+
+        if (
+            state.watermarkFadeOut &&
+            remaining > fade &&
+            fade > 0
+        ) {
+            filters.push(
+                `fade=t=out:st=${Math.max(
+                    0,
+                    remaining - fade
+                ).toFixed(3)}:d=${fade.toFixed(3)}:alpha=1`
+            );
+        }
+
+        chains.push(
+            `[1:v]${filters.join(",")}[wm]`
+        );
+        chains.push(
+            `[${current}][wm]overlay=x=${Math.round(
+                wm.x
+            )}:y=${Math.round(
+                wm.y
+            )}:shortest=1[watermarked]`
+        );
+        current = "watermarked";
+    }
+
+    const text =
         typeof hashtag === "string"
             ? hashtag.trim()
             : "";
 
-    if (!normalizedHashtag) {
-        return filters.join(",");
+    if (text) {
+        const style =
+            getSettings().hashtagStyle;
+        const alpha =
+            buildFadeAlphaExpression(
+                Boolean(state.hashtagFadeIn),
+                Boolean(state.hashtagFadeOut),
+                remaining,
+                0.2
+            );
+        const options = [
+            `fontfile='${resolveHashtagFont(style)}'`,
+            `text='${escapeDrawtextText(text)}'`,
+            `x=${Math.round(style.x)}`,
+            `y=${Math.round(style.y)}`,
+            `fontsize=${Math.round(style.fontSize)}`,
+            `fontcolor=${toFfmpegColor(style.color, style.opacity)}`,
+            `borderw=${Math.round(style.outlineWidth)}`,
+            `bordercolor=${toFfmpegColor(style.outlineColor, style.outlineOpacity)}`,
+            `alpha='${alpha}'`
+        ];
+
+        if (style.shadowEnabled) {
+            options.push(
+                `shadowcolor=${toFfmpegColor(style.shadowColor, style.shadowOpacity)}`,
+                `shadowx=${Math.round(style.shadowX)}`,
+                `shadowy=${Math.round(style.shadowY)}`
+            );
+        }
+
+        chains.push(
+            `[${current}]drawtext=${options.join(":")}[program]`
+        );
+        current = "program";
     }
 
-    const style =
-        getSettings().hashtagStyle;
-
-    const options = [
-        `fontfile='${resolveHashtagFont(style)}'`,
-        `text='${escapeDrawtextText(normalizedHashtag)}'`,
-        `x=${Math.round(style.x)}`,
-        `y=${Math.round(style.y)}`,
-        `fontsize=${Math.round(style.fontSize)}`,
-        `fontcolor=${toFfmpegColor(style.color, style.opacity)}`,
-        `borderw=${Math.round(style.outlineWidth)}`,
-        `bordercolor=${toFfmpegColor(style.outlineColor, style.outlineOpacity)}`
-    ];
-
-    if (style.shadowEnabled) {
-        options.push(
-            `shadowcolor=${toFfmpegColor(style.shadowColor, style.shadowOpacity)}`,
-            `shadowx=${Math.round(style.shadowX)}`,
-            `shadowy=${Math.round(style.shadowY)}`
+    if (current != "program") {
+        chains.push(
+            `[${current}]null[program]`
         );
     }
 
-    filters.push(
-        `drawtext=${options.join(":")}`
-    );
-
-    return filters.join(",");
+    return chains.join(";");
 }
 
 function stopNativePlayback() {
@@ -361,7 +486,8 @@ function stopNativePlayback() {
 function startNativePlayback(
     filePath,
     startSeconds = 0,
-    hashtag = ""
+    hashtag = "",
+    overlayState = {}
 ) {
     if (
         typeof filePath !== "string" ||
@@ -400,8 +526,22 @@ function startNativePlayback(
     stopNativePlayback();
 
     const ffmpegPath = resolveFfmpegPath();
-    const videoFilter =
-        buildVideoFilter(hashtag);
+    const watermarkStyle =
+        getSettings().watermarkStyle;
+    const watermarkEnabled = Boolean(
+        overlayState?.watermarkEnabled &&
+        watermarkStyle?.filePath &&
+        fs.existsSync(
+            watermarkStyle.filePath
+        )
+    );
+    const programState = {
+        ...(overlayState && typeof overlayState === "object"
+            ? overlayState
+            : {}),
+        startSeconds:
+            normalizedStartSeconds
+    };
 
     const args = [
         "-hide_banner",
@@ -419,14 +559,32 @@ function startNativePlayback(
 
     args.push(
         "-i",
-        filePath,
+        filePath
+    );
+
+    if (watermarkEnabled) {
+        args.push(
+            "-loop",
+            "1",
+            "-framerate",
+            "30000/1001",
+            "-i",
+            watermarkStyle.filePath
+        );
+    }
+
+    args.push(
+        "-filter_complex",
+        buildProgramFilterGraph(
+            hashtag,
+            programState,
+            watermarkEnabled
+        ),
         "-map",
-        "0:v:0",
+        "[program]",
         "-an",
         "-sn",
         "-dn",
-        "-vf",
-        videoFilter,
         "-pix_fmt",
         "bgra",
         "-f",
@@ -541,13 +699,15 @@ function registerIpcHandlers() {
             _event,
             filePath,
             startSeconds = 0,
-            hashtag = ""
+            hashtag = "",
+            overlayState = {}
         ) => {
             try {
                 return startNativePlayback(
                     filePath,
                     startSeconds,
-                    hashtag
+                    hashtag,
+                    overlayState
                 );
             } catch (error) {
                 console.error(
@@ -591,6 +751,63 @@ function registerIpcHandlers() {
             ok: true,
             hashtagStyle:
                 updateHashtagStyle(style)
+        })
+    );
+
+    ipcMain.handle(
+        "watermark:select",
+        async () => {
+            const result =
+                await dialog.showOpenDialog({
+                    title:
+                        "Selecionar marca d'água",
+                    properties: [
+                        "openFile"
+                    ],
+                    filters: [
+                        {
+                            name: "Imagens",
+                            extensions: [
+                                "png",
+                                "webp",
+                                "jpg",
+                                "jpeg"
+                            ]
+                        }
+                    ]
+                });
+
+            if (
+                result.canceled ||
+                result.filePaths.length === 0
+            ) {
+                return {
+                    ok: false,
+                    canceled: true
+                };
+            }
+
+            const current =
+                getSettings().watermarkStyle;
+
+            return {
+                ok: true,
+                watermarkStyle:
+                    updateWatermarkStyle({
+                        ...current,
+                        filePath:
+                            result.filePaths[0]
+                    })
+            };
+        }
+    );
+
+    ipcMain.handle(
+        "settings:set-watermark-style",
+        async (_event, style) => ({
+            ok: true,
+            watermarkStyle:
+                updateWatermarkStyle(style)
         })
     );
 

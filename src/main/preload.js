@@ -60,6 +60,17 @@ contextBridge.exposeInMainWorld(
                 style
             ),
 
+        selectWatermark: () =>
+            ipcRenderer.invoke(
+                "watermark:select"
+            ),
+
+        saveWatermarkStyle: (style) =>
+            ipcRenderer.invoke(
+                "settings:set-watermark-style",
+                style
+            ),
+
         getNdiStatus: () =>
             ipcRenderer.invoke(
                 "ndi:status"
@@ -68,13 +79,15 @@ contextBridge.exposeInMainWorld(
         playNdiFile: (
             filePath,
             startSeconds = 0,
-            hashtag = ""
+            hashtag = "",
+            overlayState = {}
         ) =>
             ipcRenderer.invoke(
                 "ndi:play-file",
                 filePath,
                 startSeconds,
-                hashtag
+                hashtag,
+                overlayState
             ),
 
         stopNdiFile: () =>

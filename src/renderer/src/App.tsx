@@ -18,6 +18,7 @@ interface MediaItem {
     id: string;
     sourceMediaId?: string;
     loop?: boolean;
+    watermark?: boolean;
     hashtag?: string;
     name: string;
     path: string;
@@ -556,6 +557,7 @@ function PlayoutPanel({
                         id: entry.id,
                         sourceMediaId: sourceId,
                         loop: Boolean(entry.loop),
+                        watermark: Boolean(entry.watermark),
                         hashtag: entry.hashtag ?? ""
                     };
                 })
@@ -675,16 +677,69 @@ function PlayoutPanel({
         setIsPlaying(false);
     }, [selectedMediaUrl]);
 
+    function buildOverlayState(
+        mediaItem: MediaItem,
+        startSeconds = 0,
+        continuousSelf = false
+    ) {
+        const itemIndex =
+            timelineQueue.findIndex(
+                (item) =>
+                    item.id === mediaItem.id
+            );
+        const previous = continuousSelf
+            ? mediaItem
+            : itemIndex > 0
+              ? timelineQueue[itemIndex - 1]
+              : null;
+        const following = mediaItem.loop
+            ? mediaItem
+            : itemIndex >= 0
+              ? timelineQueue[
+                    itemIndex + 1
+                ] ?? null
+              : null;
+        const resuming =
+            startSeconds > 0;
+
+        return {
+            durationSeconds:
+                mediaItem.duration ?? 0,
+            watermarkEnabled:
+                Boolean(mediaItem.watermark),
+            watermarkFadeIn:
+                Boolean(mediaItem.watermark) &&
+                !resuming &&
+                !Boolean(previous?.watermark),
+            watermarkFadeOut:
+                Boolean(mediaItem.watermark) &&
+                !Boolean(following?.watermark),
+            hashtagFadeIn:
+                Boolean(mediaItem.hashtag) &&
+                !resuming &&
+                !Boolean(previous?.hashtag),
+            hashtagFadeOut:
+                Boolean(mediaItem.hashtag) &&
+                !Boolean(following?.hashtag)
+        };
+    }
+
     async function startNativeNdi(
         mediaItem: MediaItem,
-        startSeconds = 0
+        startSeconds = 0,
+        continuousSelf = false
     ) {
         const result =
             await window.santtosAPI
                 .playNdiFile(
                     mediaItem.path,
                     startSeconds,
-                    mediaItem.hashtag ?? ""
+                    mediaItem.hashtag ?? "",
+                    buildOverlayState(
+                        mediaItem,
+                        startSeconds,
+                        continuousSelf
+                    )
                 );
 
         if (!result.ok) {
@@ -788,7 +843,11 @@ function PlayoutPanel({
             }
 
             video.currentTime = 0;
-            await startNativeNdi(selectedMedia, 0);
+            await startNativeNdi(
+                selectedMedia,
+                0,
+                true
+            );
             await video.play();
             setIsPlaying(true);
             return;
@@ -852,6 +911,7 @@ function PlayoutPanel({
                 .slice(2)}`,
             sourceMediaId,
             loop: false,
+            watermark: false,
             hashtag: ""
         };
 
@@ -914,6 +974,49 @@ function PlayoutPanel({
                 ...selectedMedia,
                 loop: !selectedMedia.loop
             });
+        }
+    }
+
+    function toggleTimelineWatermark(
+        mediaId: string
+    ) {
+        setTimelineQueue((current) =>
+            current.map((item) =>
+                item.id === mediaId
+                    ? {
+                          ...item,
+                          watermark:
+                              !item.watermark
+                      }
+                    : item
+            )
+        );
+
+        if (
+            selectedMedia?.id === mediaId
+        ) {
+            const updatedSelected = {
+                ...selectedMedia,
+                watermark:
+                    !selectedMedia.watermark
+            };
+
+            onSelectMedia(updatedSelected);
+
+            if (isPlaying) {
+                startNativeNdi(
+                    updatedSelected,
+                    videoRef.current
+                        ?.currentTime ??
+                        currentTime,
+                    true
+                ).catch((error) =>
+                    console.error(
+                        "Erro ao atualizar marca d'água no NDI:",
+                        error
+                    )
+                );
+            }
         }
     }
 
@@ -1364,6 +1467,31 @@ function PlayoutPanel({
                                                               item.duration
                                                           )}
                                                 </span>
+
+                                                <label
+                                                    className="timeline-watermark-toggle"
+                                                    onClick={(event) =>
+                                                        event.stopPropagation()
+                                                    }
+                                                    onDoubleClick={(event) =>
+                                                        event.stopPropagation()
+                                                    }
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={Boolean(
+                                                            item.watermark
+                                                        )}
+                                                        onChange={() =>
+                                                            toggleTimelineWatermark(
+                                                                item.id
+                                                            )
+                                                        }
+                                                    />
+                                                    <span>
+                                                        Marca d'água
+                                                    </span>
+                                                </label>
 
                                                 <div
                                                     className="timeline-hashtag-editor"

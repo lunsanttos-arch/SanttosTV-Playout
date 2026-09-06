@@ -4,9 +4,11 @@ import {
 } from "react";
 
 import "./broadcast-settings.css";
+import WatermarkSettingsTab from "./WatermarkSettingsTab";
 
 type SettingsTab =
     | "output"
+    | "watermark"
     | "hashtag";
 
 interface HashtagStyle {
@@ -276,6 +278,19 @@ export default function BroadcastSettingsPanel({
                     <button
                         type="button"
                         className={
+                            tab === "watermark"
+                                ? "active"
+                                : ""
+                        }
+                        onClick={() =>
+                            setTab("watermark")
+                        }
+                    >
+                        Marca d'água
+                    </button>
+                    <button
+                        type="button"
+                        className={
                             tab === "hashtag"
                                 ? "active"
                                 : ""
@@ -297,6 +312,8 @@ export default function BroadcastSettingsPanel({
                     patchNdi={patchNdi}
                     patchSrt={patchSrt}
                 />
+            ) : tab === "watermark" ? (
+                <WatermarkSettingsTab />
             ) : (
                 <HashtagTab
                     style={hashtag}
@@ -316,7 +333,14 @@ export default function BroadcastSettingsPanel({
                     onClick={
                         tab === "output"
                             ? saveOutput
-                            : saveHashtag
+                            : tab === "hashtag"
+                              ? saveHashtag
+                              : undefined
+                    }
+                    style={
+                        tab === "watermark"
+                            ? { display: "none" }
+                            : undefined
                     }
                 >
                     {isSaving

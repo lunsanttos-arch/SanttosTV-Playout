@@ -30,6 +30,15 @@ const DEFAULT_HASHTAG_STYLE = {
     shadowY: 2
 };
 
+const DEFAULT_WATERMARK_STYLE = {
+    filePath: "",
+    widthPx: 180,
+    x: 1680,
+    y: 40,
+    opacity: 0.82,
+    fadeMs: 200
+};
+
 const DEFAULT_OUTPUT_SETTINGS = {
     resolution: "1920x1080",
     fps: "29.97",
@@ -74,6 +83,9 @@ const initialData = {
         fps: "59.94",
         ndiName: "Santtos TV Playout",
         output: structuredClone(DEFAULT_OUTPUT_SETTINGS),
+        watermarkStyle: {
+            ...DEFAULT_WATERMARK_STYLE
+        },
         hashtagStyle: {
             ...DEFAULT_HASHTAG_STYLE
         }
@@ -279,6 +291,17 @@ function normalizeHashtagStyle(value = {}) {
     };
 }
 
+function normalizeWatermarkStyle(value = {}) {
+    return {
+        filePath: normalizeText(value.filePath, "", 4096),
+        widthPx: normalizeInteger(value.widthPx, 180, 24, 960),
+        x: normalizeInteger(value.x, 1680, 0, 1920),
+        y: normalizeInteger(value.y, 40, 0, 1080),
+        opacity: normalizeNumber(value.opacity, 0.82, 0, 1),
+        fadeMs: normalizeInteger(value.fadeMs, 200, 0, 2000)
+    };
+}
+
 function normalizeOutputSettings(value = {}) {
     const audio = value.audio ?? {};
     const ndi = value.ndi ?? {};
@@ -477,6 +500,10 @@ function loadDatabase() {
                     normalizeOutputSettings(
                         parsedSettings.output
                     ),
+                watermarkStyle:
+                    normalizeWatermarkStyle(
+                        parsedSettings.watermarkStyle
+                    ),
                 hashtagStyle:
                     normalizeHashtagStyle(
                         parsedSettings.hashtagStyle
@@ -556,6 +583,17 @@ function updateOutputSettings(output) {
     );
 }
 
+function updateWatermarkStyle(style) {
+    data.settings.watermarkStyle =
+        normalizeWatermarkStyle(style);
+
+    saveDatabase();
+
+    return structuredClone(
+        data.settings.watermarkStyle
+    );
+}
+
 function updateHashtagStyle(style) {
     data.settings.hashtagStyle =
         normalizeHashtagStyle(style);
@@ -617,6 +655,7 @@ function getTimeline() {
                 sourceMediaId:
                     entry.sourceMediaId,
                 loop: Boolean(entry.loop),
+                watermark: Boolean(entry.watermark),
                 hashtag:
                     normalizeHashtag(
                         entry.hashtag ?? ""
@@ -657,6 +696,7 @@ function saveTimeline(timelineItems) {
                 id: item.id,
                 sourceMediaId,
                 loop: Boolean(item.loop),
+                watermark: Boolean(item.watermark),
                 hashtag:
                     normalizeHashtag(
                         item.hashtag ?? ""
@@ -857,6 +897,7 @@ module.exports = {
     initializeDatabase,
     getSettings,
     updateOutputSettings,
+    updateWatermarkStyle,
     updateHashtagStyle,
     addLog,
     getMedia,
