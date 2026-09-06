@@ -30,12 +30,50 @@ const DEFAULT_HASHTAG_STYLE = {
     shadowY: 2
 };
 
+const DEFAULT_OUTPUT_SETTINGS = {
+    resolution: "1920x1080",
+    fps: "29.97",
+    scanMode: "progressive",
+    aspectRatio: "16:9",
+    pixelFormat: "yuv420p",
+
+    audio: {
+        sampleRate: 48000,
+        channels: 2,
+        bitrateKbps: 192,
+        codec: "aac"
+    },
+
+    ndi: {
+        enabled: true,
+        name: "Santtos TV - PROGRAM"
+    },
+
+    srt: {
+        enabled: false,
+        mode: "caller",
+        host: "127.0.0.1",
+        port: 9000,
+        latencyMs: 120,
+        passphrase: "",
+        streamId: "",
+        videoCodec: "h264",
+        videoBitrateKbps: 8000,
+        maxBitrateKbps: 10000,
+        gopSeconds: 2,
+        preset: "veryfast",
+        audioCodec: "aac",
+        audioBitrateKbps: 192
+    }
+};
+
 const initialData = {
     settings: {
         channelName: "Santtos TV",
         resolution: "1920x1080",
         fps: "59.94",
         ndiName: "Santtos TV Playout",
+        output: structuredClone(DEFAULT_OUTPUT_SETTINGS),
         hashtagStyle: {
             ...DEFAULT_HASHTAG_STYLE
         }
@@ -83,6 +121,46 @@ function normalizeNumber(
         max,
         Math.max(min, numberValue)
     );
+}
+
+function normalizeInteger(
+    value,
+    fallback,
+    min,
+    max
+) {
+    return Math.round(
+        normalizeNumber(
+            value,
+            fallback,
+            min,
+            max
+        )
+    );
+}
+
+function normalizeChoice(
+    value,
+    allowed,
+    fallback
+) {
+    return allowed.includes(value)
+        ? value
+        : fallback;
+}
+
+function normalizeText(
+    value,
+    fallback,
+    maxLength
+) {
+    if (typeof value !== "string") {
+        return fallback;
+    }
+
+    return value
+        .trim()
+        .slice(0, maxLength);
 }
 
 function normalizeHexColor(value, fallback) {
@@ -201,6 +279,174 @@ function normalizeHashtagStyle(value = {}) {
     };
 }
 
+function normalizeOutputSettings(value = {}) {
+    const audio = value.audio ?? {};
+    const ndi = value.ndi ?? {};
+    const srt = value.srt ?? {};
+
+    return {
+        resolution: normalizeChoice(
+            value.resolution,
+            [
+                "3840x2160",
+                "1920x1080",
+                "1280x720",
+                "720x576",
+                "720x480"
+            ],
+            DEFAULT_OUTPUT_SETTINGS.resolution
+        ),
+
+        fps: normalizeChoice(
+            String(value.fps ?? ""),
+            [
+                "23.976",
+                "24",
+                "25",
+                "29.97",
+                "30",
+                "50",
+                "59.94",
+                "60"
+            ],
+            DEFAULT_OUTPUT_SETTINGS.fps
+        ),
+
+        scanMode: normalizeChoice(
+            value.scanMode,
+            ["progressive", "interlaced"],
+            DEFAULT_OUTPUT_SETTINGS.scanMode
+        ),
+
+        aspectRatio: normalizeChoice(
+            value.aspectRatio,
+            ["16:9", "4:3"],
+            DEFAULT_OUTPUT_SETTINGS.aspectRatio
+        ),
+
+        pixelFormat: normalizeChoice(
+            value.pixelFormat,
+            ["yuv420p", "yuv422p", "bgra"],
+            DEFAULT_OUTPUT_SETTINGS.pixelFormat
+        ),
+
+        audio: {
+            sampleRate: normalizeChoice(
+                Number(audio.sampleRate),
+                [44100, 48000],
+                DEFAULT_OUTPUT_SETTINGS.audio.sampleRate
+            ),
+            channels: normalizeChoice(
+                Number(audio.channels),
+                [1, 2],
+                DEFAULT_OUTPUT_SETTINGS.audio.channels
+            ),
+            bitrateKbps: normalizeChoice(
+                Number(audio.bitrateKbps),
+                [96, 128, 160, 192, 256, 320],
+                DEFAULT_OUTPUT_SETTINGS.audio.bitrateKbps
+            ),
+            codec: normalizeChoice(
+                audio.codec,
+                ["aac", "pcm_s16le"],
+                DEFAULT_OUTPUT_SETTINGS.audio.codec
+            )
+        },
+
+        ndi: {
+            enabled:
+                typeof ndi.enabled === "boolean"
+                    ? ndi.enabled
+                    : DEFAULT_OUTPUT_SETTINGS.ndi.enabled,
+            name: normalizeText(
+                ndi.name,
+                DEFAULT_OUTPUT_SETTINGS.ndi.name,
+                120
+            ) || DEFAULT_OUTPUT_SETTINGS.ndi.name
+        },
+
+        srt: {
+            enabled:
+                typeof srt.enabled === "boolean"
+                    ? srt.enabled
+                    : DEFAULT_OUTPUT_SETTINGS.srt.enabled,
+            mode: normalizeChoice(
+                srt.mode,
+                ["caller", "listener", "rendezvous"],
+                DEFAULT_OUTPUT_SETTINGS.srt.mode
+            ),
+            host: normalizeText(
+                srt.host,
+                DEFAULT_OUTPUT_SETTINGS.srt.host,
+                253
+            ) || DEFAULT_OUTPUT_SETTINGS.srt.host,
+            port: normalizeInteger(
+                srt.port,
+                DEFAULT_OUTPUT_SETTINGS.srt.port,
+                1,
+                65535
+            ),
+            latencyMs: normalizeInteger(
+                srt.latencyMs,
+                DEFAULT_OUTPUT_SETTINGS.srt.latencyMs,
+                20,
+                8000
+            ),
+            passphrase: normalizeText(
+                srt.passphrase,
+                "",
+                79
+            ),
+            streamId: normalizeText(
+                srt.streamId,
+                "",
+                512
+            ),
+            videoCodec: normalizeChoice(
+                srt.videoCodec,
+                ["h264", "hevc"],
+                DEFAULT_OUTPUT_SETTINGS.srt.videoCodec
+            ),
+            videoBitrateKbps: normalizeInteger(
+                srt.videoBitrateKbps,
+                DEFAULT_OUTPUT_SETTINGS.srt.videoBitrateKbps,
+                500,
+                100000
+            ),
+            maxBitrateKbps: normalizeInteger(
+                srt.maxBitrateKbps,
+                DEFAULT_OUTPUT_SETTINGS.srt.maxBitrateKbps,
+                500,
+                120000
+            ),
+            gopSeconds: normalizeNumber(
+                srt.gopSeconds,
+                DEFAULT_OUTPUT_SETTINGS.srt.gopSeconds,
+                0.5,
+                10
+            ),
+            preset: normalizeChoice(
+                srt.preset,
+                [
+                    "ultrafast",
+                    "superfast",
+                    "veryfast",
+                    "faster",
+                    "fast",
+                    "medium"
+                ],
+                DEFAULT_OUTPUT_SETTINGS.srt.preset
+            ),
+            audioCodec: "aac",
+            audioBitrateKbps: normalizeChoice(
+                Number(srt.audioBitrateKbps),
+                [96, 128, 160, 192, 256, 320],
+                DEFAULT_OUTPUT_SETTINGS.srt.audioBitrateKbps
+            )
+        }
+    };
+}
+
 function loadDatabase() {
     ensureDatabaseFolder();
 
@@ -227,6 +473,10 @@ function loadDatabase() {
             settings: {
                 ...initialData.settings,
                 ...parsedSettings,
+                output:
+                    normalizeOutputSettings(
+                        parsedSettings.output
+                    ),
                 hashtagStyle:
                     normalizeHashtagStyle(
                         parsedSettings.hashtagStyle
@@ -293,6 +543,17 @@ function initializeDatabase() {
 
 function getSettings() {
     return structuredClone(data.settings);
+}
+
+function updateOutputSettings(output) {
+    data.settings.output =
+        normalizeOutputSettings(output);
+
+    saveDatabase();
+
+    return structuredClone(
+        data.settings.output
+    );
 }
 
 function updateHashtagStyle(style) {
@@ -595,6 +856,7 @@ function updateMediaMetadata(
 module.exports = {
     initializeDatabase,
     getSettings,
+    updateOutputSettings,
     updateHashtagStyle,
     addLog,
     getMedia,
