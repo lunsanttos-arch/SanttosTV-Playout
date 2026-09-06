@@ -65,6 +65,12 @@ contextBridge.exposeInMainWorld(
                 "watermark:select"
             ),
 
+        getWatermarkPreview: (filePath) =>
+            ipcRenderer.invoke(
+                "watermark:preview",
+                filePath
+            ),
+
         saveWatermarkStyle: (style) =>
             ipcRenderer.invoke(
                 "settings:set-watermark-style",

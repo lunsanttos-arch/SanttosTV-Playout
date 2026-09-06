@@ -731,6 +731,30 @@ function validateWatermarkImage(filePath) {
     };
 }
 
+function createWatermarkPreviewDataUrl(filePath) {
+    const validation = validateWatermarkImage(filePath);
+    const image = nativeImage.createFromPath(validation.filePath);
+
+    if (!image || image.isEmpty()) {
+        throw new Error("Não foi possível criar o preview da marca d'água.");
+    }
+
+    const size = image.getSize();
+    const previewWidth = Math.min(640, Math.max(1, size.width));
+    const previewImage = size.width > previewWidth
+        ? image.resize({
+              width: previewWidth,
+              quality: "good"
+          })
+        : image;
+
+    return {
+        dataUrl: previewImage.toDataURL(),
+        width: size.width,
+        height: size.height
+    };
+}
+
 function registerIpcHandlers() {
     ipcMain.handle(
         "ndi:status",
@@ -804,6 +828,36 @@ function registerIpcHandlers() {
             hashtagStyle:
                 updateHashtagStyle(style)
         })
+    );
+
+    ipcMain.handle(
+        "watermark:preview",
+        async (_event, filePath) => {
+            try {
+                const preview =
+                    createWatermarkPreviewDataUrl(
+                        filePath
+                    );
+
+                return {
+                    ok: true,
+                    ...preview
+                };
+            } catch (error) {
+                console.error(
+                    "Falha ao gerar preview da marca d'água:",
+                    error
+                );
+
+                return {
+                    ok: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Não foi possível gerar o preview."
+                };
+            }
+        }
     );
 
     ipcMain.handle(

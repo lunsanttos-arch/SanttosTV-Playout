@@ -127,41 +127,69 @@ export default function WatermarkSettingsTab() {
     }, []);
 
     useEffect(() => {
+        let cancelled = false;
+
         if (!draft.filePath) {
             setPreviewUrl("");
-            return;
+            return () => {
+                cancelled = true;
+            };
         }
 
-        try {
-            const api = (window as any).santtosAPI;
+        const api = (window as any).santtosAPI;
 
-            if (!api?.getMediaFileUrl) {
-                setPreviewUrl("");
-                setStatus(
-                    "Preview indisponível, mas a configuração pode ser alterada normalmente."
-                );
-                return;
-            }
-
-            const url = api.getMediaFileUrl(
-                draft.filePath
-            );
-
-            setPreviewUrl(
-                typeof url === "string"
-                    ? url
-                    : ""
-            );
-        } catch (error) {
-            console.error(
-                "Falha ao criar URL do preview da marca d'água:",
-                error
-            );
+        if (!api?.getWatermarkPreview) {
             setPreviewUrl("");
             setStatus(
-                "A marca d'água salva anteriormente tem um caminho inválido. Selecione a imagem novamente."
+                "Preview da marca d'água indisponível nesta versão."
             );
+            return () => {
+                cancelled = true;
+            };
         }
+
+        api.getWatermarkPreview(draft.filePath)
+            .then((result: any) => {
+                if (cancelled) {
+                    return;
+                }
+
+                if (!result?.ok || !result?.dataUrl) {
+                    setPreviewUrl("");
+                    setStatus(
+                        result?.error ??
+                            "A marca d'água salva não pôde ser carregada. Selecione a imagem novamente."
+                    );
+                    return;
+                }
+
+                setPreviewUrl(result.dataUrl);
+
+                setStatus((current) =>
+                    current.includes("caminho inválido") ||
+                    current.includes("preview")
+                        ? ""
+                        : current
+                );
+            })
+            .catch((error: unknown) => {
+                if (cancelled) {
+                    return;
+                }
+
+                console.error(
+                    "Falha ao carregar preview da marca d'água:",
+                    error
+                );
+                setPreviewUrl("");
+                setStatus(
+                    "Não foi possível carregar o preview da marca d'água."
+                );
+            });
+
+        return () => {
+            cancelled = true;
+        };
     }, [draft.filePath]);
 
     function patch(
