@@ -18,8 +18,11 @@ const {
     initializeDatabase,
     addLog,
     getMedia,
+    getTimeline,
+    saveTimeline,
     addMedia,
     removeMedia,
+    updateMediaHashtag,
     updateMediaMetadata
 } = require(
     "../database/database"
@@ -57,21 +60,14 @@ function createWindow() {
         new BrowserWindow({
             width: 1500,
             height: 900,
-
             minWidth: 1100,
             minHeight: 700,
-
-            backgroundColor:
-                "#0b0b0b",
-
-            title:
-                "Santtos TV Automation",
-
+            backgroundColor: "#0b0b0b",
+            title: "Santtos TV Automation",
             webPreferences: {
                 nodeIntegration: false,
                 contextIsolation: true,
                 webSecurity: false,
-
                 preload: path.join(
                     __dirname,
                     "preload.js"
@@ -215,6 +211,56 @@ function resolveFfmpegPath() {
     return resolvedPath;
 }
 
+function escapeDrawtextText(value) {
+    return String(value ?? "")
+        .replaceAll("\\", "\\\\")
+        .replaceAll(":", "\\:")
+        .replaceAll("'", "\\'")
+        .replaceAll("%", "\\%")
+        .replaceAll(",", "\\,")
+        .replaceAll("[", "\\[")
+        .replaceAll("]", "\\]");
+}
+
+function buildVideoFilter(hashtag) {
+    const filters = [
+        "scale=1920:1080:force_original_aspect_ratio=decrease",
+        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
+        "fps=30000/1001"
+    ];
+
+    const normalizedHashtag =
+        typeof hashtag === "string"
+            ? hashtag.trim()
+            : "";
+
+    if (normalizedHashtag) {
+        const windowsFolder =
+            process.env.WINDIR ||
+            "C:\\Windows";
+
+        const fontPath = path
+            .join(
+                windowsFolder,
+                "Fonts",
+                "arialbd.ttf"
+            )
+            .replaceAll("\\", "/")
+            .replace(":", "\\:");
+
+        const escapedText =
+            escapeDrawtextText(
+                normalizedHashtag
+            );
+
+        filters.push(
+            `drawtext=fontfile='${fontPath}':text='${escapedText}':x=60:y=50:fontsize=48:fontcolor=white:borderw=3:bordercolor=black@0.75`
+        );
+    }
+
+    return filters.join(",");
+}
+
 function stopNativePlayback() {
     if (!ffmpegProcess) {
         nativePlaybackActive = false;
@@ -248,7 +294,8 @@ function stopNativePlayback() {
 
 function startNativePlayback(
     filePath,
-    startSeconds = 0
+    startSeconds = 0,
+    hashtag = ""
 ) {
     if (
         typeof filePath !== "string" ||
@@ -289,11 +336,8 @@ function startNativePlayback(
     const ffmpegPath =
         resolveFfmpegPath();
 
-    const videoFilter = [
-        "scale=1920:1080:force_original_aspect_ratio=decrease",
-        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
-        "fps=30000/1001"
-    ].join(",");
+    const videoFilter =
+        buildVideoFilter(hashtag);
 
     const args = [
         "-hide_banner",
@@ -327,7 +371,7 @@ function startNativePlayback(
     );
 
     console.log(
-        `Iniciando playout FFmpeg: ${path.basename(filePath)} @ ${normalizedStartSeconds.toFixed(3)}s`
+        `Iniciando playout FFmpeg: ${path.basename(filePath)} @ ${normalizedStartSeconds.toFixed(3)}s${hashtag ? ` | ${hashtag}` : ""}`
     );
 
     const processRef = spawn(
@@ -429,19 +473,15 @@ function startNativePlayback(
 function registerIpcHandlers() {
     ipcMain.handle(
         "ndi:status",
-        async () => {
-            return {
-                online:
-                    ndiReady &&
-                    Boolean(ndiProcess) &&
-                    !ndiProcess.killed,
-
-                source:
-                    "Santtos TV - PROGRAM",
-
-                nativePlaybackActive
-            };
-        }
+        async () => ({
+            online:
+                ndiReady &&
+                Boolean(ndiProcess) &&
+                !ndiProcess.killed,
+            source:
+                "Santtos TV - PROGRAM",
+            nativePlaybackActive
+        })
     );
 
     ipcMain.handle(
@@ -449,12 +489,14 @@ function registerIpcHandlers() {
         async (
             _event,
             filePath,
-            startSeconds = 0
+            startSeconds = 0,
+            hashtag = ""
         ) => {
             try {
                 return startNativePlayback(
                     filePath,
-                    startSeconds
+                    startSeconds,
+                    hashtag
                 );
             } catch (error) {
                 console.error(
@@ -475,9 +517,51 @@ function registerIpcHandlers() {
         "ndi:stop-file",
         async () => {
             stopNativePlayback();
+            return { ok: true };
+        }
+    );
+
+    ipcMain.handle(
+        "timeline:list",
+        async () =>
+            getTimeline()
+    );
+
+    ipcMain.handle(
+        "timeline:save",
+        async (
+            _event,
+            timelineItems
+        ) =>
+            saveTimeline(
+                timelineItems
+            )
+    );
+
+    ipcMain.handle(
+        "media:set-hashtag",
+        async (
+            _event,
+            mediaId,
+            hashtag
+        ) => {
+            const updated =
+                updateMediaHashtag(
+                    mediaId,
+                    hashtag
+                );
+
+            if (!updated) {
+                return {
+                    ok: false,
+                    error:
+                        "Mídia não encontrada."
+                };
+            }
 
             return {
-                ok: true
+                ok: true,
+                media: updated
             };
         }
     );
@@ -500,9 +584,7 @@ function registerIpcHandlers() {
             }
 
             const frameBuffer =
-                Buffer.from(
-                    frameData
-                );
+                Buffer.from(frameData);
 
             if (
                 frameBuffer.length !==
@@ -511,7 +593,6 @@ function registerIpcHandlers() {
                 console.warn(
                     `Frame NDI ignorado: ${frameBuffer.length} bytes recebidos, ${NDI_FRAME_SIZE} esperados.`
                 );
-
                 return;
             }
 
@@ -541,17 +622,14 @@ function registerIpcHandlers() {
                     .showOpenDialog({
                         title:
                             "Adicionar vídeos à biblioteca",
-
                         properties: [
                             "openFile",
                             "multiSelections"
                         ],
-
                         filters: [
                             {
                                 name:
                                     "Vídeos compatíveis",
-
                                 extensions: [
                                     "mp4",
                                     "mov"
@@ -571,8 +649,7 @@ function registerIpcHandlers() {
     ipcMain.handle(
         "media:list",
         async () => {
-            const media =
-                getMedia();
+            const media = getMedia();
 
             const pendingMedia =
                 media.filter(
@@ -581,10 +658,7 @@ function registerIpcHandlers() {
                         "pending-metadata"
                 );
 
-            if (
-                pendingMedia.length >
-                0
-            ) {
+            if (pendingMedia.length > 0) {
                 return analyzeMediaItems(
                     pendingMedia
                 );
@@ -621,11 +695,8 @@ function registerIpcHandlers() {
         async (
             _event,
             mediaId
-        ) => {
-            return removeMedia(
-                mediaId
-            );
-        }
+        ) =>
+            removeMedia(mediaId)
     );
 }
 
@@ -655,9 +726,7 @@ function startNdiSender() {
                 cwd: path.dirname(
                     ndiExecutable
                 ),
-
                 windowsHide: true,
-
                 stdio: [
                     "pipe",
                     "pipe",
@@ -670,7 +739,6 @@ function startNdiSender() {
             "error",
             (error) => {
                 ndiFrameBusy = false;
-
                 console.error(
                     "Erro no stdin do engine NDI:",
                     error
@@ -692,7 +760,6 @@ function startNdiSender() {
                     )
                 ) {
                     ndiReady = true;
-
                     console.log(
                         "Santtos NDI confirmado ONLINE"
                     );
@@ -739,10 +806,7 @@ function startNdiSender() {
 
         ndiProcess.on(
             "exit",
-            (
-                code,
-                signal
-            ) => {
+            (code, signal) => {
                 console.log(
                     `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
                 );
@@ -793,10 +857,7 @@ function startSystem() {
     );
 
     initializeDatabase();
-
-    addLog(
-        "Sistema iniciado"
-    );
+    addLog("Sistema iniciado");
 
     console.log(
         "Banco de dados OK"
