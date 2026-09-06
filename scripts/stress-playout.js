@@ -28,6 +28,12 @@ const profiles = {
         sourceDuration: 20,
         playbackSeconds: 5,
         bitrate: "24M"
+    },
+    large: {
+        cycles: 500,
+        sourceDuration: 600,
+        playbackSeconds: 8,
+        bitrate: "35M"
     }
 };
 
@@ -36,7 +42,7 @@ const profile = profiles[profileName];
 
 if (!profile) {
     console.error(
-        `Perfil inválido: ${profileName}. Use smoke, quick, day ou 72h.`
+        `Perfil inválido: ${profileName}. Use smoke, quick, day, 72h ou large.`
     );
     process.exit(2);
 }
@@ -112,14 +118,16 @@ const report = {
         arch: process.arch,
         node: process.version,
         cpuCount: os.cpus().length,
-        totalMemoryBytes: os.totalmem()
+        totalMemoryBytes: os.totalmem(),
+        freeMemoryBytesAtStart: os.freemem()
     },
     generatedMedia: [],
     cyclesRequested: profile.cycles,
     cyclesCompleted: 0,
     failures: [],
     timingsMs: [],
-    maxNodeRssBytes: process.memoryUsage().rss
+    maxNodeRssBytes: process.memoryUsage().rss,
+    minFreeSystemMemoryBytes: os.freemem()
 };
 
 function run(command, args, options = {}) {
@@ -214,6 +222,12 @@ function buildFilter(style) {
 async function generateSources() {
     console.log(`\n[stress] Gerando ${sources.length} arquivos sintéticos...`);
 
+    if (profileName === "large") {
+        console.log(
+            "[stress] Perfil large: serão gerados arquivos de vários GB. Verifique espaço livre em disco."
+        );
+    }
+
     for (const source of sources) {
         const output = path.join(mediaRoot, source.name);
         const before = Date.now();
@@ -234,6 +248,10 @@ async function generateSources() {
             "veryfast",
             "-b:v",
             profile.bitrate,
+            "-maxrate",
+            profile.bitrate,
+            "-bufsize",
+            "70M",
             "-pix_fmt",
             "yuv420p",
             "-movflags",
@@ -251,7 +269,7 @@ async function generateSources() {
         });
 
         console.log(
-            `[stress] ${source.name}: ${(stat.size / 1024 / 1024).toFixed(1)} MB`
+            `[stress] ${source.name}: ${(stat.size / 1024 / 1024 / 1024).toFixed(2)} GB`
         );
     }
 }
@@ -265,7 +283,7 @@ async function runCycle(index) {
         profile.sourceDuration - profile.playbackSeconds
     );
     const seek = seekWindow > 0
-        ? (index * 0.731) % seekWindow
+        ? (index * 17.731) % seekWindow
         : 0;
 
     const before = Date.now();
@@ -300,6 +318,10 @@ async function runCycle(index) {
         report.maxNodeRssBytes,
         process.memoryUsage().rss
     );
+    report.minFreeSystemMemoryBytes = Math.min(
+        report.minFreeSystemMemoryBytes,
+        os.freemem()
+    );
 }
 
 function saveReport() {
@@ -312,6 +334,7 @@ function saveReport() {
     report.maxCycleMs = timings.length
         ? Math.max(...timings)
         : 0;
+    report.freeSystemMemoryBytesAtEnd = os.freemem();
     report.success = report.failures.length === 0 &&
         report.cyclesCompleted === report.cyclesRequested;
 
@@ -354,7 +377,7 @@ function saveReport() {
                 completed === profile.cycles
             ) {
                 console.log(
-                    `[stress] ${completed}/${profile.cycles} ciclos concluídos | RSS Node ${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)} MB`
+                    `[stress] ${completed}/${profile.cycles} ciclos | RSS Node ${(process.memoryUsage().rss / 1024 / 1024).toFixed(1)} MB | RAM livre ${(os.freemem() / 1024 / 1024 / 1024).toFixed(1)} GB`
                 );
             }
         }
