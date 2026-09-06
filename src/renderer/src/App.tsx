@@ -35,6 +35,15 @@ interface MediaItem {
     createdAt: string;
 }
 
+interface WatermarkStyle {
+    filePath: string;
+    widthPx: number;
+    x: number;
+    y: number;
+    opacity: number;
+    fadeMs: number;
+}
+
 interface HashtagStyle {
     fontFamily: string;
     fontSize: number;
@@ -58,6 +67,7 @@ interface AppSettings {
     resolution: string;
     fps: string;
     ndiName: string;
+    watermarkStyle: WatermarkStyle;
     hashtagStyle: HashtagStyle;
 }
 
@@ -85,6 +95,15 @@ interface SaveHashtagStyleResult {
     ok: boolean;
     hashtagStyle: HashtagStyle;
 }
+
+const DEFAULT_WATERMARK_STYLE: WatermarkStyle = {
+    filePath: "",
+    widthPx: 180,
+    x: 1680,
+    y: 40,
+    opacity: 0.82,
+    fadeMs: 200
+};
 
 const DEFAULT_HASHTAG_STYLE: HashtagStyle = {
     fontFamily: "Arial",
@@ -131,8 +150,23 @@ declare global {
             playNdiFile: (
                 filePath: string,
                 startSeconds?: number,
-                hashtag?: string
+                hashtag?: string,
+                overlayState?: {
+                    durationSeconds?: number;
+                    watermarkEnabled?: boolean;
+                    watermarkFadeIn?: boolean;
+                    watermarkFadeOut?: boolean;
+                    hashtagFadeIn?: boolean;
+                    hashtagFadeOut?: boolean;
+                }
             ) => Promise<NdiCommandResult>;
+            getWatermarkPreview: (
+                filePath: string
+            ) => Promise<{
+                ok: boolean;
+                dataUrl?: string;
+                error?: string;
+            }>;
             stopNdiFile: () => Promise<NdiCommandResult>;
             sendNdiFrame: (
                 frameData: Uint8Array
@@ -482,6 +516,64 @@ function PlayoutPanel({
         useState<MediaItem[]>([]);
     const [draggedMediaId, setDraggedMediaId] =
         useState<string | null>(null);
+    const [watermarkStyle, setWatermarkStyle] =
+        useState<WatermarkStyle>(
+            DEFAULT_WATERMARK_STYLE
+        );
+    const [watermarkPreviewUrl, setWatermarkPreviewUrl] =
+        useState("");
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadWatermarkForProgram() {
+            try {
+                const settings =
+                    await window.santtosAPI.getSettings();
+                const style =
+                    settings.watermarkStyle ??
+                    DEFAULT_WATERMARK_STYLE;
+
+                if (cancelled) {
+                    return;
+                }
+
+                setWatermarkStyle(style);
+                setWatermarkPreviewUrl("");
+
+                if (!style.filePath) {
+                    return;
+                }
+
+                const result =
+                    await window.santtosAPI
+                        .getWatermarkPreview(
+                            style.filePath
+                        );
+
+                if (
+                    !cancelled &&
+                    result?.ok &&
+                    result.dataUrl
+                ) {
+                    setWatermarkPreviewUrl(
+                        result.dataUrl
+                    );
+                }
+            } catch (error) {
+                console.error(
+                    "Erro ao carregar marca d'água do PROGRAM:",
+                    error
+                );
+            }
+        }
+
+        loadWatermarkForProgram();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     useEffect(() => {
         let cancelled = false;
@@ -602,6 +694,49 @@ function PlayoutPanel({
                   selectedMediaIndex + 1
               ] ?? null
             : null;
+
+    const previousMedia =
+        selectedMediaIndex > 0
+            ? timelineQueue[
+                  selectedMediaIndex - 1
+              ] ?? null
+            : null;
+
+    const watermarkFadeSeconds = Math.max(
+        0,
+        watermarkStyle.fadeMs / 1000
+    );
+    const watermarkPreviewOpacity =
+        getOverlayPreviewOpacity({
+            active: Boolean(
+                selectedMedia?.watermark
+            ),
+            previousActive: Boolean(
+                previousMedia?.watermark
+            ),
+            nextActive: Boolean(
+                nextMedia?.watermark
+            ),
+            currentTime,
+            duration,
+            fadeSeconds:
+                watermarkFadeSeconds
+        });
+    const hashtagPreviewOpacity =
+        getOverlayPreviewOpacity({
+            active: Boolean(
+                selectedMedia?.hashtag
+            ),
+            previousActive: Boolean(
+                previousMedia?.hashtag
+            ),
+            nextActive: Boolean(
+                nextMedia?.hashtag
+            ),
+            currentTime,
+            duration,
+            fadeSeconds: 0.2
+        });
 
     const selectedMediaUrl =
         selectedMedia
@@ -1236,14 +1371,32 @@ function PlayoutPanel({
                                     onEnded={playNextMedia}
                                 />
 
+                                {watermarkPreviewUrl && (
+                                    <img
+                                        className="program-watermark"
+                                        src={watermarkPreviewUrl}
+                                        alt="Marca d'água do PROGRAM"
+                                        style={{
+                                            left: `${(watermarkStyle.x / 1920) * 100}%`,
+                                            top: `${(watermarkStyle.y / 1080) * 100}%`,
+                                            width: `${(watermarkStyle.widthPx / 1920) * 100}%`,
+                                            opacity:
+                                                watermarkPreviewOpacity *
+                                                watermarkStyle.opacity
+                                        }}
+                                    />
+                                )}
+
                                 {selectedMedia?.hashtag && (
                                     <div
                                         className="program-hashtag"
-                                        style={
-                                            getHashtagPreviewStyle(
+                                        style={{
+                                            ...getHashtagPreviewStyle(
                                                 hashtagStyle
-                                            )
-                                        }
+                                            ),
+                                            opacity:
+                                                hashtagPreviewOpacity
+                                        }}
                                     >
                                         {selectedMedia.hashtag}
                                     </div>
@@ -2237,6 +2390,59 @@ function EmptyPanel({
             </div>
         </section>
     );
+}
+
+function getOverlayPreviewOpacity({
+    active,
+    previousActive,
+    nextActive,
+    currentTime,
+    duration,
+    fadeSeconds
+}: {
+    active: boolean;
+    previousActive: boolean;
+    nextActive: boolean;
+    currentTime: number;
+    duration: number;
+    fadeSeconds: number;
+}) {
+    if (!active) {
+        return 0;
+    }
+
+    if (fadeSeconds <= 0) {
+        return 1;
+    }
+
+    let alpha = 1;
+
+    if (
+        !previousActive &&
+        currentTime < fadeSeconds
+    ) {
+        alpha = Math.min(
+            alpha,
+            currentTime / fadeSeconds
+        );
+    }
+
+    const remaining =
+        duration > 0
+            ? duration - currentTime
+            : Number.POSITIVE_INFINITY;
+
+    if (
+        !nextActive &&
+        remaining < fadeSeconds
+    ) {
+        alpha = Math.min(
+            alpha,
+            remaining / fadeSeconds
+        );
+    }
+
+    return Math.max(0, Math.min(1, alpha));
 }
 
 function getHashtagPreviewStyle(

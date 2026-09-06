@@ -1102,3 +1102,14 @@ button {
     background: #735a18;
     border-color: #d6b56f;
 }
+
+
+.program-watermark {
+    position: absolute;
+    z-index: 18;
+    height: auto;
+    object-fit: contain;
+    pointer-events: none;
+    user-select: none;
+    transition: opacity 40ms linear;
+}

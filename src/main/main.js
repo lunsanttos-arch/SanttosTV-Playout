@@ -399,7 +399,7 @@ function buildProgramFilterGraph(
                 wm.x
             )}:y=${Math.round(
                 wm.y
-            )}:shortest=1[watermarked]`
+            )}:shortest=1:repeatlast=1[watermarked]`
         );
         current = "watermarked";
     }
@@ -543,6 +543,14 @@ function startNativePlayback(
         startSeconds:
             normalizedStartSeconds
     };
+
+    console.log(
+        `[GC] watermark=${watermarkEnabled ? "ON" : "OFF"}` +
+            ` | file=${watermarkStyle?.filePath || "none"}` +
+            ` | fadeIn=${Boolean(programState.watermarkFadeIn)}` +
+            ` | fadeOut=${Boolean(programState.watermarkFadeOut)}` +
+            ` | hashtag=${hashtag ? "ON" : "OFF"}`
+    );
 
     const args = [
         "-hide_banner",
