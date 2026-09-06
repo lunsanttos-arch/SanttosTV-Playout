@@ -1,0 +1,840 @@
+name: Implement Watermark Overlay
+
+on:
+  push:
+    paths:
+      - ".github/workflows/implement-watermark-overlay.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  implement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Patch database, main, preload and renderer
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"Anchor not found: {label}")
+              return text.replace(old, new, 1)
+
+          # database.js
+          p = Path("src/database/database.js")
+          t = p.read_text(encoding="utf-8")
+
+          anchor = '''const DEFAULT_OUTPUT_SETTINGS = {'''
+          watermark_default = '''const DEFAULT_WATERMARK_STYLE = {
+    filePath: "",
+    widthPx: 180,
+    x: 1680,
+    y: 40,
+    opacity: 0.82,
+    fadeMs: 200
+};
+
+'''
+          if "DEFAULT_WATERMARK_STYLE" not in t:
+              t = replace_once(t, anchor, watermark_default + anchor, "watermark default")
+
+          old = '''        output: structuredClone(DEFAULT_OUTPUT_SETTINGS),
+        hashtagStyle: {
+            ...DEFAULT_HASHTAG_STYLE
+        }'''
+          new = '''        output: structuredClone(DEFAULT_OUTPUT_SETTINGS),
+        watermarkStyle: {
+            ...DEFAULT_WATERMARK_STYLE
+        },
+        hashtagStyle: {
+            ...DEFAULT_HASHTAG_STYLE
+        }'''
+          t = replace_once(t, old, new, "initial watermark settings")
+
+          anchor = '''function normalizeOutputSettings(value = {}) {'''
+          normalizer = '''function normalizeWatermarkStyle(value = {}) {
+    return {
+        filePath: normalizeText(
+            value.filePath,
+            DEFAULT_WATERMARK_STYLE.filePath,
+            4096
+        ),
+        widthPx: normalizeInteger(
+            value.widthPx,
+            DEFAULT_WATERMARK_STYLE.widthPx,
+            24,
+            960
+        ),
+        x: normalizeInteger(
+            value.x,
+            DEFAULT_WATERMARK_STYLE.x,
+            0,
+            1920
+        ),
+        y: normalizeInteger(
+            value.y,
+            DEFAULT_WATERMARK_STYLE.y,
+            0,
+            1080
+        ),
+        opacity: normalizeNumber(
+            value.opacity,
+            DEFAULT_WATERMARK_STYLE.opacity,
+            0,
+            1
+        ),
+        fadeMs: normalizeInteger(
+            value.fadeMs,
+            DEFAULT_WATERMARK_STYLE.fadeMs,
+            0,
+            2000
+        )
+    };
+}
+
+'''
+          if "function normalizeWatermarkStyle" not in t:
+              t = replace_once(t, anchor, normalizer + anchor, "watermark normalizer")
+
+          old = '''                output:
+                    normalizeOutputSettings(
+                        parsedSettings.output
+                    ),
+                hashtagStyle:'''
+          new = '''                output:
+                    normalizeOutputSettings(
+                        parsedSettings.output
+                    ),
+                watermarkStyle:
+                    normalizeWatermarkStyle(
+                        parsedSettings.watermarkStyle
+                    ),
+                hashtagStyle:'''
+          t = replace_once(t, old, new, "load watermark settings")
+
+          anchor = '''function updateHashtagStyle(style) {'''
+          updater = '''function updateWatermarkStyle(style) {
+    data.settings.watermarkStyle =
+        normalizeWatermarkStyle(style);
+
+    saveDatabase();
+
+    return structuredClone(
+        data.settings.watermarkStyle
+    );
+}
+
+'''
+          if "function updateWatermarkStyle" not in t:
+              t = replace_once(t, anchor, updater + anchor, "watermark updater")
+
+          old = '''                loop: Boolean(entry.loop),
+                hashtag:
+                    normalizeHashtag(
+                        entry.hashtag ?? ""
+                    )'''
+          new = '''                loop: Boolean(entry.loop),
+                watermark: Boolean(entry.watermark),
+                hashtag:
+                    normalizeHashtag(
+                        entry.hashtag ?? ""
+                    )'''
+          t = t.replace(old, new)
+
+          old = '''                sourceMediaId,
+                loop: Boolean(item.loop),
+                hashtag:
+                    normalizeHashtag('''
+          new = '''                sourceMediaId,
+                loop: Boolean(item.loop),
+                watermark: Boolean(item.watermark),
+                hashtag:
+                    normalizeHashtag('''
+          t = replace_once(t, old, new, "save timeline watermark")
+
+          old = '''    updateOutputSettings,
+    updateHashtagStyle,'''
+          new = '''    updateOutputSettings,
+    updateWatermarkStyle,
+    updateHashtagStyle,'''
+          t = replace_once(t, old, new, "export watermark updater")
+          p.write_text(t, encoding="utf-8")
+
+          # preload.js
+          p = Path("src/main/preload.js")
+          t = p.read_text(encoding="utf-8")
+          old = '''        saveHashtagStyle: (style) =>
+            ipcRenderer.invoke(
+                "settings:set-hashtag-style",
+                style
+            ),'''
+          new = '''        saveHashtagStyle: (style) =>
+            ipcRenderer.invoke(
+                "settings:set-hashtag-style",
+                style
+            ),
+
+        selectWatermark: () =>
+            ipcRenderer.invoke(
+                "watermark:select"
+            ),
+
+        saveWatermarkStyle: (style) =>
+            ipcRenderer.invoke(
+                "settings:set-watermark-style",
+                style
+            ),'''
+          t = replace_once(t, old, new, "preload watermark API")
+
+          old = '''            hashtag = ""
+        ) =>
+            ipcRenderer.invoke(
+                "ndi:play-file",
+                filePath,
+                startSeconds,
+                hashtag
+            ),'''
+          new = '''            hashtag = "",
+            overlayState = {}
+        ) =>
+            ipcRenderer.invoke(
+                "ndi:play-file",
+                filePath,
+                startSeconds,
+                hashtag,
+                overlayState
+            ),'''
+          t = replace_once(t, old, new, "preload overlay state")
+          p.write_text(t, encoding="utf-8")
+
+          # main.js
+          p = Path("src/main/main.js")
+          t = p.read_text(encoding="utf-8")
+          old = '''    getSettings,
+    updateHashtagStyle,'''
+          new = '''    getSettings,
+    updateWatermarkStyle,
+    updateHashtagStyle,'''
+          t = replace_once(t, old, new, "main import watermark updater")
+
+          # replace buildVideoFilter with new graph helpers
+          start = t.index("function buildVideoFilter(hashtag) {")
+          end = t.index("\nfunction stopNativePlayback()", start)
+          graph = r'''function buildFadeAlphaExpression(
+    fadeIn,
+    fadeOut,
+    remainingSeconds,
+    fadeSeconds
+) {
+    const safeFade = Math.max(0, Number(fadeSeconds) || 0);
+    const safeRemaining = Math.max(0, Number(remainingSeconds) || 0);
+
+    if (safeFade <= 0) {
+        return "1";
+    }
+
+    const parts = [];
+
+    if (fadeIn) {
+        parts.push(
+            `if(lt(t\\,${safeFade.toFixed(3)})\\,t/${safeFade.toFixed(3)}\\,1)`
+        );
+    }
+
+    if (fadeOut && safeRemaining > safeFade) {
+        const fadeStart = Math.max(
+            0,
+            safeRemaining - safeFade
+        );
+        parts.push(
+            `if(gt(t\\,${fadeStart.toFixed(3)})\\,max(0\\,(${safeRemaining.toFixed(3)}-t)/${safeFade.toFixed(3)})\\,1)`
+        );
+    }
+
+    if (parts.length === 0) {
+        return "1";
+    }
+
+    if (parts.length === 1) {
+        return parts[0];
+    }
+
+    return `min(${parts[0]}\\,${parts[1]})`;
+}
+
+function buildProgramFilterGraph(
+    hashtag,
+    overlayState,
+    hasWatermarkInput
+) {
+    const state = overlayState && typeof overlayState === "object"
+        ? overlayState
+        : {};
+    const durationSeconds = Number(state.durationSeconds) || 0;
+    const startSeconds = Number(state.startSeconds) || 0;
+    const remainingSeconds = Math.max(
+        0,
+        durationSeconds - startSeconds
+    );
+
+    const chains = [
+        "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30000/1001[base]"
+    ];
+
+    let currentLabel = "base";
+
+    if (hasWatermarkInput) {
+        const wm = getSettings().watermarkStyle;
+        const fadeSeconds = Math.max(
+            0,
+            Number(wm.fadeMs) / 1000
+        );
+        const watermarkFilters = [
+            `scale=${Math.round(wm.widthPx)}:-1`,
+            "format=rgba",
+            `colorchannelmixer=aa=${Math.max(0, Math.min(1, Number(wm.opacity) || 0)).toFixed(3)}`
+        ];
+
+        if (state.watermarkFadeIn && fadeSeconds > 0) {
+            watermarkFilters.push(
+                `fade=t=in:st=0:d=${fadeSeconds.toFixed(3)}:alpha=1`
+            );
+        }
+
+        if (
+            state.watermarkFadeOut &&
+            remainingSeconds > fadeSeconds &&
+            fadeSeconds > 0
+        ) {
+            watermarkFilters.push(
+                `fade=t=out:st=${Math.max(0, remainingSeconds - fadeSeconds).toFixed(3)}:d=${fadeSeconds.toFixed(3)}:alpha=1`
+            );
+        }
+
+        chains.push(
+            `[1:v]${watermarkFilters.join(",")}[wm]`
+        );
+        chains.push(
+            `[${currentLabel}][wm]overlay=x=${Math.round(wm.x)}:y=${Math.round(wm.y)}:shortest=1[watermarked]`
+        );
+        currentLabel = "watermarked";
+    }
+
+    const normalizedHashtag =
+        typeof hashtag === "string"
+            ? hashtag.trim()
+            : "";
+
+    if (normalizedHashtag) {
+        const style = getSettings().hashtagStyle;
+        const fadeSeconds = 0.2;
+        const alphaExpression = buildFadeAlphaExpression(
+            Boolean(state.hashtagFadeIn),
+            Boolean(state.hashtagFadeOut),
+            remainingSeconds,
+            fadeSeconds
+        );
+        const options = [
+            `fontfile='${resolveHashtagFont(style)}'`,
+            `text='${escapeDrawtextText(normalizedHashtag)}'`,
+            `x=${Math.round(style.x)}`,
+            `y=${Math.round(style.y)}`,
+            `fontsize=${Math.round(style.fontSize)}`,
+            `fontcolor=${toFfmpegColor(style.color, style.opacity)}`,
+            `borderw=${Math.round(style.outlineWidth)}`,
+            `bordercolor=${toFfmpegColor(style.outlineColor, style.outlineOpacity)}`,
+            `alpha='${alphaExpression}'`
+        ];
+
+        if (style.shadowEnabled) {
+            options.push(
+                `shadowcolor=${toFfmpegColor(style.shadowColor, style.shadowOpacity)}`,
+                `shadowx=${Math.round(style.shadowX)}`,
+                `shadowy=${Math.round(style.shadowY)}`
+            );
+        }
+
+        chains.push(
+            `[${currentLabel}]drawtext=${options.join(":")}[program]`
+        );
+        currentLabel = "program";
+    }
+
+    if (currentLabel !== "program") {
+        chains.push(`[${currentLabel}]null[program]`);
+    }
+
+    return chains.join(";");
+}
+'''
+          t = t[:start] + graph + t[end:]
+
+          old = '''function startNativePlayback(
+    filePath,
+    startSeconds = 0,
+    hashtag = ""
+) {'''
+          new = '''function startNativePlayback(
+    filePath,
+    startSeconds = 0,
+    hashtag = "",
+    overlayState = {}
+) {'''
+          t = replace_once(t, old, new, "native playback signature")
+
+          old = '''    const ffmpegPath = resolveFfmpegPath();
+    const videoFilter =
+        buildVideoFilter(hashtag);
+
+    const args = ['''
+          new = '''    const ffmpegPath = resolveFfmpegPath();
+    const watermarkStyle =
+        getSettings().watermarkStyle;
+    const watermarkEnabled = Boolean(
+        overlayState?.watermarkEnabled &&
+        watermarkStyle?.filePath &&
+        fs.existsSync(watermarkStyle.filePath)
+    );
+    const programState = {
+        ...(overlayState && typeof overlayState === "object"
+            ? overlayState
+            : {}),
+        startSeconds: normalizedStartSeconds
+    };
+
+    const args = ['''
+          t = replace_once(t, old, new, "native filter setup")
+
+          old = '''    args.push(
+        "-i",
+        filePath,
+        "-map",
+        "0:v:0",
+        "-an",
+        "-sn",
+        "-dn",
+        "-vf",
+        videoFilter,
+        "-pix_fmt",
+        "bgra",
+        "-f",
+        "rawvideo",
+        "pipe:1"
+    );'''
+          new = '''    args.push(
+        "-i",
+        filePath
+    );
+
+    if (watermarkEnabled) {
+        args.push(
+            "-loop",
+            "1",
+            "-framerate",
+            "30000/1001",
+            "-i",
+            watermarkStyle.filePath
+        );
+    }
+
+    args.push(
+        "-filter_complex",
+        buildProgramFilterGraph(
+            hashtag,
+            programState,
+            watermarkEnabled
+        ),
+        "-map",
+        "[program]",
+        "-an",
+        "-sn",
+        "-dn",
+        "-pix_fmt",
+        "bgra",
+        "-f",
+        "rawvideo",
+        "pipe:1"
+    );'''
+          t = replace_once(t, old, new, "ffmpeg complex filter args")
+
+          old = '''            startSeconds = 0,
+            hashtag = ""
+        ) => {
+            try {
+                return startNativePlayback(
+                    filePath,
+                    startSeconds,
+                    hashtag
+                );'''
+          new = '''            startSeconds = 0,
+            hashtag = "",
+            overlayState = {}
+        ) => {
+            try {
+                return startNativePlayback(
+                    filePath,
+                    startSeconds,
+                    hashtag,
+                    overlayState
+                );'''
+          t = replace_once(t, old, new, "ndi play IPC overlay state")
+
+          old = '''    ipcMain.handle(
+        "settings:set-hashtag-style",
+        async (_event, style) => ({
+            ok: true,
+            hashtagStyle:
+                updateHashtagStyle(style)
+        })
+    );'''
+          new = '''    ipcMain.handle(
+        "settings:set-hashtag-style",
+        async (_event, style) => ({
+            ok: true,
+            hashtagStyle:
+                updateHashtagStyle(style)
+        })
+    );
+
+    ipcMain.handle(
+        "watermark:select",
+        async () => {
+            const result = await dialog.showOpenDialog({
+                title: "Selecionar marca d'água",
+                properties: ["openFile"],
+                filters: [
+                    {
+                        name: "Imagens",
+                        extensions: ["png", "webp", "jpg", "jpeg"]
+                    }
+                ]
+            });
+
+            if (result.canceled || result.filePaths.length === 0) {
+                return { ok: false, canceled: true };
+            }
+
+            const filePath = result.filePaths[0];
+            const current = getSettings().watermarkStyle;
+            return {
+                ok: true,
+                watermarkStyle: updateWatermarkStyle({
+                    ...current,
+                    filePath
+                })
+            };
+        }
+    );
+
+    ipcMain.handle(
+        "settings:set-watermark-style",
+        async (_event, style) => ({
+            ok: true,
+            watermarkStyle:
+                updateWatermarkStyle(style)
+        })
+    );'''
+          t = replace_once(t, old, new, "watermark IPC handlers")
+          p.write_text(t, encoding="utf-8")
+
+          # App.tsx
+          p = Path("src/renderer/src/App.tsx")
+          t = p.read_text(encoding="utf-8")
+          t = replace_once(
+              t,
+              '''    loop?: boolean;\n    hashtag?: string;''',
+              '''    loop?: boolean;\n    watermark?: boolean;\n    hashtag?: string;''',
+              "media watermark type"
+          )
+
+          old = '''                        loop: Boolean(entry.loop),
+                        hashtag: entry.hashtag ?? ""'''
+          new = '''                        loop: Boolean(entry.loop),
+                        watermark: Boolean(entry.watermark),
+                        hashtag: entry.hashtag ?? ""'''
+          t = replace_once(t, old, new, "timeline merge watermark")
+
+          old = '''            loop: false,
+            hashtag: ""'''
+          new = '''            loop: false,
+            watermark: false,
+            hashtag: ""'''
+          t = replace_once(t, old, new, "new timeline watermark default")
+
+          old = '''    async function startNativeNdi(
+        mediaItem: MediaItem,
+        startSeconds = 0
+    ) {
+        const result =
+            await window.santtosAPI
+                .playNdiFile(
+                    mediaItem.path,
+                    startSeconds,
+                    mediaItem.hashtag ?? ""
+                );'''
+          new = '''    function buildOverlayState(
+        mediaItem: MediaItem,
+        startSeconds = 0,
+        continuousSelf = false
+    ) {
+        const itemIndex = timelineQueue.findIndex(
+            (item) => item.id === mediaItem.id
+        );
+        const previous = continuousSelf
+            ? mediaItem
+            : itemIndex > 0
+              ? timelineQueue[itemIndex - 1]
+              : null;
+        const following = mediaItem.loop
+            ? mediaItem
+            : itemIndex >= 0
+              ? timelineQueue[itemIndex + 1] ?? null
+              : null;
+        const resuming = startSeconds > 0;
+
+        return {
+            durationSeconds: mediaItem.duration ?? 0,
+            watermarkEnabled: Boolean(mediaItem.watermark),
+            watermarkFadeIn:
+                Boolean(mediaItem.watermark) &&
+                !resuming &&
+                !Boolean(previous?.watermark),
+            watermarkFadeOut:
+                Boolean(mediaItem.watermark) &&
+                !Boolean(following?.watermark),
+            hashtagFadeIn:
+                Boolean(mediaItem.hashtag) &&
+                !resuming &&
+                !Boolean(previous?.hashtag),
+            hashtagFadeOut:
+                Boolean(mediaItem.hashtag) &&
+                !Boolean(following?.hashtag)
+        };
+    }
+
+    async function startNativeNdi(
+        mediaItem: MediaItem,
+        startSeconds = 0,
+        continuousSelf = false
+    ) {
+        const result =
+            await window.santtosAPI
+                .playNdiFile(
+                    mediaItem.path,
+                    startSeconds,
+                    mediaItem.hashtag ?? "",
+                    buildOverlayState(
+                        mediaItem,
+                        startSeconds,
+                        continuousSelf
+                    )
+                );'''
+          t = replace_once(t, old, new, "overlay state builder")
+
+          old = '''            await startNativeNdi(selectedMedia, 0);'''
+          new = '''            await startNativeNdi(
+                selectedMedia,
+                0,
+                true
+            );'''
+          t = replace_once(t, old, new, "loop continuous overlay")
+
+          # Add toggle function before updateTimelineHashtag
+          anchor = '''    async function updateTimelineHashtag(
+        mediaId: string,
+        value: string
+    ) {'''
+          func = '''    function toggleTimelineWatermark(mediaId: string) {
+        setTimelineQueue((current) =>
+            current.map((item) =>
+                item.id === mediaId
+                    ? {
+                          ...item,
+                          watermark: !item.watermark
+                      }
+                    : item
+            )
+        );
+
+        if (selectedMedia?.id === mediaId) {
+            const updatedSelected = {
+                ...selectedMedia,
+                watermark: !selectedMedia.watermark
+            };
+            onSelectMedia(updatedSelected);
+
+            if (isPlaying) {
+                startNativeNdi(
+                    updatedSelected,
+                    videoRef.current?.currentTime ?? currentTime,
+                    true
+                ).catch((error) =>
+                    console.error(
+                        "Erro ao atualizar marca d'água no NDI:",
+                        error
+                    )
+                );
+            }
+        }
+    }
+
+'''
+          t = replace_once(t, anchor, func + anchor, "watermark toggle function")
+
+          # Add checkbox immediately before hashtag editor
+          anchor = '''                                                <div
+                                                    className="timeline-hashtag-editor"'''
+          control = '''                                                <label
+                                                    className="timeline-watermark-toggle"
+                                                    onClick={(event) =>
+                                                        event.stopPropagation()
+                                                    }
+                                                    onDoubleClick={(event) =>
+                                                        event.stopPropagation()
+                                                    }
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={Boolean(item.watermark)}
+                                                        onChange={() =>
+                                                            toggleTimelineWatermark(
+                                                                item.id
+                                                            )
+                                                        }
+                                                    />
+                                                    <span>Marca d'água</span>
+                                                </label>
+
+'''
+          t = replace_once(t, anchor, control + anchor, "timeline watermark checkbox")
+          p.write_text(t, encoding="utf-8")
+
+          # BroadcastSettingsPanel.tsx
+          p = Path("src/renderer/src/BroadcastSettingsPanel.tsx")
+          t = p.read_text(encoding="utf-8")
+          if 'import WatermarkSettingsTab from "./WatermarkSettingsTab";' not in t:
+              t = replace_once(
+                  t,
+                  'import "./broadcast-settings.css";\n',
+                  'import "./broadcast-settings.css";\nimport WatermarkSettingsTab from "./WatermarkSettingsTab";\n',
+                  "watermark settings import"
+              )
+          t = replace_once(
+              t,
+              '''type SettingsTab =\n    | "output"\n    | "hashtag";''',
+              '''type SettingsTab =\n    | "output"\n    | "watermark"\n    | "hashtag";''',
+              "settings watermark tab type"
+          )
+
+          hashtag_button = '''                    <button
+                        type="button"
+                        className={
+                            tab === "hashtag"
+                                ? "active"
+                                : ""
+                        }
+                        onClick={() =>
+                            setTab("hashtag")
+                        }
+                    >
+                        Hashtag / GC
+                    </button>'''
+          watermark_button = '''                    <button
+                        type="button"
+                        className={
+                            tab === "watermark"
+                                ? "active"
+                                : ""
+                        }
+                        onClick={() =>
+                            setTab("watermark")
+                        }
+                    >
+                        Marca d'água
+                    </button>
+''' + hashtag_button
+          t = replace_once(t, hashtag_button, watermark_button, "watermark settings button")
+
+          old = '''            {tab === "output" ? (
+                <OutputTab
+                    output={output}
+                    patchOutput={patchOutput}
+                    patchAudio={patchAudio}
+                    patchNdi={patchNdi}
+                    patchSrt={patchSrt}
+                />
+            ) : (
+                <HashtagTab
+                    style={hashtag}
+                    patch={patchHashtag}
+                />
+            )}'''
+          new = '''            {tab === "output" ? (
+                <OutputTab
+                    output={output}
+                    patchOutput={patchOutput}
+                    patchAudio={patchAudio}
+                    patchNdi={patchNdi}
+                    patchSrt={patchSrt}
+                />
+            ) : tab === "watermark" ? (
+                <WatermarkSettingsTab />
+            ) : (
+                <HashtagTab
+                    style={hashtag}
+                    patch={patchHashtag}
+                />
+            )}'''
+          t = replace_once(t, old, new, "watermark settings render")
+
+          old = '''                    onClick={
+                        tab === "output"
+                            ? saveOutput
+                            : saveHashtag
+                    }
+                >'''
+          new = '''                    onClick={
+                        tab === "output"
+                            ? saveOutput
+                            : tab === "hashtag"
+                              ? saveHashtag
+                              : undefined
+                    }
+                    style={
+                        tab === "watermark"
+                            ? { display: "none" }
+                            : undefined
+                    }
+                >'''
+          t = replace_once(t, old, new, "hide parent save on watermark tab")
+          p.write_text(t, encoding="utf-8")
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate backend syntax
+        run: |
+          node --check src/database/database.js
+          node --check src/main/main.js
+          node --check src/main/preload.js
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Commit watermark feature
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/database/database.js src/main/main.js src/main/preload.js src/renderer/src/App.tsx src/renderer/src/BroadcastSettingsPanel.tsx
+          git commit -m "feat: add per-timeline watermark with intelligent fades"
+          git push
