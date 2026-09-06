@@ -16,22 +16,18 @@ interface MediaItem {
     id: string;
     sourceMediaId?: string;
     loop?: boolean;
-
     name: string;
     path: string;
     extension: string;
-
     fileSize: number;
-
     duration: number | null;
     width: number | null;
     height: number | null;
     fps: number | null;
-
     videoCodec: string | null;
     audioCodec: string | null;
     thumbnail: string | null;
-
+    hashtag?: string;
     status: string;
     createdAt: string;
 }
@@ -46,6 +42,7 @@ interface RemoveResult {
     removed: boolean;
     removedItem?: MediaItem;
     media: MediaItem[];
+    timeline?: MediaItem[];
 }
 
 interface NdiCommandResult {
@@ -55,42 +52,45 @@ interface NdiCommandResult {
     startSeconds?: number;
 }
 
+interface HashtagResult {
+    ok: boolean;
+    error?: string;
+    media?: MediaItem;
+}
+
 declare global {
     interface Window {
         santtosAPI: {
-            selectVideos: () =>
-                Promise<string[]>;
-
-            getMedia: () =>
-                Promise<MediaItem[]>;
-
+            selectVideos: () => Promise<string[]>;
+            getMedia: () => Promise<MediaItem[]>;
             importMedia: (
                 filePaths: string[]
             ) => Promise<ImportResult>;
-
             removeMedia: (
                 mediaId: string
             ) => Promise<RemoveResult>;
-
-            getNdiStatus: () =>
-                Promise<{
-                    online: boolean;
-                    source: string;
-                    nativePlaybackActive?: boolean;
-                }>;
-
+            updateMediaHashtag: (
+                mediaId: string,
+                hashtag: string
+            ) => Promise<HashtagResult>;
+            getTimeline: () => Promise<MediaItem[]>;
+            saveTimeline: (
+                timelineItems: MediaItem[]
+            ) => Promise<MediaItem[]>;
+            getNdiStatus: () => Promise<{
+                online: boolean;
+                source: string;
+                nativePlaybackActive?: boolean;
+            }>;
             playNdiFile: (
                 filePath: string,
-                startSeconds?: number
+                startSeconds?: number,
+                hashtag?: string
             ) => Promise<NdiCommandResult>;
-
-            stopNdiFile: () =>
-                Promise<NdiCommandResult>;
-
+            stopNdiFile: () => Promise<NdiCommandResult>;
             sendNdiFrame: (
                 frameData: Uint8Array
             ) => void;
-
             getMediaFileUrl: (
                 filePath: string
             ) => string;
@@ -101,92 +101,66 @@ declare global {
 export default function App() {
     const [clock, setClock] =
         useState("00:00:00");
-
     const [ndiOnline, setNdiOnline] =
         useState(false);
-
     const [activePanel, setActivePanel] =
         useState<Panel>("playout");
-
     const [media, setMedia] =
         useState<MediaItem[]>([]);
-
     const [isLoading, setIsLoading] =
         useState(false);
-
     const [message, setMessage] =
         useState("");
-
     const [selectedMedia, setSelectedMedia] =
         useState<MediaItem | null>(null);
 
     useEffect(() => {
-        const updateClock = () => {
+        const updateClock = () =>
             setClock(
                 new Date().toLocaleTimeString(
                     "pt-BR"
                 )
             );
-        };
 
         updateClock();
-
-        const timer =
-            window.setInterval(
-                updateClock,
-                1000
-            );
+        const timer = window.setInterval(
+            updateClock,
+            1000
+        );
 
         return () =>
-            window.clearInterval(
-                timer
-            );
+            window.clearInterval(timer);
     }, []);
 
     useEffect(() => {
-        const updateNdiStatus =
-            async () => {
-                try {
-                    const status =
-                        await window.santtosAPI
-                            .getNdiStatus();
-
-                    setNdiOnline(
-                        status.online
-                    );
-                } catch (error) {
-                    console.error(
-                        "Erro ao consultar NDI:",
-                        error
-                    );
-
-                    setNdiOnline(false);
-                }
-            };
+        const updateNdiStatus = async () => {
+            try {
+                const status =
+                    await window.santtosAPI
+                        .getNdiStatus();
+                setNdiOnline(status.online);
+            } catch {
+                setNdiOnline(false);
+            }
+        };
 
         updateNdiStatus();
-
-        const timer =
-            window.setInterval(
-                updateNdiStatus,
-                1000
-            );
+        const timer = window.setInterval(
+            updateNdiStatus,
+            1000
+        );
 
         return () =>
-            window.clearInterval(
-                timer
-            );
+            window.clearInterval(timer);
     }, []);
 
     async function loadMedia() {
         try {
-            const savedMedia =
-                await window.santtosAPI.getMedia();
-
-            setMedia(savedMedia);
+            setMedia(
+                await window.santtosAPI.getMedia()
+            );
         } catch (error) {
             console.error(error);
-
             setMessage(
                 "Não foi possível carregar a biblioteca."
             );
@@ -200,7 +174,6 @@ export default function App() {
     async function addVideos() {
         try {
             setMessage("");
-
             const selectedFiles =
                 await window.santtosAPI
                     .selectVideos();
@@ -210,49 +183,25 @@ export default function App() {
             }
 
             setIsLoading(true);
-
             const result =
                 await window.santtosAPI
-                    .importMedia(
-                        selectedFiles
-                    );
+                    .importMedia(selectedFiles);
 
             setMedia(result.media);
 
-            const importedCount =
-                result.importedItems.length;
-
-            const duplicatedCount =
-                result.duplicatedItems.length;
-
-            if (
-                importedCount > 0 &&
-                duplicatedCount === 0
-            ) {
+            if (result.importedItems.length > 0) {
                 setMessage(
-                    `${importedCount} vídeo(s) adicionado(s).`
+                    `${result.importedItems.length} vídeo(s) adicionado(s) à biblioteca. Use + Timeline para programar.`
                 );
             } else if (
-                importedCount > 0 &&
-                duplicatedCount > 0
-            ) {
-                setMessage(
-                    `${importedCount} vídeo(s) adicionado(s) e ${duplicatedCount} duplicado(s) ignorado(s).`
-                );
-            } else if (
-                duplicatedCount > 0
+                result.duplicatedItems.length > 0
             ) {
                 setMessage(
                     "Os vídeos selecionados já estavam cadastrados."
                 );
-            } else {
-                setMessage(
-                    "Nenhum vídeo compatível foi importado."
-                );
             }
         } catch (error) {
             console.error(error);
-
             setMessage(
                 "Ocorreu um erro durante a importação."
             );
@@ -275,22 +224,89 @@ export default function App() {
         try {
             const result =
                 await window.santtosAPI
-                    .removeMedia(
-                        mediaItem.id
-                    );
+                    .removeMedia(mediaItem.id);
 
             setMedia(result.media);
 
+            if (
+                selectedMedia &&
+                (selectedMedia.id === mediaItem.id ||
+                    selectedMedia.sourceMediaId ===
+                        mediaItem.id)
+            ) {
+                setSelectedMedia(null);
+            }
+
             if (result.removed) {
                 setMessage(
-                    `"${mediaItem.name}" foi removido da biblioteca.`
+                    `"${mediaItem.name}" foi removido.`
                 );
             }
         } catch (error) {
             console.error(error);
-
             setMessage(
                 "Não foi possível remover o vídeo."
+            );
+        }
+    }
+
+    async function handleUpdateHashtag(
+        mediaItem: MediaItem,
+        hashtag: string
+    ) {
+        try {
+            const result =
+                await window.santtosAPI
+                    .updateMediaHashtag(
+                        mediaItem.id,
+                        hashtag
+                    );
+
+            if (!result.ok || !result.media) {
+                throw new Error(
+                    result.error ??
+                        "Não foi possível salvar a hashtag."
+                );
+            }
+
+            const updated = result.media;
+
+            setMedia((current) =>
+                current.map((item) =>
+                    item.id === updated.id
+                        ? updated
+                        : item
+                )
+            );
+
+            setSelectedMedia((current) => {
+                if (!current) {
+                    return current;
+                }
+
+                const sourceId =
+                    current.sourceMediaId ??
+                    current.id;
+
+                if (sourceId !== updated.id) {
+                    return current;
+                }
+
+                return {
+                    ...current,
+                    hashtag: updated.hashtag
+                };
+            });
+
+            setMessage(
+                updated.hashtag
+                    ? `Hashtag ${updated.hashtag} salva para "${updated.name}".`
+                    : `Hashtag removida de "${updated.name}".`
+            );
+        } catch (error) {
+            console.error(error);
+            setMessage(
+                "Não foi possível salvar a hashtag."
             );
         }
     }
@@ -311,7 +327,6 @@ export default function App() {
                     <span className="status-online">
                         ● SISTEMA ONLINE
                     </span>
-
                     <span
                         className={
                             ndiOnline
@@ -329,14 +344,11 @@ export default function App() {
             <div className="workspace">
                 <Sidebar
                     activePanel={activePanel}
-                    setActivePanel={
-                        setActivePanel
-                    }
+                    setActivePanel={setActivePanel}
                 />
 
                 <main className="main-content">
-                    {activePanel ===
-                        "playout" && (
+                    {activePanel === "playout" && (
                         <PlayoutPanel
                             media={media}
                             isLoading={isLoading}
@@ -344,51 +356,28 @@ export default function App() {
                             selectedMedia={selectedMedia}
                             onSelectMedia={setSelectedMedia}
                             onAddVideos={addVideos}
-                            onRemoveMedia={
-                                handleRemoveMedia
+                            onRemoveMedia={handleRemoveMedia}
+                            onUpdateHashtag={
+                                handleUpdateHashtag
                             }
                         />
                     )}
 
-                    {activePanel ===
-                        "playlist" && (
+                    {activePanel !== "playout" && (
                         <EmptyPanel
-                            title="Playlist"
-                            message="A programação será montada aqui."
-                        />
-                    )}
-
-                    {activePanel ===
-                        "scheduler" && (
-                        <EmptyPanel
-                            title="Scheduler"
-                            message="A programação por horário será configurada aqui."
-                        />
-                    )}
-
-                    {activePanel ===
-                        "settings" && (
-                        <EmptyPanel
-                            title="Configurações"
-                            message="As configurações técnicas serão exibidas aqui."
+                            title={activePanel}
+                            message="Módulo em desenvolvimento."
                         />
                     )}
                 </main>
             </div>
 
             <footer className="footer">
+                <span>Santtos TV Automation</span>
                 <span>
-                    Santtos TV Automation
+                    {media.length} mídia(s) cadastrada(s)
                 </span>
-
-                <span>
-                    {media.length} mídia(s)
-                    cadastrada(s)
-                </span>
-
-                <span>
-                    Playout v0.3 Alpha
-                </span>
+                <span>Playout v0.3 Alpha</span>
             </footer>
         </div>
     );
@@ -396,7 +385,6 @@ export default function App() {
 
 interface SidebarProps {
     activePanel: Panel;
-
     setActivePanel: (
         panel: Panel
     ) => void;
@@ -411,31 +399,11 @@ function Sidebar({
         icon: string;
         label: string;
     }> = [
-        {
-            panel: "playout",
-            icon: "📺",
-            label: "Playout"
-        },
-        {
-            panel: "library",
-            icon: "📁",
-            label: "Biblioteca"
-        },
-        {
-            panel: "playlist",
-            icon: "📋",
-            label: "Playlist"
-        },
-        {
-            panel: "scheduler",
-            icon: "🗓",
-            label: "Scheduler"
-        },
-        {
-            panel: "settings",
-            icon: "⚙",
-            label: "Configurações"
-        }
+        { panel: "playout", icon: "📺", label: "Playout" },
+        { panel: "library", icon: "📁", label: "Biblioteca" },
+        { panel: "playlist", icon: "📋", label: "Playlist" },
+        { panel: "scheduler", icon: "🗓", label: "Scheduler" },
+        { panel: "settings", icon: "⚙", label: "Configurações" }
     ];
 
     return (
@@ -444,15 +412,12 @@ function Sidebar({
                 <button
                     key={button.panel}
                     className={
-                        activePanel ===
-                        button.panel
+                        activePanel === button.panel
                             ? "active"
                             : ""
                     }
                     onClick={() =>
-                        setActivePanel(
-                            button.panel
-                        )
+                        setActivePanel(button.panel)
                     }
                 >
                     {button.icon}{" "}
@@ -467,18 +432,17 @@ interface PlayoutPanelProps {
     media: MediaItem[];
     isLoading: boolean;
     message: string;
-
     selectedMedia: MediaItem | null;
-
     onSelectMedia: (
         media: MediaItem
     ) => void;
-
-    onAddVideos: () =>
-        Promise<void>;
-
+    onAddVideos: () => Promise<void>;
     onRemoveMedia: (
         media: MediaItem
+    ) => Promise<void>;
+    onUpdateHashtag: (
+        media: MediaItem,
+        hashtag: string
     ) => Promise<void>;
 }
 
@@ -489,90 +453,118 @@ function PlayoutPanel({
     selectedMedia,
     onSelectMedia,
     onAddVideos,
-    onRemoveMedia
+    onRemoveMedia,
+    onUpdateHashtag
 }: PlayoutPanelProps) {
     const videoRef =
-        useRef<HTMLVideoElement | null>(
-            null
-        );
+        useRef<HTMLVideoElement | null>(null);
+    const timelineLoadedRef = useRef(false);
 
     const [currentTime, setCurrentTime] =
         useState(0);
-
     const [duration, setDuration] =
         useState(0);
-
     const [isPlaying, setIsPlaying] =
         useState(false);
-
     const [timelineQueue, setTimelineQueue] =
-        useState<MediaItem[]>(media);
-
-    const [
-        draggedMediaId,
-        setDraggedMediaId
-    ] = useState<string | null>(null);
-
-    const [
-        removedTimelineIds,
-        setRemovedTimelineIds
-    ] = useState<Set<string>>(
-        () => new Set()
-    );
+        useState<MediaItem[]>([]);
+    const [draggedMediaId, setDraggedMediaId] =
+        useState<string | null>(null);
 
     useEffect(() => {
-        setTimelineQueue((currentQueue) => {
-            const availableIds =
-                new Set(
-                    media.map(
-                        (item) => item.id
-                    )
-                );
+        let cancelled = false;
 
-            const remainingItems =
-                currentQueue.filter(
-                    (item) =>
-                        availableIds.has(
-                            item.sourceMediaId ??
-                                item.id
+        const loadTimeline = async () => {
+            try {
+                const savedTimeline =
+                    await window.santtosAPI
+                        .getTimeline();
+
+                if (!cancelled) {
+                    setTimelineQueue(savedTimeline);
+                    timelineLoadedRef.current = true;
+                }
+            } catch (error) {
+                console.error(
+                    "Erro ao carregar timeline:",
+                    error
+                );
+                timelineLoadedRef.current = true;
+            }
+        };
+
+        loadTimeline();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!timelineLoadedRef.current) {
+            return;
+        }
+
+        const timer = window.setTimeout(
+            () => {
+                window.santtosAPI
+                    .saveTimeline(timelineQueue)
+                    .catch((error) =>
+                        console.error(
+                            "Erro ao salvar timeline:",
+                            error
                         )
-                );
+                    );
+            },
+            120
+        );
 
-            const existingIds =
-                new Set(
-                    remainingItems.map(
-                        (item) =>
-                            item.sourceMediaId ??
-                            item.id
-                    )
-                );
+        return () =>
+            window.clearTimeout(timer);
+    }, [timelineQueue]);
 
-            const newItems =
-                media.filter(
-                    (item) =>
-                        !existingIds.has(
-                            item.id
-                        ) &&
-                        !removedTimelineIds.has(
-                            item.id
-                        )
-                );
+    useEffect(() => {
+        if (!timelineLoadedRef.current) {
+            return;
+        }
 
-            return [
-                ...remainingItems,
-                ...newItems
-            ];
-        });
-    }, [media, removedTimelineIds]);
+        const mediaById = new Map(
+            media.map((item) => [item.id, item])
+        );
+
+        setTimelineQueue((current) =>
+            current
+                .map((entry) => {
+                    const sourceId =
+                        entry.sourceMediaId ??
+                        entry.id;
+                    const source =
+                        mediaById.get(sourceId);
+
+                    if (!source) {
+                        return null;
+                    }
+
+                    return {
+                        ...source,
+                        id: entry.id,
+                        sourceMediaId: sourceId,
+                        loop: Boolean(entry.loop)
+                    };
+                })
+                .filter(
+                    (item): item is MediaItem =>
+                        item !== null
+                )
+        );
+    }, [media]);
 
     useEffect(() => {
         if (
             !selectedMedia &&
             timelineQueue.length > 0
         ) {
-            onSelectMedia(
-                timelineQueue[0]
-            );
+            onSelectMedia(timelineQueue[0]);
         }
     }, [
         timelineQueue,
@@ -580,24 +572,11 @@ function PlayoutPanel({
         onSelectMedia
     ]);
 
-    const progressPercent =
-        duration > 0
-            ? Math.min(
-                  100,
-                  Math.max(
-                      0,
-                      (currentTime / duration) *
-                          100
-                  )
-              )
-            : 0;
-
     const selectedMediaIndex =
         selectedMedia
             ? timelineQueue.findIndex(
                   (item) =>
-                      item.id ===
-                      selectedMedia.id
+                      item.id === selectedMedia.id
               )
             : -1;
 
@@ -615,20 +594,35 @@ function PlayoutPanel({
               ] ?? null
             : null;
 
+    const selectedMediaUrl =
+        selectedMedia
+            ? encodeURI(
+                  `file:///${selectedMedia.path.replace(
+                      /\\/g,
+                      "/"
+                  )}`
+              )
+            : null;
+
+    const progressPercent =
+        duration > 0
+            ? Math.min(
+                  100,
+                  Math.max(
+                      0,
+                      (currentTime / duration) * 100
+                  )
+              )
+            : 0;
+
     const timelineStartTimes = (() => {
         const startTimes =
             new Map<string, string>();
-
-        let cursor: Date;
-
-        if (selectedMediaIndex >= 0) {
-            cursor = new Date(
-                Date.now() -
-                    currentTime * 1000
-            );
-        } else {
-            cursor = new Date();
-        }
+        let cursor = new Date(
+            selectedMediaIndex >= 0
+                ? Date.now() - currentTime * 1000
+                : Date.now()
+        );
 
         timelineMedia.forEach(
             (item, index) => {
@@ -647,10 +641,8 @@ function PlayoutPanel({
                 const itemDuration =
                     index === 0 &&
                     selectedMediaIndex >= 0
-                        ? duration > 0
-                            ? duration
-                            : item.duration ?? 0
-                        : item.duration ?? 0;
+                        ? duration || item.duration || 0
+                        : item.duration || 0;
 
                 cursor = new Date(
                     cursor.getTime() +
@@ -662,19 +654,8 @@ function PlayoutPanel({
         return startTimes;
     })();
 
-    const selectedMediaUrl =
-        selectedMedia
-            ? encodeURI(
-                  `file:///${selectedMedia.path.replace(
-                      /\\/g,
-                      "/"
-                  )}`
-              )
-            : null;
-
     useEffect(() => {
-        const video =
-            videoRef.current;
+        const video = videoRef.current;
 
         if (!video || !selectedMediaUrl) {
             return;
@@ -683,246 +664,300 @@ function PlayoutPanel({
         video.pause();
         video.currentTime = 0;
         video.load();
-
         setCurrentTime(0);
         setIsPlaying(false);
     }, [selectedMediaUrl]);
+
+    async function startNativeNdi(
+        mediaItem: MediaItem,
+        startSeconds = 0
+    ) {
+        const result =
+            await window.santtosAPI
+                .playNdiFile(
+                    mediaItem.path,
+                    startSeconds,
+                    mediaItem.hashtag ?? ""
+                );
+
+        if (!result.ok) {
+            throw new Error(
+                result.error ??
+                    "Falha ao iniciar saída NDI."
+            );
+        }
+    }
+
+    async function playVideo() {
+        let mediaToPlay = selectedMedia;
+
+        if (!mediaToPlay) {
+            mediaToPlay = timelineQueue[0] ?? null;
+
+            if (!mediaToPlay) {
+                window.alert(
+                    "Não há vídeos na Timeline."
+                );
+                return;
+            }
+
+            onSelectMedia(mediaToPlay);
+            await delay(120);
+        }
+
+        const video = videoRef.current;
+        if (!video) {
+            return;
+        }
+
+        try {
+            await startNativeNdi(
+                mediaToPlay,
+                video.currentTime || 0
+            );
+            await video.play();
+            setIsPlaying(true);
+        } catch (error) {
+            console.error(error);
+            window.alert(
+                `Não foi possível reproduzir o vídeo.\n\n${String(error)}`
+            );
+        }
+    }
+
+    async function pauseVideo() {
+        videoRef.current?.pause();
+        setIsPlaying(false);
+        await window.santtosAPI.stopNdiFile();
+    }
+
+    async function stopVideo() {
+        await window.santtosAPI.stopNdiFile();
+        const video = videoRef.current;
+
+        if (video) {
+            video.pause();
+            video.currentTime = 0;
+        }
+
+        setCurrentTime(0);
+        setIsPlaying(false);
+    }
+
+    async function playNextMedia() {
+        if (selectedMedia?.loop) {
+            const video = videoRef.current;
+            if (!video) {
+                return;
+            }
+
+            video.currentTime = 0;
+            await startNativeNdi(selectedMedia, 0);
+            await video.play();
+            setIsPlaying(true);
+            return;
+        }
+
+        if (!nextMedia) {
+            setIsPlaying(false);
+            await window.santtosAPI.stopNdiFile();
+            return;
+        }
+
+        onSelectMedia(nextMedia);
+        setCurrentTime(0);
+        setDuration(0);
+        await delay(120);
+
+        const video = videoRef.current;
+        if (!video) {
+            return;
+        }
+
+        await startNativeNdi(nextMedia, 0);
+        await video.play();
+        setIsPlaying(true);
+    }
+
+    async function handleSeeked(
+        video: HTMLVideoElement
+    ) {
+        setCurrentTime(video.currentTime);
+
+        if (!isPlaying || !selectedMedia) {
+            return;
+        }
+
+        try {
+            await startNativeNdi(
+                selectedMedia,
+                video.currentTime
+            );
+        } catch (error) {
+            console.error(
+                "Erro ao sincronizar seek NDI:",
+                error
+            );
+        }
+    }
 
     function addTimelineItem(
         mediaItem: MediaItem,
         targetMediaId?: string
     ) {
-        const originalMediaId =
+        const sourceMediaId =
             mediaItem.sourceMediaId ??
             mediaItem.id;
 
         const timelineItem: MediaItem = {
             ...mediaItem,
-
-            id: `${originalMediaId}-${Date.now()}-${Math.random()
+            id: `${sourceMediaId}-${Date.now()}-${Math.random()
                 .toString(16)
                 .slice(2)}`,
-
-            sourceMediaId:
-                originalMediaId
+            sourceMediaId,
+            loop: false
         };
 
-        setTimelineQueue(
-            (currentQueue) => {
-                if (!targetMediaId) {
-                    return [
-                        ...currentQueue,
-                        timelineItem
-                    ];
-                }
+        setTimelineQueue((current) => {
+            if (!targetMediaId) {
+                return [...current, timelineItem];
+            }
 
-                const targetIndex =
-                    currentQueue.findIndex(
-                        (item) =>
-                            item.id ===
-                            targetMediaId
-                    );
-
-                if (targetIndex < 0) {
-                    return [
-                        ...currentQueue,
-                        timelineItem
-                    ];
-                }
-
-                const insertIndex =
-                    targetMediaId ===
-                    selectedMedia?.id
-                        ? targetIndex + 1
-                        : targetIndex;
-
-                const updatedQueue = [
-                    ...currentQueue
-                ];
-
-                updatedQueue.splice(
-                    insertIndex,
-                    0,
-                    timelineItem
+            const targetIndex =
+                current.findIndex(
+                    (item) =>
+                        item.id === targetMediaId
                 );
 
-                return updatedQueue;
+            if (targetIndex < 0) {
+                return [...current, timelineItem];
             }
-        );
+
+            const updated = [...current];
+            const insertIndex =
+                targetMediaId === selectedMedia?.id
+                    ? targetIndex + 1
+                    : targetIndex;
+
+            updated.splice(
+                insertIndex,
+                0,
+                timelineItem
+            );
+            return updated;
+        });
     }
 
     function removeTimelineItem(
         mediaId: string
     ) {
-        if (
-            mediaId === selectedMedia?.id
-        ) {
+        if (mediaId === selectedMedia?.id) {
             return;
         }
 
-        setRemovedTimelineIds(
-            (currentIds) => {
-                const updatedIds =
-                    new Set(currentIds);
-
-                updatedIds.add(mediaId);
-
-                return updatedIds;
-            }
-        );
-
-        setTimelineQueue(
-            (currentQueue) =>
-                currentQueue.filter(
-                    (item) =>
-                        item.id !== mediaId
-                )
+        setTimelineQueue((current) =>
+            current.filter(
+                (item) => item.id !== mediaId
+            )
         );
     }
 
     function toggleTimelineLoop(
         mediaId: string
     ) {
-        setTimelineQueue(
-            (currentQueue) =>
-                currentQueue.map(
-                    (item) =>
-                        item.id === mediaId
-                            ? {
-                                  ...item,
-                                  loop: !item.loop
-                              }
-                            : item
-                )
+        setTimelineQueue((current) =>
+            current.map((item) =>
+                item.id === mediaId
+                    ? {
+                          ...item,
+                          loop: !item.loop
+                      }
+                    : item
+            )
         );
 
-        if (
-            selectedMedia?.id ===
-            mediaId
-        ) {
+        if (selectedMedia?.id === mediaId) {
             onSelectMedia({
                 ...selectedMedia,
-                loop:
-                    !selectedMedia.loop
+                loop: !selectedMedia.loop
             });
         }
     }
 
-    function cutQueueTo(
-        mediaId: string
-    ) {
-        setTimelineQueue(
-            (currentQueue) => {
-                const targetIndex =
-                    currentQueue.findIndex(
-                        (item) =>
-                            item.id === mediaId
-                    );
-
-                if (targetIndex < 0) {
-                    return currentQueue;
-                }
-
-                const currentIndex =
-                    selectedMedia
-                        ? currentQueue.findIndex(
-                              (item) =>
-                                  item.id ===
-                                  selectedMedia.id
-                          )
-                        : -1;
-
-                if (
-                    currentIndex >= 0 &&
-                    targetIndex <= currentIndex
-                ) {
-                    return currentQueue;
-                }
-
-                if (currentIndex >= 0) {
-                    return [
-                        ...currentQueue.slice(
-                            0,
-                            currentIndex + 1
-                        ),
-
-                        ...currentQueue.slice(
-                            targetIndex
-                        )
-                    ];
-                }
-
-                return currentQueue.slice(
-                    targetIndex
+    function cutQueueTo(mediaId: string) {
+        setTimelineQueue((current) => {
+            const targetIndex =
+                current.findIndex(
+                    (item) => item.id === mediaId
                 );
+            const currentIndex =
+                selectedMedia
+                    ? current.findIndex(
+                          (item) =>
+                              item.id === selectedMedia.id
+                      )
+                    : -1;
+
+            if (
+                targetIndex < 0 ||
+                (currentIndex >= 0 &&
+                    targetIndex <= currentIndex)
+            ) {
+                return current;
             }
-        );
+
+            return currentIndex >= 0
+                ? [
+                      ...current.slice(
+                          0,
+                          currentIndex + 1
+                      ),
+                      ...current.slice(targetIndex)
+                  ]
+                : current.slice(targetIndex);
+        });
     }
 
-    function moveToNext(
-        mediaId: string
-    ) {
-        setTimelineQueue(
-            (currentQueue) => {
-                const sourceIndex =
-                    currentQueue.findIndex(
-                        (item) =>
-                            item.id === mediaId
-                    );
-
-                if (sourceIndex < 0) {
-                    return currentQueue;
-                }
-
-                const currentIndex =
-                    selectedMedia
-                        ? currentQueue.findIndex(
-                              (item) =>
-                                  item.id ===
-                                  selectedMedia.id
-                          )
-                        : -1;
-
-                const nextIndex =
-                    currentIndex >= 0
-                        ? currentIndex + 1
-                        : 0;
-
-                if (
-                    sourceIndex === nextIndex
-                ) {
-                    return currentQueue;
-                }
-
-                const updatedQueue = [
-                    ...currentQueue
-                ];
-
-                const [movedItem] =
-                    updatedQueue.splice(
-                        sourceIndex,
-                        1
-                    );
-
-                let insertIndex =
-                    nextIndex;
-
-                if (
-                    sourceIndex <
-                    nextIndex
-                ) {
-                    insertIndex--;
-                }
-
-                updatedQueue.splice(
-                    insertIndex,
-                    0,
-                    movedItem
+    function moveToNext(mediaId: string) {
+        setTimelineQueue((current) => {
+            const sourceIndex =
+                current.findIndex(
+                    (item) => item.id === mediaId
                 );
+            const currentIndex =
+                selectedMedia
+                    ? current.findIndex(
+                          (item) =>
+                              item.id === selectedMedia.id
+                      )
+                    : -1;
 
-                return updatedQueue;
+            if (sourceIndex < 0) {
+                return current;
             }
-        );
+
+            const desiredIndex =
+                currentIndex >= 0
+                    ? currentIndex + 1
+                    : 0;
+
+            const updated = [...current];
+            const [moved] = updated.splice(
+                sourceIndex,
+                1
+            );
+            const insertIndex =
+                sourceIndex < desiredIndex
+                    ? desiredIndex - 1
+                    : desiredIndex;
+
+            updated.splice(
+                insertIndex,
+                0,
+                moved
+            );
+            return updated;
+        });
     }
 
     function moveTimelineItem(
@@ -936,15 +971,14 @@ function PlayoutPanel({
             return;
         }
 
-        setTimelineQueue((currentQueue) => {
+        setTimelineQueue((current) => {
             const sourceIndex =
-                currentQueue.findIndex(
+                current.findIndex(
                     (item) =>
                         item.id === draggedMediaId
                 );
-
             const targetIndex =
-                currentQueue.findIndex(
+                current.findIndex(
                     (item) =>
                         item.id === targetMediaId
                 );
@@ -958,303 +992,23 @@ function PlayoutPanel({
                 sourceIndex < firstMovableIndex ||
                 targetIndex < firstMovableIndex
             ) {
-                return currentQueue;
+                return current;
             }
 
-            const reorderedQueue = [
-                ...currentQueue
-            ];
-
-            const [movedItem] =
-                reorderedQueue.splice(
-                    sourceIndex,
-                    1
-                );
-
-            reorderedQueue.splice(
+            const updated = [...current];
+            const [moved] = updated.splice(
+                sourceIndex,
+                1
+            );
+            updated.splice(
                 targetIndex,
                 0,
-                movedItem
+                moved
             );
-
-            return reorderedQueue;
+            return updated;
         });
 
         setDraggedMediaId(null);
-    }
-
-    function getProgramVideo() {
-        return document.getElementById(
-            "program-video"
-        ) as HTMLVideoElement | null;
-    }
-
-    async function startNativeNdi(
-        mediaItem: MediaItem,
-        startSeconds = 0
-    ) {
-        const result =
-            await window.santtosAPI
-                .playNdiFile(
-                    mediaItem.path,
-                    startSeconds
-                );
-
-        if (!result.ok) {
-            throw new Error(
-                result.error ??
-                    "Falha ao iniciar saída NDI nativa."
-            );
-        }
-    }
-
-    async function playVideo() {
-        let mediaToPlay =
-            selectedMedia;
-
-        if (!mediaToPlay) {
-            const firstMedia =
-                timelineQueue[0];
-
-            if (!firstMedia) {
-                window.alert(
-                    "Não há vídeos na Timeline."
-                );
-                return;
-            }
-
-            mediaToPlay = firstMedia;
-            onSelectMedia(firstMedia);
-
-            await new Promise<void>(
-                (resolve) =>
-                    window.setTimeout(
-                        resolve,
-                        150
-                    )
-            );
-        }
-
-        const video =
-            getProgramVideo();
-
-        if (!video) {
-            window.alert(
-                "Player PROGRAM não encontrado."
-            );
-            return;
-        }
-
-        try {
-            if (video.readyState < 2) {
-                video.load();
-
-                await new Promise<void>(
-                    (resolve, reject) => {
-                        const handleReady = () => {
-                            cleanup();
-                            resolve();
-                        };
-
-                        const handleError = () => {
-                            cleanup();
-
-                            reject(
-                                new Error(
-                                    "O arquivo não pôde ser carregado."
-                                )
-                            );
-                        };
-
-                        const cleanup = () => {
-                            video.removeEventListener(
-                                "canplay",
-                                handleReady
-                            );
-
-                            video.removeEventListener(
-                                "error",
-                                handleError
-                            );
-                        };
-
-                        video.addEventListener(
-                            "canplay",
-                            handleReady
-                        );
-
-                        video.addEventListener(
-                            "error",
-                            handleError
-                        );
-                    }
-                );
-            }
-
-            await startNativeNdi(
-                mediaToPlay,
-                video.currentTime
-            );
-
-            await video.play();
-            setIsPlaying(true);
-        } catch (error) {
-            console.error(
-                "Erro ao reproduzir vídeo:",
-                error
-            );
-
-            setIsPlaying(false);
-
-            window.alert(
-                `Não foi possível reproduzir o vídeo.\n\n${
-                    error instanceof Error
-                        ? error.message
-                        : String(error)
-                }`
-            );
-        }
-    }
-
-    async function playNextMedia() {
-        if (selectedMedia?.loop) {
-            const video =
-                getProgramVideo();
-
-            if (!video) {
-                return;
-            }
-
-            try {
-                video.currentTime = 0;
-
-                await startNativeNdi(
-                    selectedMedia,
-                    0
-                );
-
-                await video.play();
-                setIsPlaying(true);
-            } catch (error) {
-                console.error(
-                    "Erro ao repetir vídeo:",
-                    error
-                );
-                setIsPlaying(false);
-            }
-
-            return;
-        }
-
-        if (!nextMedia) {
-            setCurrentTime(0);
-            setIsPlaying(false);
-            await window.santtosAPI
-                .stopNdiFile();
-            return;
-        }
-
-        setCurrentTime(0);
-        setDuration(0);
-        setIsPlaying(false);
-
-        onSelectMedia(nextMedia);
-
-        window.setTimeout(
-            async () => {
-                const video =
-                    getProgramVideo();
-
-                if (!video) {
-                    return;
-                }
-
-                try {
-                    await startNativeNdi(
-                        nextMedia,
-                        0
-                    );
-
-                    await video.play();
-                    setIsPlaying(true);
-                } catch (error) {
-                    console.error(
-                        "Erro ao iniciar próximo vídeo:",
-                        error
-                    );
-                    setIsPlaying(false);
-                }
-            },
-            150
-        );
-    }
-
-    async function pauseVideo() {
-        const video =
-            getProgramVideo();
-
-        video?.pause();
-        setIsPlaying(false);
-
-        try {
-            await window.santtosAPI
-                .stopNdiFile();
-        } catch (error) {
-            console.error(
-                "Erro ao pausar saída NDI:",
-                error
-            );
-        }
-    }
-
-    async function stopVideo() {
-        const video =
-            getProgramVideo();
-
-        setIsPlaying(false);
-
-        try {
-            await window.santtosAPI
-                .stopNdiFile();
-        } catch (error) {
-            console.error(
-                "Erro ao parar saída NDI:",
-                error
-            );
-        }
-
-        if (!video) {
-            return;
-        }
-
-        video.pause();
-        video.currentTime = 0;
-        setCurrentTime(0);
-    }
-
-    async function syncSeekedPosition() {
-        const video =
-            getProgramVideo();
-
-        if (
-            !video ||
-            !selectedMedia ||
-            !isPlaying
-        ) {
-            return;
-        }
-
-        try {
-            await startNativeNdi(
-                selectedMedia,
-                video.currentTime
-            );
-        } catch (error) {
-            console.error(
-                "Erro ao sincronizar seek com NDI:",
-                error
-            );
-        }
     }
 
     return (
@@ -1266,7 +1020,6 @@ function PlayoutPanel({
                             <div className="panel-title">
                                 PROGRAM
                             </div>
-
                             <strong>
                                 Saída principal
                             </strong>
@@ -1281,33 +1034,46 @@ function PlayoutPanel({
 
                     <div className="program-monitor">
                         {selectedMediaUrl ? (
-                            <video
-                                id="program-video"
-                                ref={videoRef}
-                                className="program-video"
-                                src={selectedMediaUrl}
-                                controls
-                                preload="auto"
-                                onTimeUpdate={(event) =>
-                                    setCurrentTime(
-                                        event.currentTarget.currentTime
-                                    )
-                                }
-                                onLoadedMetadata={(event) =>
-                                    setDuration(
-                                        event.currentTarget.duration
-                                    )
-                                }
-                                onDurationChange={(event) =>
-                                    setDuration(
-                                        event.currentTarget.duration
-                                    )
-                                }
-                                onSeeked={
-                                    syncSeekedPosition
-                                }
-                                onEnded={playNextMedia}
-                            />
+                            <>
+                                <video
+                                    id="program-video"
+                                    ref={videoRef}
+                                    className="program-video"
+                                    src={selectedMediaUrl}
+                                    controls
+                                    preload="auto"
+                                    onTimeUpdate={(event) =>
+                                        setCurrentTime(
+                                            event.currentTarget
+                                                .currentTime
+                                        )
+                                    }
+                                    onLoadedMetadata={(event) =>
+                                        setDuration(
+                                            event.currentTarget
+                                                .duration
+                                        )
+                                    }
+                                    onDurationChange={(event) =>
+                                        setDuration(
+                                            event.currentTarget
+                                                .duration
+                                        )
+                                    }
+                                    onSeeked={(event) =>
+                                        handleSeeked(
+                                            event.currentTarget
+                                        )
+                                    }
+                                    onEnded={playNextMedia}
+                                />
+
+                                {selectedMedia?.hashtag && (
+                                    <div className="program-hashtag">
+                                        {selectedMedia.hashtag}
+                                    </div>
+                                )}
+                            </>
                         ) : (
                             "SEM SINAL"
                         )}
@@ -1317,32 +1083,20 @@ function PlayoutPanel({
                         <button
                             title="Reproduzir"
                             onClick={playVideo}
-                        >
-                            ▶
-                        </button>
-
+                        >▶</button>
                         <button
                             title="Pausar"
                             onClick={pauseVideo}
-                        >
-                            ⏸
-                        </button>
-
+                        >⏸</button>
                         <button
                             title="Parar"
                             onClick={stopVideo}
-                        >
-                            ■
-                        </button>
-
+                        >■</button>
                         <button
-                            type="button"
                             title="Próximo vídeo"
                             onClick={playNextMedia}
                             disabled={!nextMedia}
-                        >
-                            ⏭
-                        </button>
+                        >⏭</button>
 
                         <div className="program-time">
                             {formatDuration(currentTime)}
@@ -1365,21 +1119,15 @@ function PlayoutPanel({
                         <div className="panel-title">
                             NO AR
                         </div>
-
                         <strong>
                             {selectedMedia
                                 ? selectedMedia.name
                                 : "Nenhum conteúdo"}
                         </strong>
-
                         <span>
-                            {selectedMedia
-                                ? `${formatDuration(
-                                      currentTime
-                                  )} de ${formatDuration(
-                                      duration
-                                  )}`
-                                : "Aguardando reprodução"}
+                            {selectedMedia?.hashtag
+                                ? `GC: ${selectedMedia.hashtag}`
+                                : "Sem hashtag configurada"}
                         </span>
                     </section>
 
@@ -1387,13 +1135,11 @@ function PlayoutPanel({
                         <div className="panel-title">
                             PRÓXIMO
                         </div>
-
                         <strong>
                             {nextMedia
                                 ? nextMedia.name
                                 : "Nenhum conteúdo"}
                         </strong>
-
                         <span>
                             {nextMedia
                                 ? formatDuration(
@@ -1407,43 +1153,34 @@ function PlayoutPanel({
                 <section
                     className="panel compact-logs-panel"
                     onDragOver={(event) => {
-                        const isLibraryMedia =
+                        if (
                             event.dataTransfer.types.includes(
                                 "application/x-santtos-library-media"
-                            );
-
-                        if (!isLibraryMedia) {
-                            return;
+                            )
+                        ) {
+                            event.preventDefault();
+                            event.dataTransfer.dropEffect =
+                                "copy";
                         }
-
-                        event.preventDefault();
-
-                        event.dataTransfer.dropEffect =
-                            "copy";
                     }}
                     onDrop={(event) => {
-                        const libraryMediaId =
+                        const mediaId =
                             event.dataTransfer.getData(
                                 "application/x-santtos-library-media"
                             );
 
-                        if (!libraryMediaId) {
+                        if (!mediaId) {
                             return;
                         }
 
                         event.preventDefault();
+                        const item = media.find(
+                            (entry) =>
+                                entry.id === mediaId
+                        );
 
-                        const libraryMedia =
-                            media.find(
-                                (item) =>
-                                    item.id ===
-                                    libraryMediaId
-                            );
-
-                        if (libraryMedia) {
-                            addTimelineItem(
-                                libraryMedia
-                            );
+                        if (item) {
+                            addTimelineItem(item);
                         }
                     }}
                 >
@@ -1474,9 +1211,7 @@ function PlayoutPanel({
                                             }`}
                                             onDoubleClick={() => {
                                                 if (!isCurrent) {
-                                                    cutQueueTo(
-                                                        item.id
-                                                    );
+                                                    cutQueueTo(item.id);
                                                 }
                                             }}
                                             onDragStart={(event) => {
@@ -1486,10 +1221,8 @@ function PlayoutPanel({
                                                 }
 
                                                 setDraggedMediaId(item.id);
-
                                                 event.dataTransfer.effectAllowed =
                                                     "move";
-
                                                 event.dataTransfer.setData(
                                                     "text/plain",
                                                     item.id
@@ -1501,58 +1234,38 @@ function PlayoutPanel({
                                                         "application/x-santtos-library-media"
                                                     );
 
-                                                if (isLibraryMedia) {
+                                                if (
+                                                    isLibraryMedia ||
+                                                    !isCurrent
+                                                ) {
                                                     event.preventDefault();
-
-                                                    event.dataTransfer.dropEffect =
-                                                        "copy";
-
-                                                    return;
                                                 }
-
-                                                if (isCurrent) {
-                                                    return;
-                                                }
-
-                                                event.preventDefault();
-
-                                                event.dataTransfer.dropEffect =
-                                                    "move";
                                             }}
                                             onDrop={(event) => {
-                                                const libraryMediaId =
+                                                event.preventDefault();
+                                                event.stopPropagation();
+
+                                                const libraryId =
                                                     event.dataTransfer.getData(
                                                         "application/x-santtos-library-media"
                                                     );
 
-                                                if (libraryMediaId) {
-                                                    event.preventDefault();
-                                                    event.stopPropagation();
-
-                                                    const libraryMedia =
-                                                        media.find(
-                                                            (mediaItem) =>
-                                                                mediaItem.id ===
-                                                                libraryMediaId
-                                                        );
-
-                                                    if (libraryMedia) {
+                                                if (libraryId) {
+                                                    const source = media.find(
+                                                        (entry) =>
+                                                            entry.id === libraryId
+                                                    );
+                                                    if (source) {
                                                         addTimelineItem(
-                                                            libraryMedia,
+                                                            source,
                                                             item.id
                                                         );
                                                     }
-
                                                     return;
                                                 }
 
-                                                event.preventDefault();
-                                                event.stopPropagation();
-
                                                 if (!isCurrent) {
-                                                    moveTimelineItem(
-                                                        item.id
-                                                    );
+                                                    moveTimelineItem(item.id);
                                                 }
                                             }}
                                             onDragEnd={() =>
@@ -1560,7 +1273,6 @@ function PlayoutPanel({
                                             }
                                         >
                                             <div className="timeline-marker" />
-
                                             <div className="timeline-position">
                                                 {isCurrent
                                                     ? "NO AR"
@@ -1571,7 +1283,6 @@ function PlayoutPanel({
                                                 <strong>
                                                     {item.name}
                                                 </strong>
-
                                                 <span>
                                                     {isCurrent
                                                         ? `${formatDuration(
@@ -1583,7 +1294,11 @@ function PlayoutPanel({
                                                               item.duration
                                                           )}
                                                 </span>
-
+                                                {item.hashtag && (
+                                                    <span>
+                                                        {item.hashtag}
+                                                    </span>
+                                                )}
                                                 <span className="timeline-air-time">
                                                     {isCurrent
                                                         ? "ENTROU "
@@ -1599,51 +1314,30 @@ function PlayoutPanel({
                                                 onClick={(event) =>
                                                     event.stopPropagation()
                                                 }
-                                                onDoubleClick={(event) =>
-                                                    event.stopPropagation()
-                                                }
                                             >
                                                 {!isCurrent && (
                                                     <button
-                                                        type="button"
-                                                        className="timeline-next-button"
                                                         title="Colocar como próximo"
                                                         onClick={() =>
-                                                            moveToNext(
-                                                                item.id
-                                                            )
+                                                            moveToNext(item.id)
                                                         }
-                                                        draggable={false}
-                                                    >
-                                                        ⏭
-                                                    </button>
+                                                    >⏭</button>
                                                 )}
-
                                                 <button
-                                                    type="button"
                                                     className={
                                                         item.loop
                                                             ? "timeline-loop-button active"
                                                             : "timeline-loop-button"
                                                     }
-                                                    title={
-                                                        item.loop
-                                                            ? "Desativar loop"
-                                                            : "Ativar loop"
-                                                    }
+                                                    title="Loop"
                                                     onClick={() =>
                                                         toggleTimelineLoop(
                                                             item.id
                                                         )
                                                     }
-                                                    draggable={false}
-                                                >
-                                                    ↻
-                                                </button>
-
+                                                >↻</button>
                                                 {!isCurrent && (
                                                     <button
-                                                        type="button"
                                                         className="timeline-remove"
                                                         title="Remover da timeline"
                                                         onClick={() =>
@@ -1651,10 +1345,7 @@ function PlayoutPanel({
                                                                 item.id
                                                             )
                                                         }
-                                                        draggable={false}
-                                                    >
-                                                        ×
-                                                    </button>
+                                                    >×</button>
                                                 )}
                                             </div>
                                         </div>
@@ -1664,7 +1355,7 @@ function PlayoutPanel({
                         </div>
                     ) : (
                         <span>
-                            Nenhuma mídia na timeline
+                            Timeline vazia. Adicione mídias usando + Timeline ou arrastando da biblioteca.
                         </span>
                     )}
                 </section>
@@ -1679,9 +1370,8 @@ function PlayoutPanel({
                     onSelectMedia={onSelectMedia}
                     onAddVideos={onAddVideos}
                     onRemoveMedia={onRemoveMedia}
-                    onAddToTimeline={
-                        addTimelineItem
-                    }
+                    onAddToTimeline={addTimelineItem}
+                    onUpdateHashtag={onUpdateHashtag}
                 />
             </div>
         </div>
@@ -1693,21 +1383,20 @@ interface LibraryPanelProps {
     isLoading: boolean;
     message: string;
     selectedMedia: MediaItem | null;
-
     onSelectMedia: (
         media: MediaItem
     ) => void;
-
-    onAddVideos: () =>
-        Promise<void>;
-
+    onAddVideos: () => Promise<void>;
     onRemoveMedia: (
         media: MediaItem
     ) => Promise<void>;
-
     onAddToTimeline: (
         media: MediaItem
     ) => void;
+    onUpdateHashtag: (
+        media: MediaItem,
+        hashtag: string
+    ) => Promise<void>;
 }
 
 function LibraryPanel({
@@ -1718,28 +1407,26 @@ function LibraryPanel({
     onSelectMedia,
     onAddVideos,
     onRemoveMedia,
-    onAddToTimeline
+    onAddToTimeline,
+    onUpdateHashtag
 }: LibraryPanelProps) {
     const [search, setSearch] =
         useState("");
 
-    const filteredMedia = useMemo(
-        () => {
-            const normalizedSearch =
-                search.trim().toLowerCase();
+    const filteredMedia = useMemo(() => {
+        const normalized =
+            search.trim().toLowerCase();
 
-            if (!normalizedSearch) {
-                return media;
-            }
+        if (!normalized) {
+            return media;
+        }
 
-            return media.filter((item) =>
-                item.name
-                    .toLowerCase()
-                    .includes(normalizedSearch)
-            );
-        },
-        [media, search]
-    );
+        return media.filter((item) =>
+            `${item.name} ${item.hashtag ?? ""}`
+                .toLowerCase()
+                .includes(normalized)
+        );
+    }, [media, search]);
 
     return (
         <section className="panel module-panel">
@@ -1748,10 +1435,7 @@ function LibraryPanel({
                     <div className="panel-title">
                         BIBLIOTECA
                     </div>
-
-                    <h1>
-                        Biblioteca de mídia
-                    </h1>
+                    <h1>Biblioteca de mídia</h1>
                 </div>
 
                 <button
@@ -1770,17 +1454,13 @@ function LibraryPanel({
                     className="search-input"
                     type="search"
                     value={search}
-                    placeholder="Pesquisar vídeo..."
+                    placeholder="Pesquisar vídeo ou hashtag..."
                     onChange={(event) =>
-                        setSearch(
-                            event.target.value
-                        )
+                        setSearch(event.target.value)
                     }
                 />
-
                 <span>
-                    {filteredMedia.length} de{" "}
-                    {media.length} mídia(s)
+                    {filteredMedia.length} de {media.length} mídia(s)
                 </span>
             </div>
 
@@ -1790,13 +1470,9 @@ function LibraryPanel({
                 </div>
             )}
 
-            {media.length === 0 ? (
+            {filteredMedia.length === 0 ? (
                 <div className="empty-state">
                     Nenhum vídeo cadastrado
-                </div>
-            ) : filteredMedia.length === 0 ? (
-                <div className="empty-state">
-                    Nenhum vídeo encontrado
                 </div>
             ) : (
                 <div className="media-list">
@@ -1804,23 +1480,8 @@ function LibraryPanel({
                         <article
                             key={item.id}
                             draggable
-                            onDragStart={(event) => {
-                                event.dataTransfer.effectAllowed =
-                                    "copy";
-
-                                event.dataTransfer.setData(
-                                    "application/x-santtos-library-media",
-                                    item.id
-                                );
-
-                                event.dataTransfer.setData(
-                                    "text/plain",
-                                    item.id
-                                );
-                            }}
                             className={
-                                selectedMedia?.id ===
-                                item.id
+                                selectedMedia?.id === item.id
                                     ? "media-item selected"
                                     : "media-item"
                             }
@@ -1829,9 +1490,14 @@ function LibraryPanel({
                             }
                             onDoubleClick={(event) => {
                                 event.stopPropagation();
-
-                                onAddToTimeline(
-                                    item
+                                onAddToTimeline(item);
+                            }}
+                            onDragStart={(event) => {
+                                event.dataTransfer.effectAllowed =
+                                    "copy";
+                                event.dataTransfer.setData(
+                                    "application/x-santtos-library-media",
+                                    item.id
                                 );
                             }}
                         >
@@ -1840,66 +1506,65 @@ function LibraryPanel({
                             </div>
 
                             <div className="media-information">
-                                <strong>
-                                    {item.name}
-                                </strong>
-
-                                <span>
-                                    {item.path}
-                                </span>
+                                <strong>{item.name}</strong>
+                                <span>{item.path}</span>
 
                                 <div className="media-metadata">
                                     <span>
-                                        {item.width &&
-                                        item.height
+                                        {item.width && item.height
                                             ? `${item.width}×${item.height}`
                                             : "Resolução desconhecida"}
                                     </span>
-
                                     <span>
                                         {item.videoCodec ??
                                             "Codec desconhecido"}
                                     </span>
-
                                     <span>
                                         {item.fps !== null
-                                            ? `${item.fps.toFixed(
-                                                  3
-                                              )} fps`
+                                            ? `${item.fps.toFixed(3)} fps`
                                             : "FPS desconhecido"}
                                     </span>
-
                                     <span>
-                                        {formatDuration(
-                                            item.duration
-                                        )}
-                                    </span>
-
-                                    <span>
-                                        {formatFileSize(
-                                            item.fileSize
-                                        )}
+                                        {formatDuration(item.duration)}
                                     </span>
                                 </div>
 
                                 <div
-                                    className={
-                                        item.status ===
-                                        "compatible"
-                                            ? "compatibility-badge compatible"
-                                            : item.status ===
-                                                "incompatible"
-                                              ? "compatibility-badge incompatible"
-                                              : "compatibility-badge pending"
+                                    className="media-hashtag-editor"
+                                    onClick={(event) =>
+                                        event.stopPropagation()
+                                    }
+                                    onDoubleClick={(event) =>
+                                        event.stopPropagation()
                                     }
                                 >
-                                    {item.status ===
-                                    "compatible"
-                                        ? "● Compatível"
-                                        : item.status ===
-                                            "incompatible"
-                                          ? "● Incompatível"
-                                          : "● Analisando"}
+                                    <label>
+                                        Hashtag automática
+                                    </label>
+                                    <input
+                                        key={`${item.id}-${item.hashtag ?? ""}`}
+                                        defaultValue={
+                                            item.hashtag ?? ""
+                                        }
+                                        placeholder="#PortoAlegre24Horas"
+                                        maxLength={80}
+                                        onBlur={(event) =>
+                                            onUpdateHashtag(
+                                                item,
+                                                event.currentTarget.value
+                                            )
+                                        }
+                                        onKeyDown={(event) => {
+                                            if (
+                                                event.key === "Enter"
+                                            ) {
+                                                event.currentTarget.blur();
+                                            }
+                                        }}
+                                    />
+                                    <small>
+                                        Entra no canto superior esquerdo quando o arquivo for ao ar.
+                                    </small>
                                 </div>
                             </div>
 
@@ -1915,12 +1580,10 @@ function LibraryPanel({
                             </button>
 
                             <button
-                                type="button"
                                 className="add-timeline-button"
                                 title="Adicionar ao final da timeline"
                                 onClick={(event) => {
                                     event.stopPropagation();
-
                                     onAddToTimeline(item);
                                 }}
                             >
@@ -1934,21 +1597,18 @@ function LibraryPanel({
     );
 }
 
-interface EmptyPanelProps {
-    title: string;
-    message: string;
-}
-
 function EmptyPanel({
     title,
     message
-}: EmptyPanelProps) {
+}: {
+    title: string;
+    message: string;
+}) {
     return (
         <section className="panel module-panel">
             <div className="panel-title">
                 {title.toUpperCase()}
             </div>
-
             <div className="empty-state">
                 {message}
             </div>
@@ -1956,59 +1616,37 @@ function EmptyPanel({
     );
 }
 
-function formatFileSize(
-    bytes: number
-): string {
-    if (bytes < 1024) {
-        return `${bytes} B`;
-    }
-
-    const kilobytes = bytes / 1024;
-
-    if (kilobytes < 1024) {
-        return `${kilobytes.toFixed(1)} KB`;
-    }
-
-    const megabytes = kilobytes / 1024;
-
-    if (megabytes < 1024) {
-        return `${megabytes.toFixed(1)} MB`;
-    }
-
-    const gigabytes = megabytes / 1024;
-
-    return `${gigabytes.toFixed(2)} GB`;
+function delay(milliseconds: number) {
+    return new Promise<void>((resolve) =>
+        window.setTimeout(resolve, milliseconds)
+    );
 }
 
 function formatDuration(
-    duration: number | null
+    value: number | null
 ): string {
     if (
-        duration === null ||
-        !Number.isFinite(duration)
+        value === null ||
+        !Number.isFinite(value)
     ) {
-        return "Duração desconhecida";
+        return "00:00:00";
     }
 
-    const totalSeconds = Math.floor(duration);
-
+    const totalSeconds = Math.max(
+        0,
+        Math.floor(value)
+    );
     const hours = Math.floor(
         totalSeconds / 3600
     );
-
     const minutes = Math.floor(
         (totalSeconds % 3600) / 60
     );
-
     const seconds = totalSeconds % 60;
 
-    return [
-        hours,
-        minutes,
-        seconds
-    ]
-        .map((value) =>
-            String(value).padStart(2, "0")
+    return [hours, minutes, seconds]
+        .map((part) =>
+            String(part).padStart(2, "0")
         )
         .join(":");
 }
