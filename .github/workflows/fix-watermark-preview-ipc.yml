@@ -1,0 +1,36 @@
+name: Fix Watermark Preview IPC
+
+on:
+  push:
+    paths:
+      - ".github/workflows/fix-watermark-preview-ipc.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply preview IPC patch
+        run: python scripts/fix-watermark-preview-ipc.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate backend syntax
+        run: |
+          node --check src/main/main.js
+          node --check src/main/preload.js
+      - name: Build renderer
+        run: npm run build:renderer
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main/main.js src/main/preload.js src/renderer/src/WatermarkSettingsTab.tsx
+          git commit -m "fix: load watermark preview through main process IPC"
+          git push
