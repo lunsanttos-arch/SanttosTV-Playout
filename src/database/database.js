@@ -21,6 +21,7 @@ const initialData = {
     },
 
     media: [],
+    timeline: [],
     playlists: [],
     logs: []
 };
@@ -72,7 +73,17 @@ function loadDatabase() {
             },
 
             media: Array.isArray(parsedData.media)
-                ? parsedData.media
+                ? parsedData.media.map((item) => ({
+                      ...item,
+                      hashtag:
+                          typeof item.hashtag === "string"
+                              ? item.hashtag
+                              : ""
+                  }))
+                : [],
+
+            timeline: Array.isArray(parsedData.timeline)
+                ? parsedData.timeline
                 : [],
 
             playlists: Array.isArray(parsedData.playlists)
@@ -132,7 +143,88 @@ function addLog(message, level = "info") {
 }
 
 function getMedia() {
-    return [...data.media];
+    return data.media.map((item) => ({
+        ...item,
+        hashtag:
+            typeof item.hashtag === "string"
+                ? item.hashtag
+                : ""
+    }));
+}
+
+function getTimeline() {
+    const mediaById = new Map(
+        data.media.map((item) => [
+            item.id,
+            item
+        ])
+    );
+
+    return data.timeline
+        .map((entry) => {
+            const sourceMedia =
+                mediaById.get(
+                    entry.sourceMediaId
+                );
+
+            if (!sourceMedia) {
+                return null;
+            }
+
+            return {
+                ...sourceMedia,
+                id: entry.id,
+                sourceMediaId:
+                    entry.sourceMediaId,
+                loop: Boolean(entry.loop),
+                hashtag:
+                    typeof sourceMedia.hashtag ===
+                    "string"
+                        ? sourceMedia.hashtag
+                        : ""
+            };
+        })
+        .filter(Boolean);
+}
+
+function saveTimeline(timelineItems) {
+    if (!Array.isArray(timelineItems)) {
+        throw new TypeError(
+            "A timeline é inválida."
+        );
+    }
+
+    const existingMediaIds = new Set(
+        data.media.map((item) => item.id)
+    );
+
+    data.timeline = timelineItems
+        .map((item) => {
+            const sourceMediaId =
+                item?.sourceMediaId ??
+                item?.id;
+
+            if (
+                typeof item?.id !== "string" ||
+                typeof sourceMediaId !== "string" ||
+                !existingMediaIds.has(
+                    sourceMediaId
+                )
+            ) {
+                return null;
+            }
+
+            return {
+                id: item.id,
+                sourceMediaId,
+                loop: Boolean(item.loop)
+            };
+        })
+        .filter(Boolean);
+
+    saveDatabase();
+
+    return getTimeline();
 }
 
 function addMedia(filePaths) {
@@ -198,6 +290,7 @@ function addMedia(filePaths) {
             videoCodec: null,
             audioCodec: null,
             thumbnail: null,
+            hashtag: "",
 
             status: "pending-metadata",
 
@@ -241,6 +334,11 @@ function removeMedia(mediaId) {
         1
     );
 
+    data.timeline = data.timeline.filter(
+        (entry) =>
+            entry.sourceMediaId !== mediaId
+    );
+
     saveDatabase();
 
     addLog(
@@ -250,7 +348,52 @@ function removeMedia(mediaId) {
     return {
         removed: true,
         removedItem,
-        media: getMedia()
+        media: getMedia(),
+        timeline: getTimeline()
+    };
+}
+
+function normalizeHashtag(value) {
+    if (typeof value !== "string") {
+        return "";
+    }
+
+    const trimmed = value
+        .trim()
+        .replace(/\s+/g, "");
+
+    if (!trimmed) {
+        return "";
+    }
+
+    const withHash = trimmed.startsWith("#")
+        ? trimmed
+        : `#${trimmed}`;
+
+    return withHash.slice(0, 80);
+}
+
+function updateMediaHashtag(
+    mediaId,
+    hashtag
+) {
+    const mediaItem =
+        data.media.find(
+            (item) =>
+                item.id === mediaId
+        );
+
+    if (!mediaItem) {
+        return null;
+    }
+
+    mediaItem.hashtag =
+        normalizeHashtag(hashtag);
+
+    saveDatabase();
+
+    return {
+        ...mediaItem
     };
 }
 
@@ -260,6 +403,7 @@ function normalizePath(filePath) {
         .replaceAll("\\", "/")
         .toLowerCase();
 }
+
 function updateMediaMetadata(
     mediaId,
     metadata
@@ -290,11 +434,15 @@ function updateMediaMetadata(
         ...mediaItem
     };
 }
+
 module.exports = {
     initializeDatabase,
     addLog,
     getMedia,
+    getTimeline,
+    saveTimeline,
     addMedia,
     removeMedia,
+    updateMediaHashtag,
     updateMediaMetadata
 };
