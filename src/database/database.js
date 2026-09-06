@@ -73,17 +73,24 @@ function loadDatabase() {
             },
 
             media: Array.isArray(parsedData.media)
-                ? parsedData.media.map((item) => ({
-                      ...item,
-                      hashtag:
-                          typeof item.hashtag === "string"
-                              ? item.hashtag
-                              : ""
-                  }))
+                ? parsedData.media.map((item) => {
+                      const {
+                          hashtag: _legacyHashtag,
+                          ...cleanItem
+                      } = item;
+
+                      return cleanItem;
+                  })
                 : [],
 
             timeline: Array.isArray(parsedData.timeline)
-                ? parsedData.timeline
+                ? parsedData.timeline.map((entry) => ({
+                      ...entry,
+                      hashtag:
+                          normalizeHashtag(
+                              entry?.hashtag ?? ""
+                          )
+                  }))
                 : [],
 
             playlists: Array.isArray(parsedData.playlists)
@@ -144,11 +151,7 @@ function addLog(message, level = "info") {
 
 function getMedia() {
     return data.media.map((item) => ({
-        ...item,
-        hashtag:
-            typeof item.hashtag === "string"
-                ? item.hashtag
-                : ""
+        ...item
     }));
 }
 
@@ -178,10 +181,9 @@ function getTimeline() {
                     entry.sourceMediaId,
                 loop: Boolean(entry.loop),
                 hashtag:
-                    typeof sourceMedia.hashtag ===
-                    "string"
-                        ? sourceMedia.hashtag
-                        : ""
+                    normalizeHashtag(
+                        entry.hashtag ?? ""
+                    )
             };
         })
         .filter(Boolean);
@@ -217,7 +219,11 @@ function saveTimeline(timelineItems) {
             return {
                 id: item.id,
                 sourceMediaId,
-                loop: Boolean(item.loop)
+                loop: Boolean(item.loop),
+                hashtag:
+                    normalizeHashtag(
+                        item.hashtag ?? ""
+                    )
             };
         })
         .filter(Boolean);
@@ -290,7 +296,6 @@ function addMedia(filePaths) {
             videoCodec: null,
             audioCodec: null,
             thumbnail: null,
-            hashtag: "",
 
             status: "pending-metadata",
 
@@ -373,30 +378,6 @@ function normalizeHashtag(value) {
     return withHash.slice(0, 80);
 }
 
-function updateMediaHashtag(
-    mediaId,
-    hashtag
-) {
-    const mediaItem =
-        data.media.find(
-            (item) =>
-                item.id === mediaId
-        );
-
-    if (!mediaItem) {
-        return null;
-    }
-
-    mediaItem.hashtag =
-        normalizeHashtag(hashtag);
-
-    saveDatabase();
-
-    return {
-        ...mediaItem
-    };
-}
-
 function normalizePath(filePath) {
     return path
         .resolve(filePath)
@@ -443,6 +424,5 @@ module.exports = {
     saveTimeline,
     addMedia,
     removeMedia,
-    updateMediaHashtag,
     updateMediaMetadata
 };
