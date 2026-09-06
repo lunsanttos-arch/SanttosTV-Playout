@@ -32,6 +32,27 @@ contextBridge.exposeInMainWorld(
                 mediaId
             ),
 
+        updateMediaHashtag: (
+            mediaId,
+            hashtag
+        ) =>
+            ipcRenderer.invoke(
+                "media:set-hashtag",
+                mediaId,
+                hashtag
+            ),
+
+        getTimeline: () =>
+            ipcRenderer.invoke(
+                "timeline:list"
+            ),
+
+        saveTimeline: (timelineItems) =>
+            ipcRenderer.invoke(
+                "timeline:save",
+                timelineItems
+            ),
+
         getNdiStatus: () =>
             ipcRenderer.invoke(
                 "ndi:status"
@@ -39,12 +60,14 @@ contextBridge.exposeInMainWorld(
 
         playNdiFile: (
             filePath,
-            startSeconds = 0
+            startSeconds = 0,
+            hashtag = ""
         ) =>
             ipcRenderer.invoke(
                 "ndi:play-file",
                 filePath,
-                startSeconds
+                startSeconds,
+                hashtag
             ),
 
         stopNdiFile: () =>
