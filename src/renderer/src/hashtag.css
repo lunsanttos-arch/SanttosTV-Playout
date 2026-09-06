@@ -1,0 +1,69 @@
+.program-monitor {
+    position: relative;
+    overflow: hidden;
+}
+
+.program-hashtag {
+    position: absolute;
+    top: 5%;
+    left: 3%;
+    z-index: 5;
+    pointer-events: none;
+
+    max-width: 85%;
+
+    color: #ffffff;
+    font-size: clamp(18px, 2.4vw, 42px);
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.2px;
+
+    text-shadow:
+        -2px -2px 0 rgba(0, 0, 0, 0.8),
+        2px -2px 0 rgba(0, 0, 0, 0.8),
+        -2px 2px 0 rgba(0, 0, 0, 0.8),
+        2px 2px 0 rgba(0, 0, 0, 0.8),
+        0 3px 8px rgba(0, 0, 0, 0.75);
+}
+
+.media-hashtag-editor {
+    display: grid;
+    gap: 5px;
+
+    margin-top: 7px;
+    padding-top: 7px;
+
+    border-top: 1px solid #303030;
+}
+
+.media-hashtag-editor label {
+    color: #c5c5c5;
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+}
+
+.media-hashtag-editor input {
+    width: 100%;
+    height: 31px;
+
+    padding: 0 9px;
+
+    color: #ffffff;
+    background: #0f0f0f;
+
+    border: 1px solid #434343;
+    border-radius: 5px;
+    outline: none;
+}
+
+.media-hashtag-editor input:focus {
+    border-color: #a73349;
+}
+
+.media-hashtag-editor small {
+    color: #777777;
+    font-size: 10px;
+    line-height: 1.25;
+}
