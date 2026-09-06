@@ -13,6 +13,7 @@ const ffmpegStatic = require("ffmpeg-static");
 const {
     initializeDatabase,
     getSettings,
+    updateOutputSettings,
     updateHashtagStyle,
     addLog,
     getMedia,
@@ -279,8 +280,9 @@ function resolveHashtagFont(style) {
 
 function buildVideoFilter(hashtag) {
     // O asset é normalizado primeiro para o PROGRAM 1920x1080.
-    // O GC é aplicado somente depois, portanto sua geometria é
-    // sempre relativa ao output final e nunca ao arquivo de origem.
+    // O sender NDI atual ainda trabalha em 1080p29.97 fixo.
+    // O novo perfil de output já fica salvo para a próxima etapa
+    // e será a base também da saída SRT.
     const filters = [
         "scale=1920:1080:force_original_aspect_ratio=decrease",
         "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
@@ -572,6 +574,15 @@ function registerIpcHandlers() {
     ipcMain.handle(
         "settings:get",
         async () => getSettings()
+    );
+
+    ipcMain.handle(
+        "settings:set-output",
+        async (_event, output) => ({
+            ok: true,
+            output:
+                updateOutputSettings(output)
+        })
     );
 
     ipcMain.handle(
