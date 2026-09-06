@@ -16,6 +16,7 @@ interface MediaItem {
     id: string;
     sourceMediaId?: string;
     loop?: boolean;
+    hashtag?: string;
     name: string;
     path: string;
     extension: string;
@@ -27,7 +28,6 @@ interface MediaItem {
     videoCodec: string | null;
     audioCodec: string | null;
     thumbnail: string | null;
-    hashtag?: string;
     status: string;
     createdAt: string;
 }
@@ -52,12 +52,6 @@ interface NdiCommandResult {
     startSeconds?: number;
 }
 
-interface HashtagResult {
-    ok: boolean;
-    error?: string;
-    media?: MediaItem;
-}
-
 declare global {
     interface Window {
         santtosAPI: {
@@ -69,10 +63,6 @@ declare global {
             removeMedia: (
                 mediaId: string
             ) => Promise<RemoveResult>;
-            updateMediaHashtag: (
-                mediaId: string,
-                hashtag: string
-            ) => Promise<HashtagResult>;
             getTimeline: () => Promise<MediaItem[]>;
             saveTimeline: (
                 timelineItems: MediaItem[]
@@ -250,67 +240,6 @@ export default function App() {
         }
     }
 
-    async function handleUpdateHashtag(
-        mediaItem: MediaItem,
-        hashtag: string
-    ) {
-        try {
-            const result =
-                await window.santtosAPI
-                    .updateMediaHashtag(
-                        mediaItem.id,
-                        hashtag
-                    );
-
-            if (!result.ok || !result.media) {
-                throw new Error(
-                    result.error ??
-                        "Não foi possível salvar a hashtag."
-                );
-            }
-
-            const updated = result.media;
-
-            setMedia((current) =>
-                current.map((item) =>
-                    item.id === updated.id
-                        ? updated
-                        : item
-                )
-            );
-
-            setSelectedMedia((current) => {
-                if (!current) {
-                    return current;
-                }
-
-                const sourceId =
-                    current.sourceMediaId ??
-                    current.id;
-
-                if (sourceId !== updated.id) {
-                    return current;
-                }
-
-                return {
-                    ...current,
-                    hashtag: updated.hashtag
-                };
-            });
-
-            setMessage(
-                updated.hashtag
-                    ? `Hashtag ${updated.hashtag} salva para "${updated.name}".`
-                    : `Hashtag removida de "${updated.name}".`
-            );
-        } catch (error) {
-            console.error(error);
-            setMessage(
-                "Não foi possível salvar a hashtag."
-            );
-        }
-    }
-
     return (
         <div className="app-shell">
             <header className="topbar">
@@ -357,9 +286,6 @@ export default function App() {
                             onSelectMedia={setSelectedMedia}
                             onAddVideos={addVideos}
                             onRemoveMedia={handleRemoveMedia}
-                            onUpdateHashtag={
-                                handleUpdateHashtag
-                            }
                         />
                     )}
 
@@ -440,10 +366,6 @@ interface PlayoutPanelProps {
     onRemoveMedia: (
         media: MediaItem
     ) => Promise<void>;
-    onUpdateHashtag: (
-        media: MediaItem,
-        hashtag: string
-    ) => Promise<void>;
 }
 
 function PlayoutPanel({
@@ -453,8 +375,7 @@ function PlayoutPanel({
     selectedMedia,
     onSelectMedia,
     onAddVideos,
-    onRemoveMedia,
-    onUpdateHashtag
+    onRemoveMedia
 }: PlayoutPanelProps) {
     const videoRef =
         useRef<HTMLVideoElement | null>(null);
@@ -549,7 +470,8 @@ function PlayoutPanel({
                         ...source,
                         id: entry.id,
                         sourceMediaId: sourceId,
-                        loop: Boolean(entry.loop)
+                        loop: Boolean(entry.loop),
+                        hashtag: entry.hashtag ?? ""
                     };
                 })
                 .filter(
@@ -815,7 +737,8 @@ function PlayoutPanel({
                 .toString(16)
                 .slice(2)}`,
             sourceMediaId,
-            loop: false
+            loop: false,
+            hashtag: ""
         };
 
         setTimelineQueue((current) => {
@@ -881,6 +804,54 @@ function PlayoutPanel({
                 ...selectedMedia,
                 loop: !selectedMedia.loop
             });
+        }
+    }
+
+    async function updateTimelineHashtag(
+        mediaId: string,
+        value: string
+    ) {
+        const hashtag = normalizeHashtag(value);
+        let updatedItem: MediaItem | null = null;
+
+        setTimelineQueue((current) =>
+            current.map((item) => {
+                if (item.id !== mediaId) {
+                    return item;
+                }
+
+                updatedItem = {
+                    ...item,
+                    hashtag
+                };
+
+                return updatedItem;
+            })
+        );
+
+        if (selectedMedia?.id === mediaId) {
+            const updatedSelected = {
+                ...selectedMedia,
+                hashtag
+            };
+
+            onSelectMedia(updatedSelected);
+            updatedItem = updatedSelected;
+
+            if (isPlaying) {
+                try {
+                    await startNativeNdi(
+                        updatedSelected,
+                        videoRef.current?.currentTime ??
+                            currentTime
+                    );
+                } catch (error) {
+                    console.error(
+                        "Erro ao atualizar hashtag no NDI:",
+                        error
+                    );
+                }
+            }
         }
     }
 
@@ -1127,7 +1098,7 @@ function PlayoutPanel({
                         <span>
                             {selectedMedia?.hashtag
                                 ? `GC: ${selectedMedia.hashtag}`
-                                : "Sem hashtag configurada"}
+                                : "Sem hashtag nesta entrada"}
                         </span>
                     </section>
 
@@ -1141,11 +1112,11 @@ function PlayoutPanel({
                                 : "Nenhum conteúdo"}
                         </strong>
                         <span>
-                            {nextMedia
-                                ? formatDuration(
-                                      nextMedia.duration
-                                  )
-                                : "Fim da timeline"}
+                            {nextMedia?.hashtag
+                                ? `GC: ${nextMedia.hashtag}`
+                                : nextMedia
+                                  ? "Sem hashtag nesta entrada"
+                                  : "Fim da timeline"}
                         </span>
                     </section>
                 </div>
@@ -1294,11 +1265,40 @@ function PlayoutPanel({
                                                               item.duration
                                                           )}
                                                 </span>
-                                                {item.hashtag && (
-                                                    <span>
-                                                        {item.hashtag}
-                                                    </span>
-                                                )}
+
+                                                <div
+                                                    className="timeline-hashtag-editor"
+                                                    onClick={(event) =>
+                                                        event.stopPropagation()
+                                                    }
+                                                    onDoubleClick={(event) =>
+                                                        event.stopPropagation()
+                                                    }
+                                                >
+                                                    <span>H</span>
+                                                    <input
+                                                        key={`${item.id}-${item.hashtag ?? ""}`}
+                                                        defaultValue={
+                                                            item.hashtag ?? ""
+                                                        }
+                                                        placeholder="#Hashtag"
+                                                        maxLength={80}
+                                                        onBlur={(event) =>
+                                                            updateTimelineHashtag(
+                                                                item.id,
+                                                                event.currentTarget.value
+                                                            )
+                                                        }
+                                                        onKeyDown={(event) => {
+                                                            if (
+                                                                event.key === "Enter"
+                                                            ) {
+                                                                event.currentTarget.blur();
+                                                            }
+                                                        }}
+                                                    />
+                                                </div>
+
                                                 <span className="timeline-air-time">
                                                     {isCurrent
                                                         ? "ENTROU "
@@ -1371,7 +1371,6 @@ function PlayoutPanel({
                     onAddVideos={onAddVideos}
                     onRemoveMedia={onRemoveMedia}
                     onAddToTimeline={addTimelineItem}
-                    onUpdateHashtag={onUpdateHashtag}
                 />
             </div>
         </div>
@@ -1393,10 +1392,6 @@ interface LibraryPanelProps {
     onAddToTimeline: (
         media: MediaItem
     ) => void;
-    onUpdateHashtag: (
-        media: MediaItem,
-        hashtag: string
-    ) => Promise<void>;
 }
 
 function LibraryPanel({
@@ -1407,8 +1402,7 @@ function LibraryPanel({
     onSelectMedia,
     onAddVideos,
     onRemoveMedia,
-    onAddToTimeline,
-    onUpdateHashtag
+    onAddToTimeline
 }: LibraryPanelProps) {
     const [search, setSearch] =
         useState("");
@@ -1422,7 +1416,7 @@ function LibraryPanel({
         }
 
         return media.filter((item) =>
-            `${item.name} ${item.hashtag ?? ""}`
+            item.name
                 .toLowerCase()
                 .includes(normalized)
         );
@@ -1454,7 +1448,7 @@ function LibraryPanel({
                     className="search-input"
                     type="search"
                     value={search}
-                    placeholder="Pesquisar vídeo ou hashtag..."
+                    placeholder="Pesquisar vídeo..."
                     onChange={(event) =>
                         setSearch(event.target.value)
                     }
@@ -1528,44 +1522,6 @@ function LibraryPanel({
                                         {formatDuration(item.duration)}
                                     </span>
                                 </div>
-
-                                <div
-                                    className="media-hashtag-editor"
-                                    onClick={(event) =>
-                                        event.stopPropagation()
-                                    }
-                                    onDoubleClick={(event) =>
-                                        event.stopPropagation()
-                                    }
-                                >
-                                    <label>
-                                        Hashtag automática
-                                    </label>
-                                    <input
-                                        key={`${item.id}-${item.hashtag ?? ""}`}
-                                        defaultValue={
-                                            item.hashtag ?? ""
-                                        }
-                                        placeholder="#PortoAlegre24Horas"
-                                        maxLength={80}
-                                        onBlur={(event) =>
-                                            onUpdateHashtag(
-                                                item,
-                                                event.currentTarget.value
-                                            )
-                                        }
-                                        onKeyDown={(event) => {
-                                            if (
-                                                event.key === "Enter"
-                                            ) {
-                                                event.currentTarget.blur();
-                                            }
-                                        }}
-                                    />
-                                    <small>
-                                        Entra no canto superior esquerdo quando o arquivo for ao ar.
-                                    </small>
-                                </div>
                             </div>
 
                             <button
@@ -1614,6 +1570,22 @@ function EmptyPanel({
             </div>
         </section>
     );
+}
+
+function normalizeHashtag(value: string) {
+    const normalized = value
+        .trim()
+        .replace(/\s+/g, "");
+
+    if (!normalized) {
+        return "";
+    }
+
+    return (
+        normalized.startsWith("#")
+            ? normalized
+            : `#${normalized}`
+    ).slice(0, 80);
 }
 
 function delay(milliseconds: number) {
