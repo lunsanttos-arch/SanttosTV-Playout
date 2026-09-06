@@ -838,3 +838,5 @@ function buildProgramFilterGraph(
           git add src/database/database.js src/main/main.js src/main/preload.js src/renderer/src/App.tsx src/renderer/src/BroadcastSettingsPanel.tsx
           git commit -m "feat: add per-timeline watermark with intelligent fades"
           git push
+
+# rerun after watermark settings UI assets were added
