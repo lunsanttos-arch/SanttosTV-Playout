@@ -5,6 +5,7 @@ import {
     useState
 } from "react";
 import type { CSSProperties } from "react";
+import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 
 type Panel =
     | "playout"
@@ -366,9 +367,9 @@ export default function App() {
                     )}
 
                     {activePanel === "settings" && (
-                        <HashtagSettingsPanel
+                        <BroadcastSettingsPanel
                             hashtagStyle={hashtagStyle}
-                            onSave={saveHashtagStyle}
+                            onSaveHashtag={saveHashtagStyle}
                         />
                     )}
 
