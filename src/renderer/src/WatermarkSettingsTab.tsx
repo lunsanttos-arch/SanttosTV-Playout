@@ -23,6 +23,70 @@ const DEFAULT_WATERMARK: WatermarkStyle = {
     fadeMs: 200
 };
 
+function clampNumber(
+    value: unknown,
+    fallback: number,
+    min: number,
+    max: number
+) {
+    const numberValue = Number(value);
+
+    if (!Number.isFinite(numberValue)) {
+        return fallback;
+    }
+
+    return Math.min(
+        max,
+        Math.max(min, numberValue)
+    );
+}
+
+function normalizeWatermarkStyle(
+    value: unknown
+): WatermarkStyle {
+    const source =
+        value && typeof value === "object"
+            ? value as Partial<WatermarkStyle>
+            : {};
+
+    return {
+        filePath:
+            typeof source.filePath === "string"
+                ? source.filePath
+                : "",
+        widthPx: clampNumber(
+            source.widthPx,
+            DEFAULT_WATERMARK.widthPx,
+            24,
+            960
+        ),
+        x: clampNumber(
+            source.x,
+            DEFAULT_WATERMARK.x,
+            0,
+            1920
+        ),
+        y: clampNumber(
+            source.y,
+            DEFAULT_WATERMARK.y,
+            0,
+            1080
+        ),
+        opacity: clampNumber(
+            source.opacity,
+            DEFAULT_WATERMARK.opacity,
+            0,
+            1
+        ),
+        fadeMs: clampNumber(
+            source.fadeMs,
+            DEFAULT_WATERMARK.fadeMs,
+            0,
+            2000
+        )
+    };
+}
+
 export default function WatermarkSettingsTab() {
     const [draft, setDraft] =
         useState<WatermarkStyle>(
@@ -32,38 +96,97 @@ export default function WatermarkSettingsTab() {
         useState("");
     const [isSaving, setIsSaving] =
         useState(false);
+    const [previewUrl, setPreviewUrl] =
+        useState("");
 
     useEffect(() => {
         const api = (window as any).santtosAPI;
 
+        if (!api?.getSettings) {
+            setStatus(
+                "API de configurações indisponível."
+            );
+            return;
+        }
+
         api.getSettings()
             .then((settings: any) => {
                 setDraft(
-                    settings.watermarkStyle ??
-                        DEFAULT_WATERMARK
+                    normalizeWatermarkStyle(
+                        settings?.watermarkStyle
+                    )
                 );
             })
             .catch((error: unknown) => {
                 console.error(error);
+                setDraft(DEFAULT_WATERMARK);
                 setStatus(
-                    "Não foi possível carregar a marca d'água."
+                    "Não foi possível carregar a marca d'água. Os valores padrão foram restaurados nesta tela."
                 );
             });
     }, []);
 
+    useEffect(() => {
+        if (!draft.filePath) {
+            setPreviewUrl("");
+            return;
+        }
+
+        try {
+            const api = (window as any).santtosAPI;
+
+            if (!api?.getMediaFileUrl) {
+                setPreviewUrl("");
+                setStatus(
+                    "Preview indisponível, mas a configuração pode ser alterada normalmente."
+                );
+                return;
+            }
+
+            const url = api.getMediaFileUrl(
+                draft.filePath
+            );
+
+            setPreviewUrl(
+                typeof url === "string"
+                    ? url
+                    : ""
+            );
+        } catch (error) {
+            console.error(
+                "Falha ao criar URL do preview da marca d'água:",
+                error
+            );
+            setPreviewUrl("");
+            setStatus(
+                "A marca d'água salva anteriormente tem um caminho inválido. Selecione a imagem novamente."
+            );
+        }
+    }, [draft.filePath]);
+
     function patch(
         values: Partial<WatermarkStyle>
     ) {
-        setDraft((current) => ({
-            ...current,
-            ...values
-        }));
+        setDraft((current) =>
+            normalizeWatermarkStyle({
+                ...current,
+                ...values
+            })
+        );
         setStatus("");
     }
 
     async function chooseFile() {
         try {
             const api = (window as any).santtosAPI;
+
+            if (!api?.selectWatermark) {
+                setStatus(
+                    "Seletor de marca d'água indisponível."
+                );
+                return;
+            }
+
             const result =
                 await api.selectWatermark();
 
@@ -78,7 +201,10 @@ export default function WatermarkSettingsTab() {
             }
 
             patch({
-                filePath: result.filePath
+                filePath:
+                    typeof result.filePath === "string"
+                        ? result.filePath
+                        : ""
             });
             setStatus(
                 `Imagem validada${
@@ -100,9 +226,16 @@ export default function WatermarkSettingsTab() {
 
         try {
             const api = (window as any).santtosAPI;
+
+            if (!api?.saveWatermarkStyle) {
+                throw new Error(
+                    "API de salvamento indisponível."
+                );
+            }
+
             const result =
                 await api.saveWatermarkStyle(
-                    draft
+                    normalizeWatermarkStyle(draft)
                 );
 
             if (!result?.ok) {
@@ -112,14 +245,20 @@ export default function WatermarkSettingsTab() {
                 );
             }
 
-            setDraft(result.watermarkStyle);
+            setDraft(
+                normalizeWatermarkStyle(
+                    result.watermarkStyle
+                )
+            );
             setStatus(
                 "Marca d'água salva. A timeline decide em quais vídeos ela entra."
             );
         } catch (error) {
             console.error(error);
             setStatus(
-                "Não foi possível salvar a marca d'água."
+                error instanceof Error
+                    ? error.message
+                    : "Não foi possível salvar a marca d'água."
             );
         } finally {
             setIsSaving(false);
@@ -272,25 +411,23 @@ export default function WatermarkSettingsTab() {
                 </div>
                 <div className="watermark-output-preview">
                     <div className="watermark-safe-area" />
-                    {draft.filePath ? (
+                    {previewUrl ? (
                         <img
-                            src={
-                                (window as any).santtosAPI
-                                    .getMediaFileUrl(
-                                        draft.filePath
-                                    )
-                            }
+                            src={previewUrl}
                             style={previewStyle}
                             alt="Preview da marca d'água"
-                            onError={() =>
+                            onError={() => {
+                                setPreviewUrl("");
                                 setStatus(
-                                    "A imagem foi selecionada, mas o preview não conseguiu carregá-la. Tente PNG ou WebP."
-                                )
-                            }
+                                    "O arquivo salvo não pôde ser carregado no preview. Selecione a marca d'água novamente."
+                                );
+                            }}
                         />
                     ) : (
                         <div className="watermark-preview-empty">
-                            Selecione a imagem da TV
+                            {draft.filePath
+                                ? "Preview indisponível — selecione a imagem novamente"
+                                : "Selecione a imagem da TV"}
                         </div>
                     )}
                 </div>
