@@ -48,6 +48,12 @@ contextBridge.exposeInMainWorld(
                 "settings:get"
             ),
 
+        saveOutputSettings: (output) =>
+            ipcRenderer.invoke(
+                "settings:set-output",
+                output
+            ),
+
         saveHashtagStyle: (style) =>
             ipcRenderer.invoke(
                 "settings:set-hashtag-style",
