@@ -4,6 +4,7 @@ import {
     useRef,
     useState
 } from "react";
+import type { CSSProperties } from "react";
 
 type Panel =
     | "playout"
@@ -32,6 +33,32 @@ interface MediaItem {
     createdAt: string;
 }
 
+interface HashtagStyle {
+    fontFamily: string;
+    fontSize: number;
+    color: string;
+    opacity: number;
+    x: number;
+    y: number;
+    bold: boolean;
+    outlineWidth: number;
+    outlineColor: string;
+    outlineOpacity: number;
+    shadowEnabled: boolean;
+    shadowColor: string;
+    shadowOpacity: number;
+    shadowX: number;
+    shadowY: number;
+}
+
+interface AppSettings {
+    channelName: string;
+    resolution: string;
+    fps: string;
+    ndiName: string;
+    hashtagStyle: HashtagStyle;
+}
+
 interface ImportResult {
     importedItems: MediaItem[];
     duplicatedItems: string[];
@@ -52,6 +79,29 @@ interface NdiCommandResult {
     startSeconds?: number;
 }
 
+interface SaveHashtagStyleResult {
+    ok: boolean;
+    hashtagStyle: HashtagStyle;
+}
+
+const DEFAULT_HASHTAG_STYLE: HashtagStyle = {
+    fontFamily: "Arial",
+    fontSize: 28,
+    color: "#ffffff",
+    opacity: 0.68,
+    x: 55,
+    y: 32,
+    bold: true,
+    outlineWidth: 1,
+    outlineColor: "#000000",
+    outlineOpacity: 0.35,
+    shadowEnabled: true,
+    shadowColor: "#000000",
+    shadowOpacity: 0.35,
+    shadowX: 2,
+    shadowY: 2
+};
+
 declare global {
     interface Window {
         santtosAPI: {
@@ -67,6 +117,10 @@ declare global {
             saveTimeline: (
                 timelineItems: MediaItem[]
             ) => Promise<MediaItem[]>;
+            getSettings: () => Promise<AppSettings>;
+            saveHashtagStyle: (
+                style: HashtagStyle
+            ) => Promise<SaveHashtagStyleResult>;
             getNdiStatus: () => Promise<{
                 online: boolean;
                 source: string;
@@ -103,6 +157,10 @@ export default function App() {
         useState("");
     const [selectedMedia, setSelectedMedia] =
         useState<MediaItem | null>(null);
+    const [hashtagStyle, setHashtagStyle] =
+        useState<HashtagStyle>(
+            DEFAULT_HASHTAG_STYLE
+        );
 
     useEffect(() => {
         const updateClock = () =>
@@ -144,21 +202,24 @@ export default function App() {
             window.clearInterval(timer);
     }, []);
 
-    async function loadMedia() {
-        try {
-            setMedia(
-                await window.santtosAPI.getMedia()
-            );
-        } catch (error) {
-            console.error(error);
-            setMessage(
-                "Não foi possível carregar a biblioteca."
-            );
-        }
-    }
-
     useEffect(() => {
-        loadMedia();
+        Promise.all([
+            window.santtosAPI.getMedia(),
+            window.santtosAPI.getSettings()
+        ])
+            .then(([savedMedia, settings]) => {
+                setMedia(savedMedia);
+                setHashtagStyle(
+                    settings.hashtagStyle ??
+                        DEFAULT_HASHTAG_STYLE
+                );
+            })
+            .catch((error) => {
+                console.error(error);
+                setMessage(
+                    "Não foi possível carregar as configurações do sistema."
+                );
+            });
     }, []);
 
     async function addVideos() {
@@ -219,10 +280,8 @@ export default function App() {
             setMedia(result.media);
 
             if (
-                selectedMedia &&
-                (selectedMedia.id === mediaItem.id ||
-                    selectedMedia.sourceMediaId ===
-                        mediaItem.id)
+                selectedMedia?.sourceMediaId ===
+                    mediaItem.id
             ) {
                 setSelectedMedia(null);
             }
@@ -238,6 +297,22 @@ export default function App() {
                 "Não foi possível remover o vídeo."
             );
         }
+    }
+
+    async function saveHashtagStyle(
+        style: HashtagStyle
+    ) {
+        const result =
+            await window.santtosAPI
+                .saveHashtagStyle(style);
+
+        if (!result.ok) {
+            throw new Error(
+                "Não foi possível salvar o GC."
+            );
+        }
+
+        setHashtagStyle(result.hashtagStyle);
     }
 
     return (
@@ -283,13 +358,22 @@ export default function App() {
                             isLoading={isLoading}
                             message={message}
                             selectedMedia={selectedMedia}
+                            hashtagStyle={hashtagStyle}
                             onSelectMedia={setSelectedMedia}
                             onAddVideos={addVideos}
                             onRemoveMedia={handleRemoveMedia}
                         />
                     )}
 
-                    {activePanel !== "playout" && (
+                    {activePanel === "settings" && (
+                        <HashtagSettingsPanel
+                            hashtagStyle={hashtagStyle}
+                            onSave={saveHashtagStyle}
+                        />
+                    )}
+
+                    {activePanel !== "playout" &&
+                        activePanel !== "settings" && (
                         <EmptyPanel
                             title={activePanel}
                             message="Módulo em desenvolvimento."
@@ -359,6 +443,7 @@ interface PlayoutPanelProps {
     isLoading: boolean;
     message: string;
     selectedMedia: MediaItem | null;
+    hashtagStyle: HashtagStyle;
     onSelectMedia: (
         media: MediaItem
     ) => void;
@@ -373,6 +458,7 @@ function PlayoutPanel({
     isLoading,
     message,
     selectedMedia,
+    hashtagStyle,
     onSelectMedia,
     onAddVideos,
     onRemoveMedia
@@ -380,6 +466,9 @@ function PlayoutPanel({
     const videoRef =
         useRef<HTMLVideoElement | null>(null);
     const timelineLoadedRef = useRef(false);
+    const previousStyleRef = useRef(
+        JSON.stringify(hashtagStyle)
+    );
 
     const [currentTime, setCurrentTime] =
         useState(0);
@@ -395,26 +484,21 @@ function PlayoutPanel({
     useEffect(() => {
         let cancelled = false;
 
-        const loadTimeline = async () => {
-            try {
-                const savedTimeline =
-                    await window.santtosAPI
-                        .getTimeline();
-
+        window.santtosAPI
+            .getTimeline()
+            .then((savedTimeline) => {
                 if (!cancelled) {
                     setTimelineQueue(savedTimeline);
                     timelineLoadedRef.current = true;
                 }
-            } catch (error) {
+            })
+            .catch((error) => {
                 console.error(
                     "Erro ao carregar timeline:",
                     error
                 );
                 timelineLoadedRef.current = true;
-            }
-        };
-
-        loadTimeline();
+            });
 
         return () => {
             cancelled = true;
@@ -610,6 +694,35 @@ function PlayoutPanel({
         }
     }
 
+    useEffect(() => {
+        const signature =
+            JSON.stringify(hashtagStyle);
+
+        if (
+            signature === previousStyleRef.current
+        ) {
+            return;
+        }
+
+        previousStyleRef.current = signature;
+
+        if (
+            isPlaying &&
+            selectedMedia?.hashtag
+        ) {
+            startNativeNdi(
+                selectedMedia,
+                videoRef.current?.currentTime ??
+                    currentTime
+            ).catch((error) =>
+                console.error(
+                    "Erro ao aplicar estilo do GC no NDI:",
+                    error
+                )
+            );
+        }
+    }, [hashtagStyle]);
+
     async function playVideo() {
         let mediaToPlay = selectedMedia;
 
@@ -771,9 +884,7 @@ function PlayoutPanel({
         });
     }
 
-    function removeTimelineItem(
-        mediaId: string
-    ) {
+    function removeTimelineItem(mediaId: string) {
         if (mediaId === selectedMedia?.id) {
             return;
         }
@@ -785,9 +896,7 @@ function PlayoutPanel({
         );
     }
 
-    function toggleTimelineLoop(
-        mediaId: string
-    ) {
+    function toggleTimelineLoop(mediaId: string) {
         setTimelineQueue((current) =>
             current.map((item) =>
                 item.id === mediaId
@@ -812,21 +921,13 @@ function PlayoutPanel({
         value: string
     ) {
         const hashtag = normalizeHashtag(value);
-        let updatedItem: MediaItem | null = null;
 
         setTimelineQueue((current) =>
-            current.map((item) => {
-                if (item.id !== mediaId) {
-                    return item;
-                }
-
-                updatedItem = {
-                    ...item,
-                    hashtag
-                };
-
-                return updatedItem;
-            })
+            current.map((item) =>
+                item.id === mediaId
+                    ? { ...item, hashtag }
+                    : item
+            )
         );
 
         if (selectedMedia?.id === mediaId) {
@@ -836,7 +937,6 @@ function PlayoutPanel({
             };
 
             onSelectMedia(updatedSelected);
-            updatedItem = updatedSelected;
 
             if (isPlaying) {
                 try {
@@ -931,9 +1031,7 @@ function PlayoutPanel({
         });
     }
 
-    function moveTimelineItem(
-        targetMediaId: string
-    ) {
+    function moveTimelineItem(targetMediaId: string) {
         if (
             !draggedMediaId ||
             draggedMediaId === targetMediaId
@@ -991,9 +1089,7 @@ function PlayoutPanel({
                             <div className="panel-title">
                                 PROGRAM
                             </div>
-                            <strong>
-                                Saída principal
-                            </strong>
+                            <strong>Saída principal</strong>
                         </div>
 
                         <span className="program-status">
@@ -1015,20 +1111,17 @@ function PlayoutPanel({
                                     preload="auto"
                                     onTimeUpdate={(event) =>
                                         setCurrentTime(
-                                            event.currentTarget
-                                                .currentTime
+                                            event.currentTarget.currentTime
                                         )
                                     }
                                     onLoadedMetadata={(event) =>
                                         setDuration(
-                                            event.currentTarget
-                                                .duration
+                                            event.currentTarget.duration
                                         )
                                     }
                                     onDurationChange={(event) =>
                                         setDuration(
-                                            event.currentTarget
-                                                .duration
+                                            event.currentTarget.duration
                                         )
                                     }
                                     onSeeked={(event) =>
@@ -1040,7 +1133,14 @@ function PlayoutPanel({
                                 />
 
                                 {selectedMedia?.hashtag && (
-                                    <div className="program-hashtag">
+                                    <div
+                                        className="program-hashtag"
+                                        style={
+                                            getHashtagPreviewStyle(
+                                                hashtagStyle
+                                            )
+                                        }
+                                    >
                                         {selectedMedia.hashtag}
                                     </div>
                                 )}
@@ -1251,9 +1351,7 @@ function PlayoutPanel({
                                             </div>
 
                                             <div className="timeline-content">
-                                                <strong>
-                                                    {item.name}
-                                                </strong>
+                                                <strong>{item.name}</strong>
                                                 <span>
                                                     {isCurrent
                                                         ? `${formatDuration(
@@ -1366,8 +1464,6 @@ function PlayoutPanel({
                     media={media}
                     isLoading={isLoading}
                     message={message}
-                    selectedMedia={selectedMedia}
-                    onSelectMedia={onSelectMedia}
                     onAddVideos={onAddVideos}
                     onRemoveMedia={onRemoveMedia}
                     onAddToTimeline={addTimelineItem}
@@ -1381,10 +1477,6 @@ interface LibraryPanelProps {
     media: MediaItem[];
     isLoading: boolean;
     message: string;
-    selectedMedia: MediaItem | null;
-    onSelectMedia: (
-        media: MediaItem
-    ) => void;
     onAddVideos: () => Promise<void>;
     onRemoveMedia: (
         media: MediaItem
@@ -1398,8 +1490,6 @@ function LibraryPanel({
     media,
     isLoading,
     message,
-    selectedMedia,
-    onSelectMedia,
     onAddVideos,
     onRemoveMedia,
     onAddToTimeline
@@ -1474,14 +1564,7 @@ function LibraryPanel({
                         <article
                             key={item.id}
                             draggable
-                            className={
-                                selectedMedia?.id === item.id
-                                    ? "media-item selected"
-                                    : "media-item"
-                            }
-                            onClick={() =>
-                                onSelectMedia(item)
-                            }
+                            className="media-item"
                             onDoubleClick={(event) => {
                                 event.stopPropagation();
                                 onAddToTimeline(item);
@@ -1553,6 +1636,461 @@ function LibraryPanel({
     );
 }
 
+function HashtagSettingsPanel({
+    hashtagStyle,
+    onSave
+}: {
+    hashtagStyle: HashtagStyle;
+    onSave: (
+        style: HashtagStyle
+    ) => Promise<void>;
+}) {
+    const [draft, setDraft] =
+        useState<HashtagStyle>(hashtagStyle);
+    const [status, setStatus] =
+        useState("");
+
+    useEffect(() => {
+        setDraft(hashtagStyle);
+    }, [hashtagStyle]);
+
+    function patch(
+        values: Partial<HashtagStyle>
+    ) {
+        setDraft((current) => ({
+            ...current,
+            ...values
+        }));
+        setStatus("");
+    }
+
+    async function save() {
+        try {
+            await onSave(draft);
+            setStatus(
+                "Configuração salva e aplicada ao PROGRAM."
+            );
+        } catch (error) {
+            console.error(error);
+            setStatus(
+                "Não foi possível salvar a configuração."
+            );
+        }
+    }
+
+    return (
+        <section className="panel hashtag-settings-panel">
+            <div className="settings-header">
+                <div>
+                    <div className="panel-title">
+                        CONFIGURAÇÕES
+                    </div>
+                    <h1>Hashtag / GC do PROGRAM</h1>
+                    <p>
+                        Todos os valores são relativos ao output final 1920×1080, independentemente da proporção do arquivo.
+                    </p>
+                </div>
+
+                <div className="settings-actions">
+                    <button
+                        type="button"
+                        onClick={() =>
+                            setDraft(
+                                DEFAULT_HASHTAG_STYLE
+                            )
+                        }
+                    >
+                        Restaurar padrão
+                    </button>
+                    <button
+                        type="button"
+                        className="primary-button"
+                        onClick={save}
+                    >
+                        Aplicar e salvar
+                    </button>
+                </div>
+            </div>
+
+            <div className="hashtag-settings-layout">
+                <div className="hashtag-settings-controls">
+                    <SettingsGroup title="Tipografia">
+                        <label className="setting-field">
+                            <span>Fonte</span>
+                            <select
+                                value={draft.fontFamily}
+                                onChange={(event) =>
+                                    patch({
+                                        fontFamily:
+                                            event.currentTarget.value
+                                    })
+                                }
+                            >
+                                <option>Arial</option>
+                                <option>Segoe UI</option>
+                                <option>Tahoma</option>
+                                <option>Verdana</option>
+                                <option>Calibri</option>
+                            </select>
+                        </label>
+
+                        <NumberField
+                            label="Tamanho no Full HD"
+                            value={draft.fontSize}
+                            min={10}
+                            max={160}
+                            suffix="px"
+                            onChange={(value) =>
+                                patch({ fontSize: value })
+                            }
+                        />
+
+                        <label className="setting-toggle">
+                            <input
+                                type="checkbox"
+                                checked={draft.bold}
+                                onChange={(event) =>
+                                    patch({
+                                        bold:
+                                            event.currentTarget.checked
+                                    })
+                                }
+                            />
+                            <span>Negrito</span>
+                        </label>
+                    </SettingsGroup>
+
+                    <SettingsGroup title="Cor e opacidade">
+                        <ColorField
+                            label="Cor do texto"
+                            value={draft.color}
+                            onChange={(value) =>
+                                patch({ color: value })
+                            }
+                        />
+
+                        <RangeField
+                            label="Opacidade"
+                            value={draft.opacity}
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            display={`${Math.round(
+                                draft.opacity * 100
+                            )}%`}
+                            onChange={(value) =>
+                                patch({ opacity: value })
+                            }
+                        />
+                    </SettingsGroup>
+
+                    <SettingsGroup title="Posição no output 1920×1080">
+                        <NumberField
+                            label="Posição X"
+                            value={draft.x}
+                            min={0}
+                            max={1920}
+                            suffix="px"
+                            onChange={(value) =>
+                                patch({ x: value })
+                            }
+                        />
+                        <NumberField
+                            label="Posição Y"
+                            value={draft.y}
+                            min={0}
+                            max={1080}
+                            suffix="px"
+                            onChange={(value) =>
+                                patch({ y: value })
+                            }
+                        />
+                    </SettingsGroup>
+
+                    <SettingsGroup title="Contorno">
+                        <RangeField
+                            label="Espessura"
+                            value={draft.outlineWidth}
+                            min={0}
+                            max={12}
+                            step={1}
+                            display={`${draft.outlineWidth}px`}
+                            onChange={(value) =>
+                                patch({
+                                    outlineWidth: value
+                                })
+                            }
+                        />
+                        <ColorField
+                            label="Cor do contorno"
+                            value={draft.outlineColor}
+                            onChange={(value) =>
+                                patch({
+                                    outlineColor: value
+                                })
+                            }
+                        />
+                        <RangeField
+                            label="Opacidade do contorno"
+                            value={draft.outlineOpacity}
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            display={`${Math.round(
+                                draft.outlineOpacity * 100
+                            )}%`}
+                            onChange={(value) =>
+                                patch({
+                                    outlineOpacity: value
+                                })
+                            }
+                        />
+                    </SettingsGroup>
+
+                    <SettingsGroup title="Sombra">
+                        <label className="setting-toggle">
+                            <input
+                                type="checkbox"
+                                checked={draft.shadowEnabled}
+                                onChange={(event) =>
+                                    patch({
+                                        shadowEnabled:
+                                            event.currentTarget.checked
+                                    })
+                                }
+                            />
+                            <span>Ativar sombra</span>
+                        </label>
+
+                        <ColorField
+                            label="Cor da sombra"
+                            value={draft.shadowColor}
+                            disabled={!draft.shadowEnabled}
+                            onChange={(value) =>
+                                patch({
+                                    shadowColor: value
+                                })
+                            }
+                        />
+
+                        <RangeField
+                            label="Opacidade da sombra"
+                            value={draft.shadowOpacity}
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            disabled={!draft.shadowEnabled}
+                            display={`${Math.round(
+                                draft.shadowOpacity * 100
+                            )}%`}
+                            onChange={(value) =>
+                                patch({
+                                    shadowOpacity: value
+                                })
+                            }
+                        />
+
+                        <NumberField
+                            label="Deslocamento X"
+                            value={draft.shadowX}
+                            min={-30}
+                            max={30}
+                            suffix="px"
+                            disabled={!draft.shadowEnabled}
+                            onChange={(value) =>
+                                patch({ shadowX: value })
+                            }
+                        />
+
+                        <NumberField
+                            label="Deslocamento Y"
+                            value={draft.shadowY}
+                            min={-30}
+                            max={30}
+                            suffix="px"
+                            disabled={!draft.shadowEnabled}
+                            onChange={(value) =>
+                                patch({ shadowY: value })
+                            }
+                        />
+                    </SettingsGroup>
+                </div>
+
+                <div className="hashtag-settings-preview-column">
+                    <div className="panel-title">
+                        PREVIEW DO OUTPUT 1920×1080
+                    </div>
+
+                    <div className="hashtag-output-preview">
+                        <div className="preview-safe-area" />
+                        <div
+                            className="program-hashtag settings-preview-hashtag"
+                            style={
+                                getHashtagPreviewStyle(
+                                    draft
+                                )
+                            }
+                        >
+                            #RondaPopular
+                        </div>
+                    </div>
+
+                    <div className="settings-summary">
+                        <strong>Coordenadas reais</strong>
+                        <span>
+                            X {Math.round(draft.x)} px · Y {Math.round(draft.y)} px · {Math.round(draft.fontSize)} px
+                        </span>
+                        <span>
+                            Este preview escala o mesmo canvas 1920×1080. Um vídeo 4:3 não altera o GC.
+                        </span>
+                    </div>
+
+                    {status && (
+                        <div className="library-message">
+                            {status}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </section>
+    );
+}
+
+function SettingsGroup({
+    title,
+    children
+}: {
+    title: string;
+    children: React.ReactNode;
+}) {
+    return (
+        <div className="settings-group">
+            <h2>{title}</h2>
+            {children}
+        </div>
+    );
+}
+
+function NumberField({
+    label,
+    value,
+    min,
+    max,
+    suffix,
+    disabled = false,
+    onChange
+}: {
+    label: string;
+    value: number;
+    min: number;
+    max: number;
+    suffix: string;
+    disabled?: boolean;
+    onChange: (value: number) => void;
+}) {
+    return (
+        <label className="setting-field">
+            <span>{label}</span>
+            <div className="number-input-with-suffix">
+                <input
+                    type="number"
+                    value={value}
+                    min={min}
+                    max={max}
+                    disabled={disabled}
+                    onChange={(event) =>
+                        onChange(
+                            clamp(
+                                Number(
+                                    event.currentTarget.value
+                                ),
+                                min,
+                                max
+                            )
+                        )
+                    }
+                />
+                <small>{suffix}</small>
+            </div>
+        </label>
+    );
+}
+
+function RangeField({
+    label,
+    value,
+    min,
+    max,
+    step,
+    display,
+    disabled = false,
+    onChange
+}: {
+    label: string;
+    value: number;
+    min: number;
+    max: number;
+    step: number;
+    display: string;
+    disabled?: boolean;
+    onChange: (value: number) => void;
+}) {
+    return (
+        <label className="setting-field range-setting-field">
+            <span>
+                {label}
+                <strong>{display}</strong>
+            </span>
+            <input
+                type="range"
+                value={value}
+                min={min}
+                max={max}
+                step={step}
+                disabled={disabled}
+                onChange={(event) =>
+                    onChange(
+                        Number(
+                            event.currentTarget.value
+                        )
+                    )
+                }
+            />
+        </label>
+    );
+}
+
+function ColorField({
+    label,
+    value,
+    disabled = false,
+    onChange
+}: {
+    label: string;
+    value: string;
+    disabled?: boolean;
+    onChange: (value: string) => void;
+}) {
+    return (
+        <label className="setting-field color-setting-field">
+            <span>{label}</span>
+            <div>
+                <input
+                    type="color"
+                    value={value}
+                    disabled={disabled}
+                    onChange={(event) =>
+                        onChange(
+                            event.currentTarget.value
+                        )
+                    }
+                />
+                <code>{value.toUpperCase()}</code>
+            </div>
+        </label>
+    );
+}
+
 function EmptyPanel({
     title,
     message
@@ -1572,6 +2110,60 @@ function EmptyPanel({
     );
 }
 
+function getHashtagPreviewStyle(
+    style: HashtagStyle
+): CSSProperties {
+    const shadowParts: string[] = [];
+
+    if (style.shadowEnabled) {
+        shadowParts.push(
+            `${style.shadowX / 19.2}cqw ${style.shadowY / 19.2}cqw ${Math.max(
+                1,
+                Math.abs(style.shadowX) +
+                    Math.abs(style.shadowY)
+            ) / 19.2}cqw ${hexToRgba(
+                style.shadowColor,
+                style.shadowOpacity
+            )}`
+        );
+    }
+
+    return {
+        left: `${(style.x / 1920) * 100}%`,
+        top: `${(style.y / 1080) * 100}%`,
+        fontFamily: style.fontFamily,
+        fontSize: `${style.fontSize / 19.2}cqw`,
+        fontWeight: style.bold ? 700 : 400,
+        color: hexToRgba(
+            style.color,
+            style.opacity
+        ),
+        WebkitTextStroke:
+            style.outlineWidth > 0
+                ? `${style.outlineWidth / 19.2}cqw ${hexToRgba(
+                      style.outlineColor,
+                      style.outlineOpacity
+                  )}`
+                : "0 transparent",
+        textShadow:
+            shadowParts.length > 0
+                ? shadowParts.join(", ")
+                : "none"
+    };
+}
+
+function hexToRgba(
+    hex: string,
+    opacity: number
+) {
+    const value = hex.replace("#", "");
+    const red = parseInt(value.slice(0, 2), 16);
+    const green = parseInt(value.slice(2, 4), 16);
+    const blue = parseInt(value.slice(4, 6), 16);
+
+    return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
 function normalizeHashtag(value: string) {
     const normalized = value
         .trim()
@@ -1586,6 +2178,18 @@ function normalizeHashtag(value: string) {
             ? normalized
             : `#${normalized}`
     ).slice(0, 80);
+}
+
+function clamp(
+    value: number,
+    min: number,
+    max: number
+) {
+    if (!Number.isFinite(value)) {
+        return min;
+    }
+
+    return Math.min(max, Math.max(min, value));
 }
 
 function delay(milliseconds: number) {
