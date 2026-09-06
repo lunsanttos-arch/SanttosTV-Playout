@@ -1,0 +1,40 @@
+name: Playout Stress Day
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/stress-day.yml"
+  workflow_dispatch:
+
+jobs:
+  stress-day:
+    runs-on: windows-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Run accelerated one-day stress test
+        run: npm run stress:day
+
+      - name: Upload stress report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stress-report-day
+          path: stress-report-day.json
+          if-no-files-found: warn
