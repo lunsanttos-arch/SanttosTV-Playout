@@ -7,22 +7,19 @@ const {
 
 const path = require("path");
 const fs = require("fs");
-
-const {
-    spawn
-} = require("child_process");
-
+const { spawn } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
 
 const {
     initializeDatabase,
+    getSettings,
+    updateHashtagStyle,
     addLog,
     getMedia,
     getTimeline,
     saveTimeline,
     addMedia,
     removeMedia,
-    updateMediaHashtag,
     updateMediaMetadata
 } = require(
     "../database/database"
@@ -34,8 +31,7 @@ const {
     "../core/media/ffprobe"
 );
 
-const isDevelopment =
-    !app.isPackaged;
+const isDevelopment = !app.isPackaged;
 
 const NDI_FRAME_WIDTH = 1920;
 const NDI_FRAME_HEIGHT = 1080;
@@ -44,6 +40,29 @@ const NDI_FRAME_SIZE =
     NDI_FRAME_WIDTH *
     NDI_FRAME_HEIGHT *
     NDI_BYTES_PER_PIXEL;
+
+const FONT_FILES = {
+    "Arial": {
+        regular: "arial.ttf",
+        bold: "arialbd.ttf"
+    },
+    "Segoe UI": {
+        regular: "segoeui.ttf",
+        bold: "segoeuib.ttf"
+    },
+    "Tahoma": {
+        regular: "tahoma.ttf",
+        bold: "tahomabd.ttf"
+    },
+    "Verdana": {
+        regular: "verdana.ttf",
+        bold: "verdanab.ttf"
+    },
+    "Calibri": {
+        regular: "calibri.ttf",
+        bold: "calibrib.ttf"
+    }
+};
 
 let mainWindow = null;
 let ndiProcess = null;
@@ -56,24 +75,23 @@ let nativePlaybackActive = false;
 const analysesInProgress = new Map();
 
 function createWindow() {
-    mainWindow =
-        new BrowserWindow({
-            width: 1500,
-            height: 900,
-            minWidth: 1100,
-            minHeight: 700,
-            backgroundColor: "#0b0b0b",
-            title: "Santtos TV Automation",
-            webPreferences: {
-                nodeIntegration: false,
-                contextIsolation: true,
-                webSecurity: false,
-                preload: path.join(
-                    __dirname,
-                    "preload.js"
-                )
-            }
-        });
+    mainWindow = new BrowserWindow({
+        width: 1500,
+        height: 900,
+        minWidth: 1100,
+        minHeight: 700,
+        backgroundColor: "#0b0b0b",
+        title: "Santtos TV Automation",
+        webPreferences: {
+            nodeIntegration: false,
+            contextIsolation: true,
+            webSecurity: false,
+            preload: path.join(
+                __dirname,
+                "preload.js"
+            )
+        }
+    });
 
     mainWindow.maximize();
 
@@ -90,12 +108,9 @@ function createWindow() {
         );
     }
 
-    mainWindow.on(
-        "closed",
-        () => {
-            mainWindow = null;
-        }
-    );
+    mainWindow.on("closed", () => {
+        mainWindow = null;
+    });
 }
 
 async function analyzeMediaItem(mediaItem) {
@@ -106,67 +121,62 @@ async function analyzeMediaItem(mediaItem) {
         return existingAnalysis;
     }
 
-    const analysisPromise =
-        (async () => {
+    const analysisPromise = (async () => {
+        updateMediaMetadata(
+            mediaItem.id,
+            {
+                status: "analyzing",
+                metadataError: null,
+                analysisStartedAt:
+                    new Date().toISOString()
+            }
+        );
+
+        try {
+            const metadata =
+                await probeMedia(mediaItem.path);
+
             updateMediaMetadata(
                 mediaItem.id,
                 {
-                    status: "analyzing",
-                    metadataError: null,
-                    analysisStartedAt:
+                    ...metadata,
+                    analysisCompletedAt:
                         new Date().toISOString()
                 }
             );
 
-            try {
-                const metadata =
-                    await probeMedia(
-                        mediaItem.path
-                    );
+            console.log(
+                [
+                    "FFprobe OK:",
+                    mediaItem.name,
+                    `${metadata.width}x${metadata.height}`,
+                    metadata.videoCodec,
+                    `${metadata.fps} fps`,
+                    `${metadata.duration} s`
+                ].join(" | ")
+            );
+        } catch (error) {
+            console.error(
+                `FFprobe falhou em ${mediaItem.name}:`,
+                error
+            );
 
-                updateMediaMetadata(
-                    mediaItem.id,
-                    {
-                        ...metadata,
-                        analysisCompletedAt:
-                            new Date()
-                                .toISOString()
-                    }
-                );
-
-                console.log(
-                    [
-                        "FFprobe OK:",
-                        mediaItem.name,
-                        `${metadata.width}x${metadata.height}`,
-                        metadata.videoCodec,
-                        `${metadata.fps} fps`,
-                        `${metadata.duration} s`
-                    ].join(" | ")
-                );
-            } catch (error) {
-                console.error(
-                    `FFprobe falhou em ${mediaItem.name}:`,
-                    error
-                );
-
-                updateMediaMetadata(
-                    mediaItem.id,
-                    {
-                        status: "error",
-                        metadataError:
-                            error.message,
-                        analysisCompletedAt:
-                            new Date()
-                                .toISOString()
-                    }
-                );
-            } finally {
-                analysesInProgress.delete(
-                    mediaItem.id
-                );
-            }
-        })();
+            updateMediaMetadata(
+                mediaItem.id,
+                {
+                    status: "error",
+                    metadataError:
+                        error.message,
+                    analysisCompletedAt:
+                        new Date().toISOString()
+                }
+            );
+        } finally {
+            analysesInProgress.delete(
+                mediaItem.id
+            );
+        }
+    })();
 
     analysesInProgress.set(
         mediaItem.id,
@@ -176,13 +186,9 @@ async function analyzeMediaItem(mediaItem) {
     return analysisPromise;
 }
 
-async function analyzeMediaItems(
-    mediaItems
-) {
+async function analyzeMediaItems(mediaItems) {
     await Promise.all(
-        mediaItems.map(
-            analyzeMediaItem
-        )
+        mediaItems.map(analyzeMediaItem)
     );
 
     return getMedia();
@@ -222,14 +228,59 @@ function escapeDrawtextText(value) {
         .replaceAll("]", "\\]");
 }
 
+function toFfmpegColor(hexColor, opacity) {
+    const normalizedHex =
+        typeof hexColor === "string"
+            ? hexColor.replace("#", "")
+            : "ffffff";
+
+    const normalizedOpacity = Math.min(
+        1,
+        Math.max(0, Number(opacity) || 0)
+    );
+
+    return `0x${normalizedHex}@${normalizedOpacity.toFixed(3)}`;
+}
+
+function resolveHashtagFont(style) {
+    const family =
+        FONT_FILES[style.fontFamily] ??
+        FONT_FILES.Arial;
+
+    const fileName = style.bold
+        ? family.bold
+        : family.regular;
+
+    const windowsFolder =
+        process.env.WINDIR ||
+        "C:\\Windows";
+
+    const candidate = path.join(
+        windowsFolder,
+        "Fonts",
+        fileName
+    );
+
+    const fallback = path.join(
+        windowsFolder,
+        "Fonts",
+        style.bold
+            ? "arialbd.ttf"
+            : "arial.ttf"
+    );
+
+    return (fs.existsSync(candidate)
+        ? candidate
+        : fallback
+    )
+        .replaceAll("\\", "/")
+        .replace(":", "\\:");
+}
+
 function buildVideoFilter(hashtag) {
-    /*
-        IMPORTANTE:
-        Todo asset e primeiro normalizado para o canvas final
-        do PROGRAM (1920x1080). Somente depois disso o GC/hashtag
-        e aplicado. Assim a posicao e o tamanho nunca dependem
-        da proporcao ou resolucao do arquivo de origem.
-    */
+    // O asset é normalizado primeiro para o PROGRAM 1920x1080.
+    // O GC é aplicado somente depois, portanto sua geometria é
+    // sempre relativa ao output final e nunca ao arquivo de origem.
     const filters = [
         "scale=1920:1080:force_original_aspect_ratio=decrease",
         "pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black",
@@ -242,29 +293,35 @@ function buildVideoFilter(hashtag) {
             ? hashtag.trim()
             : "";
 
-    if (normalizedHashtag) {
-        const windowsFolder =
-            process.env.WINDIR ||
-            "C:\\Windows";
+    if (!normalizedHashtag) {
+        return filters.join(",");
+    }
 
-        const fontPath = path
-            .join(
-                windowsFolder,
-                "Fonts",
-                "arialbd.ttf"
-            )
-            .replaceAll("\\", "/")
-            .replace(":", "\\:");
+    const style =
+        getSettings().hashtagStyle;
 
-        const escapedText =
-            escapeDrawtextText(
-                normalizedHashtag
-            );
+    const options = [
+        `fontfile='${resolveHashtagFont(style)}'`,
+        `text='${escapeDrawtextText(normalizedHashtag)}'`,
+        `x=${Math.round(style.x)}`,
+        `y=${Math.round(style.y)}`,
+        `fontsize=${Math.round(style.fontSize)}`,
+        `fontcolor=${toFfmpegColor(style.color, style.opacity)}`,
+        `borderw=${Math.round(style.outlineWidth)}`,
+        `bordercolor=${toFfmpegColor(style.outlineColor, style.outlineOpacity)}`
+    ];
 
-        filters.push(
-            `drawtext=fontfile='${fontPath}':text='${escapedText}':x=55:y=28:fontsize=34:fontcolor=white@0.68:borderw=2:bordercolor=black@0.35`
+    if (style.shadowEnabled) {
+        options.push(
+            `shadowcolor=${toFfmpegColor(style.shadowColor, style.shadowOpacity)}`,
+            `shadowx=${Math.round(style.shadowX)}`,
+            `shadowy=${Math.round(style.shadowY)}`
         );
     }
+
+    filters.push(
+        `drawtext=${options.join(":")}`
+    );
 
     return filters.join(",");
 }
@@ -275,8 +332,7 @@ function stopNativePlayback() {
         return;
     }
 
-    const processToStop =
-        ffmpegProcess;
+    const processToStop = ffmpegProcess;
 
     console.log(
         "Encerrando playout FFmpeg..."
@@ -341,9 +397,7 @@ function startNativePlayback(
 
     stopNativePlayback();
 
-    const ffmpegPath =
-        resolveFfmpegPath();
-
+    const ffmpegPath = resolveFfmpegPath();
     const videoFilter =
         buildVideoFilter(hashtag);
 
@@ -401,18 +455,14 @@ function startNativePlayback(
 
     processRef.stdout.pipe(
         ndiProcess.stdin,
-        {
-            end: false
-        }
+        { end: false }
     );
 
     processRef.stderr.on(
         "data",
         (data) => {
             const message =
-                data
-                    .toString()
-                    .trim();
+                data.toString().trim();
 
             if (message) {
                 console.warn(
@@ -430,10 +480,7 @@ function startNativePlayback(
                 error
             );
 
-            if (
-                ffmpegProcess ===
-                processRef
-            ) {
+            if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
                 nativePlaybackActive = false;
             }
@@ -442,10 +489,7 @@ function startNativePlayback(
 
     processRef.on(
         "exit",
-        (
-            code,
-            signal
-        ) => {
+        (code, signal) => {
             if (
                 ndiProcess &&
                 ndiProcess.stdin &&
@@ -460,10 +504,7 @@ function startNativePlayback(
                 `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`
             );
 
-            if (
-                ffmpegProcess ===
-                processRef
-            ) {
+            if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
                 nativePlaybackActive = false;
             }
@@ -514,8 +555,7 @@ function registerIpcHandlers() {
 
                 return {
                     ok: false,
-                    error:
-                        error.message
+                    error: error.message
                 };
             }
         }
@@ -530,56 +570,33 @@ function registerIpcHandlers() {
     );
 
     ipcMain.handle(
+        "settings:get",
+        async () => getSettings()
+    );
+
+    ipcMain.handle(
+        "settings:set-hashtag-style",
+        async (_event, style) => ({
+            ok: true,
+            hashtagStyle:
+                updateHashtagStyle(style)
+        })
+    );
+
+    ipcMain.handle(
         "timeline:list",
-        async () =>
-            getTimeline()
+        async () => getTimeline()
     );
 
     ipcMain.handle(
         "timeline:save",
-        async (
-            _event,
-            timelineItems
-        ) =>
-            saveTimeline(
-                timelineItems
-            )
-    );
-
-    ipcMain.handle(
-        "media:set-hashtag",
-        async (
-            _event,
-            mediaId,
-            hashtag
-        ) => {
-            const updated =
-                updateMediaHashtag(
-                    mediaId,
-                    hashtag
-                );
-
-            if (!updated) {
-                return {
-                    ok: false,
-                    error:
-                        "Mídia não encontrada."
-                };
-            }
-
-            return {
-                ok: true,
-                media: updated
-            };
-        }
+        async (_event, timelineItems) =>
+            saveTimeline(timelineItems)
     );
 
     ipcMain.on(
         "ndi:frame",
-        (
-            _event,
-            frameData
-        ) => {
+        (_event, frameData) => {
             if (
                 nativePlaybackActive ||
                 !ndiProcess ||
@@ -626,25 +643,24 @@ function registerIpcHandlers() {
         "media:select",
         async () => {
             const result =
-                await dialog
-                    .showOpenDialog({
-                        title:
-                            "Adicionar vídeos à biblioteca",
-                        properties: [
-                            "openFile",
-                            "multiSelections"
-                        ],
-                        filters: [
-                            {
-                                name:
-                                    "Vídeos compatíveis",
-                                extensions: [
-                                    "mp4",
-                                    "mov"
-                                ]
-                            }
-                        ]
-                    });
+                await dialog.showOpenDialog({
+                    title:
+                        "Adicionar vídeos à biblioteca",
+                    properties: [
+                        "openFile",
+                        "multiSelections"
+                    ],
+                    filters: [
+                        {
+                            name:
+                                "Vídeos compatíveis",
+                            extensions: [
+                                "mp4",
+                                "mov"
+                            ]
+                        }
+                    ]
+                });
 
             if (result.canceled) {
                 return [];
@@ -678,17 +694,13 @@ function registerIpcHandlers() {
 
     ipcMain.handle(
         "media:import",
-        async (
-            _event,
-            filePaths
-        ) => {
+        async (_event, filePaths) => {
             const importResult =
                 addMedia(filePaths);
 
             const media =
                 await analyzeMediaItems(
-                    importResult
-                        .importedItems
+                    importResult.importedItems
                 );
 
             return {
@@ -700,10 +712,7 @@ function registerIpcHandlers() {
 
     ipcMain.handle(
         "media:remove",
-        async (
-            _event,
-            mediaId
-        ) =>
+        async (_event, mediaId) =>
             removeMedia(mediaId)
     );
 }
@@ -716,11 +725,10 @@ function startNdiSender() {
     ndiReady = false;
     ndiFrameBusy = false;
 
-    const ndiExecutable =
-        path.join(
-            __dirname,
-            "../core/ndi/ndi_test.exe"
-        );
+    const ndiExecutable = path.join(
+        __dirname,
+        "../core/ndi/ndi_test.exe"
+    );
 
     console.log(
         "Iniciando sender NDI..."
@@ -758,9 +766,7 @@ function startNdiSender() {
             "data",
             (data) => {
                 const message =
-                    data
-                        .toString()
-                        .trim();
+                    data.toString().trim();
 
                 if (
                     message.includes(
@@ -785,9 +791,7 @@ function startNdiSender() {
             "data",
             (data) => {
                 const message =
-                    data
-                        .toString()
-                        .trim();
+                    data.toString().trim();
 
                 if (message) {
                     console.error(
@@ -867,9 +871,7 @@ function startSystem() {
     initializeDatabase();
     addLog("Sistema iniciado");
 
-    console.log(
-        "Banco de dados OK"
-    );
+    console.log("Banco de dados OK");
 }
 
 app.whenReady().then(() => {
@@ -878,36 +880,24 @@ app.whenReady().then(() => {
     registerIpcHandlers();
     createWindow();
 
-    app.on(
-        "activate",
-        () => {
-            if (
-                BrowserWindow
-                    .getAllWindows()
-                    .length === 0
-            ) {
-                createWindow();
-            }
+    app.on("activate", () => {
+        if (
+            BrowserWindow
+                .getAllWindows()
+                .length === 0
+        ) {
+            createWindow();
         }
-    );
+    });
 });
 
-app.on(
-    "before-quit",
-    () => {
-        stopNativePlayback();
-        stopNdiSender();
-    }
-);
+app.on("before-quit", () => {
+    stopNativePlayback();
+    stopNdiSender();
+});
 
-app.on(
-    "window-all-closed",
-    () => {
-        if (
-            process.platform !==
-            "darwin"
-        ) {
-            app.quit();
-        }
+app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") {
+        app.quit();
     }
-);
+});
