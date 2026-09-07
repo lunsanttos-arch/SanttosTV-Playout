@@ -1,4 +1,4 @@
-/* Biblioteca mantém o tamanho original dos itens, com rolagem apenas vertical. */
+/* Biblioteca compacta: mesma altura visual da timeline e rolagem apenas vertical. */
 .playout-library-column .module-panel {
     min-height: 0;
     overflow: hidden;
@@ -20,6 +20,55 @@
 
 .playout-library-column .media-list::-webkit-scrollbar:horizontal {
     height: 0;
+}
+
+/* Mantém os cards compactos, na mesma faixa de altura das linhas da timeline. */
+.playout-library-column .media-item {
+    min-height: 66px;
+    height: 66px;
+    padding: 7px 9px;
+    gap: 9px;
+    overflow: hidden;
+}
+
+.playout-library-column .media-thumbnail {
+    width: 72px;
+    height: 42px;
+    flex: 0 0 72px;
+}
+
+.playout-library-column .media-information {
+    min-width: 0;
+    height: 100%;
+    gap: 2px;
+    overflow: hidden;
+}
+
+.playout-library-column .media-information strong,
+.playout-library-column .media-information span,
+.playout-library-column .media-metadata {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.playout-library-column .media-metadata {
+    display: block;
+    line-height: 14px;
+}
+
+.playout-library-column .media-metadata span {
+    display: inline;
+}
+
+.playout-library-column .compatibility-badge {
+    display: none;
+}
+
+.playout-library-column .remove-media-button,
+.playout-library-column .add-timeline-button {
+    flex-shrink: 0;
 }
 
 .playout-library-column .empty-state {
