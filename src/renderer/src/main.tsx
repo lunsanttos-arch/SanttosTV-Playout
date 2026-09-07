@@ -5,6 +5,7 @@ import App from "./App";
 import "./styles.css";
 import "./hashtag.css";
 import "./timeline-controls.css";
+import "./library-layout.css";
 
 /*
     A biblioteca serve apenas como fonte de mídia.
