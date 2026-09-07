@@ -37,13 +37,9 @@ function probeMedia(filePath) {
                 {
                     windowsHide: true,
                     maxBuffer:
-                        20 * 1024 * 1024
+                        32 * 1024 * 1024
                 },
-                (
-                    error,
-                    stdout,
-                    stderr
-                ) => {
+                (error, stdout, stderr) => {
                     if (error) {
                         reject(
                             new Error(
@@ -85,9 +81,13 @@ function parseProbeResult(probeResult) {
     const format =
         probeResult.format ?? {};
 
-    const videoStreams = streams.filter(
+    const allVideoStreams = streams.filter(
         (stream) =>
-            stream.codec_type === "video" &&
+            stream.codec_type === "video"
+    );
+
+    const videoStreams = allVideoStreams.filter(
+        (stream) =>
             stream.disposition?.attached_pic !== 1
     );
 
@@ -96,8 +96,10 @@ function parseProbeResult(probeResult) {
             stream.codec_type === "audio"
     );
 
-    const videoStream = videoStreams[0];
-    const audioStream = audioStreams[0];
+    const videoStream =
+        chooseBestVideoStream(videoStreams);
+    const audioStream =
+        chooseBestAudioStream(audioStreams);
 
     if (!videoStream) {
         throw new Error(
@@ -105,14 +107,32 @@ function parseProbeResult(probeResult) {
         );
     }
 
-    const fps = parseFrameRate(
-        videoStream.avg_frame_rate ||
+    const averageFps = parseFrameRate(
+        videoStream.avg_frame_rate
+    );
+    const nominalFps = parseFrameRate(
         videoStream.r_frame_rate
     );
+    const fps =
+        averageFps ?? nominalFps;
 
     const duration = parseNumber(
         format.duration ??
         videoStream.duration
+    );
+
+    const rotation = getRotation(videoStream);
+    const sampleAspectRatio =
+        normalizeRatio(
+            videoStream.sample_aspect_ratio
+        );
+    const displayAspectRatio =
+        normalizeRatio(
+            videoStream.display_aspect_ratio
+        );
+    const timingMode = detectTimingMode(
+        averageFps,
+        nominalFps
     );
 
     const metadata = {
@@ -126,17 +146,55 @@ function parseProbeResult(probeResult) {
         fps:
             fps === null
                 ? null
+                : Number(fps.toFixed(3)),
+        averageFps:
+            averageFps === null
+                ? null
                 : Number(
-                    fps.toFixed(3)
+                    averageFps.toFixed(3)
                 ),
+        nominalFps:
+            nominalFps === null
+                ? null
+                : Number(
+                    nominalFps.toFixed(3)
+                ),
+        timingMode,
+        isVariableFrameRate:
+            timingMode === "vfr",
         videoCodec:
             normalizeCodec(
                 videoStream.codec_name
             ),
         videoProfile:
             videoStream.profile ?? null,
+        videoLevel:
+            parseInteger(videoStream.level),
         pixelFormat:
             videoStream.pix_fmt ?? null,
+        bitDepth:
+            parseInteger(
+                videoStream.bits_per_raw_sample ??
+                videoStream.bits_per_sample
+            ),
+        colorRange:
+            videoStream.color_range ?? null,
+        colorSpace:
+            videoStream.color_space ?? null,
+        colorTransfer:
+            videoStream.color_transfer ?? null,
+        colorPrimaries:
+            videoStream.color_primaries ?? null,
+        sampleAspectRatio,
+        displayAspectRatio,
+        rotation,
+        videoStreamIndex:
+            parseInteger(videoStream.index),
+        videoStreamOrdinal:
+            getStreamOrdinal(
+                allVideoStreams,
+                videoStream
+            ),
         audioCodec:
             normalizeCodec(
                 audioStream?.codec_name
@@ -152,6 +210,13 @@ function parseProbeResult(probeResult) {
             parseInteger(
                 audioStream?.sample_rate
             ),
+        audioStreamIndex:
+            parseInteger(audioStream?.index),
+        audioStreamOrdinal:
+            getStreamOrdinal(
+                audioStreams,
+                audioStream
+            ),
         bitRate:
             parseInteger(
                 format.bit_rate ??
@@ -160,6 +225,13 @@ function parseProbeResult(probeResult) {
         container:
             normalizeContainer(
                 format.format_name
+            ),
+        formatLongName:
+            format.format_long_name ?? null,
+        startTime:
+            parseNumber(
+                format.start_time ??
+                videoStream.start_time
             ),
         videoStreamCount:
             videoStreams.length,
@@ -176,6 +248,152 @@ function parseProbeResult(probeResult) {
         status: validation.status,
         compatibility: validation
     };
+}
+
+function chooseBestVideoStream(streams) {
+    if (!Array.isArray(streams) || streams.length === 0) {
+        return null;
+    }
+
+    return [...streams].sort(
+        (left, right) =>
+            scoreVideoStream(right) -
+            scoreVideoStream(left)
+    )[0] ?? null;
+}
+
+function scoreVideoStream(stream) {
+    const width =
+        parseInteger(stream.width) ?? 0;
+    const height =
+        parseInteger(stream.height) ?? 0;
+    const pixels = width * height;
+
+    let score = Math.min(
+        pixels,
+        100000000
+    );
+
+    if (stream.disposition?.default === 1) {
+        score += 200000000;
+    }
+
+    if (stream.disposition?.forced === 1) {
+        score += 1000000;
+    }
+
+    if (stream.disposition?.attached_pic === 1) {
+        score -= 1000000000;
+    }
+
+    if (width <= 0 || height <= 0) {
+        score -= 500000000;
+    }
+
+    return score;
+}
+
+function chooseBestAudioStream(streams) {
+    if (!Array.isArray(streams) || streams.length === 0) {
+        return null;
+    }
+
+    return [...streams].sort(
+        (left, right) =>
+            scoreAudioStream(right) -
+            scoreAudioStream(left)
+    )[0] ?? null;
+}
+
+function scoreAudioStream(stream) {
+    const channels =
+        parseInteger(stream.channels) ?? 0;
+    const sampleRate =
+        parseInteger(stream.sample_rate) ?? 0;
+
+    let score =
+        channels * 100000 +
+        sampleRate;
+
+    if (stream.disposition?.default === 1) {
+        score += 10000000;
+    }
+
+    if (stream.disposition?.forced === 1) {
+        score += 100000;
+    }
+
+    return score;
+}
+
+function getStreamOrdinal(streams, selected) {
+    if (!selected || !Array.isArray(streams)) {
+        return null;
+    }
+
+    const index = streams.findIndex(
+        (stream) =>
+            stream === selected ||
+            stream.index === selected.index
+    );
+
+    return index >= 0
+        ? index
+        : null;
+}
+
+function getRotation(stream) {
+    const sideData =
+        Array.isArray(stream.side_data_list)
+            ? stream.side_data_list
+            : [];
+
+    const displayMatrix = sideData.find(
+        (item) =>
+            Number.isFinite(
+                Number(item.rotation)
+            )
+    );
+
+    const raw =
+        displayMatrix?.rotation ??
+        stream.tags?.rotate;
+
+    const parsed = Number(raw);
+
+    if (!Number.isFinite(parsed)) {
+        return 0;
+    }
+
+    const normalized =
+        ((Math.round(parsed) % 360) + 360) % 360;
+
+    return normalized;
+}
+
+function detectTimingMode(
+    averageFps,
+    nominalFps
+) {
+    if (
+        averageFps === null ||
+        nominalFps === null
+    ) {
+        return "unknown";
+    }
+
+    const difference = Math.abs(
+        averageFps - nominalFps
+    );
+
+    const tolerance = Math.max(
+        0.02,
+        nominalFps * 0.002
+    );
+
+    return difference > tolerance
+        ? "vfr"
+        : "cfr";
 }
 
 function validateMedia(metadata) {
@@ -210,28 +428,44 @@ function validateMedia(metadata) {
         metadata.fps <= 0
     ) {
         warnings.push(
-            "O FPS da origem não pôde ser determinado com precisão; o engine usará timestamps do arquivo e normalização do PROGRAM."
+            "O FPS da origem não pôde ser determinado com precisão; o engine usará timestamps e normalização do PROGRAM."
+        );
+    }
+
+    if (metadata.isVariableFrameRate) {
+        warnings.push(
+            "A origem usa frame rate variável (VFR); o engine fará normalização temporal para o PROGRAM."
+        );
+    }
+
+    if (metadata.rotation !== 0) {
+        warnings.push(
+            `A origem possui rotação de ${metadata.rotation}°; o FFmpeg aplicará a orientação antes da normalização.`
         );
     }
 
     if (
-        metadata.videoCodec &&
-        ![
-            "H.264",
-            "H.265",
-            "VP9",
-            "AV1",
-            "MPEG2VIDEO",
-            "PRORES",
-            "DNXHD",
-            "MJPEG",
-            "VC1",
-            "WMV3",
-            "MPEG4"
-        ].includes(metadata.videoCodec)
+        metadata.sampleAspectRatio &&
+        metadata.sampleAspectRatio !== "1:1"
     ) {
         warnings.push(
-            `Codec ${metadata.videoCodec} será reproduzido por fallback de software se o FFmpeg oferecer decoder.`
+            `A origem usa SAR ${metadata.sampleAspectRatio}; o PROGRAM converterá para pixels quadrados.`
+        );
+    }
+
+    if (
+        metadata.videoStreamCount > 1
+    ) {
+        warnings.push(
+            `O arquivo possui ${metadata.videoStreamCount} faixas de vídeo; a faixa ${metadata.videoStreamIndex} foi escolhida automaticamente.`
+        );
+    }
+
+    if (
+        metadata.audioStreamCount > 1
+    ) {
+        warnings.push(
+            `O arquivo possui ${metadata.audioStreamCount} faixas de áudio; a faixa ${metadata.audioStreamIndex} foi escolhida automaticamente.`
         );
     }
 
@@ -254,12 +488,8 @@ function parseFrameRate(value) {
         return parseNumber(value);
     }
 
-    const [
-        numerator,
-        denominator
-    ] = value
-        .split("/")
-        .map(Number);
+    const [numerator, denominator] =
+        value.split("/").map(Number);
 
     if (
         !Number.isFinite(numerator) ||
@@ -292,6 +522,18 @@ function parseInteger(value) {
         : null;
 }
 
+function normalizeRatio(value) {
+    if (
+        typeof value !== "string" ||
+        value === "0:1" ||
+        value === "N/A"
+    ) {
+        return null;
+    }
+
+    return value;
+}
+
 function normalizeContainer(formatName) {
     if (!formatName) {
         return null;
@@ -318,14 +560,17 @@ function normalizeCodec(codecName) {
         h264: "H.264",
         hevc: "H.265",
         av1: "AV1",
+        vp8: "VP8",
         vp9: "VP9",
         prores: "PRORES",
-        dnxhd: "DNXHD",
+        dnxhd: "DNXHD/DNXHR",
         mjpeg: "MJPEG",
+        mpeg1video: "MPEG1VIDEO",
         mpeg2video: "MPEG2VIDEO",
         mpeg4: "MPEG4",
         vc1: "VC1",
         wmv3: "WMV3",
+        theora: "THEORA",
         aac: "AAC",
         pcm_s16le: "PCM",
         pcm_s24le: "PCM 24-bit",
@@ -346,5 +591,8 @@ function normalizeCodec(codecName) {
 }
 
 module.exports = {
-    probeMedia
+    probeMedia,
+    parseProbeResult,
+    chooseBestVideoStream,
+    chooseBestAudioStream
 };
