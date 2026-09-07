@@ -30,6 +30,13 @@ interface MediaItem {
     fps: number | null;
     videoCodec: string | null;
     audioCodec: string | null;
+    videoStreamIndex?: number | null;
+    audioStreamIndex?: number | null;
+    timingMode?: "cfr" | "vfr" | "unknown";
+    isVariableFrameRate?: boolean;
+    rotation?: number;
+    sampleAspectRatio?: string | null;
+    decoderMode?: "hardware" | "software" | "unavailable";
     thumbnail: string | null;
     status: string;
     createdAt: string;
@@ -158,6 +165,9 @@ declare global {
                     watermarkFadeOut?: boolean;
                     hashtagFadeIn?: boolean;
                     hashtagFadeOut?: boolean;
+                    videoStreamIndex?: number | null;
+                    audioStreamIndex?: number | null;
+                    timingMode?: string;
                 }
             ) => Promise<NdiCommandResult>;
             getWatermarkPreview: (
@@ -855,7 +865,13 @@ function PlayoutPanel({
                 !Boolean(previous?.hashtag),
             hashtagFadeOut:
                 Boolean(mediaItem.hashtag) &&
-                !Boolean(following?.hashtag)
+                !Boolean(following?.hashtag),
+            videoStreamIndex:
+                mediaItem.videoStreamIndex ?? null,
+            audioStreamIndex:
+                mediaItem.audioStreamIndex ?? null,
+            timingMode:
+                mediaItem.timingMode ?? "unknown"
         };
     }
 

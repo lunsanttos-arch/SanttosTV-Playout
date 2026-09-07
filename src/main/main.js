@@ -34,6 +34,12 @@ const {
     "../core/media/ffprobe"
 );
 
+const {
+    checkMediaDecode
+} = require(
+    "../core/media/decode-check"
+);
+
 const isDevelopment = !app.isPackaged;
 
 const NDI_FRAME_WIDTH = 1920;
@@ -139,10 +145,48 @@ async function analyzeMediaItem(mediaItem) {
             const metadata =
                 await probeMedia(mediaItem.path);
 
+            const decodeSupport =
+                await checkMediaDecode(
+                    mediaItem.path,
+                    metadata.videoStreamIndex
+                );
+
+            const compatibility = {
+                ...(metadata.compatibility ?? {}),
+                issues: [
+                    ...(metadata.compatibility?.issues ?? [])
+                ],
+                warnings: [
+                    ...(metadata.compatibility?.warnings ?? [])
+                ]
+            };
+
+            if (!decodeSupport.decodable) {
+                compatibility.issues.push(
+                    "O FFmpeg não conseguiu decodificar a faixa de vídeo nem por hardware nem por software."
+                );
+            } else if (
+                decodeSupport.preferredMode === "software"
+            ) {
+                compatibility.warnings.push(
+                    "A aceleração por hardware não ficou disponível para esta mídia; o engine usará fallback de software."
+                );
+            }
+
             updateMediaMetadata(
                 mediaItem.id,
                 {
                     ...metadata,
+                    status:
+                        decodeSupport.decodable
+                            ? metadata.status
+                            : "incompatible",
+                    compatibility,
+                    decodeSupport,
+                    decoderMode:
+                        decodeSupport.preferredMode,
+                    hardwareDecodeAvailable:
+                        decodeSupport.hardwareAvailable,
                     analysisCompletedAt:
                         new Date().toISOString()
                 }
@@ -331,7 +375,8 @@ function buildFadeAlphaExpression(
 function buildProgramFilterGraph(
     hashtag,
     overlayState,
-    hasWatermarkInput
+    hasWatermarkInput,
+    videoStreamIndex = null
 ) {
     const state =
         overlayState &&
@@ -345,8 +390,13 @@ function buildProgramFilterGraph(
             (Number(state.startSeconds) || 0)
     );
 
+    const sourceVideo =
+        Number.isInteger(Number(videoStreamIndex))
+            ? `[0:${Number(videoStreamIndex)}]`
+            : "[0:v:0]";
+
     const chains = [
-        "[0:v]scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30000/1001[base]"
+        `${sourceVideo}scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30000/1001[base]`
     ];
 
     let current = "base";
@@ -549,14 +599,25 @@ function startNativePlayback(
             ` | file=${watermarkStyle?.filePath || "none"}` +
             ` | fadeIn=${Boolean(programState.watermarkFadeIn)}` +
             ` | fadeOut=${Boolean(programState.watermarkFadeOut)}` +
-            ` | hashtag=${hashtag ? "ON" : "OFF"}`
+            ` | hashtag=${hashtag ? "ON" : "OFF"}` +
+            ` | vstream=${programState.videoStreamIndex ?? "auto"}` +
+            ` | astream=${programState.audioStreamIndex ?? "01"}` +
+            ` | timing=${programState.timingMode ?? "unknown"}`
     );
 
     const args = [
         "-hide_banner",
         "-loglevel",
         "warning",
-        "-nostdin"
+        "-nostdin",
+        "-fflags",
+        "+genpts+discardcorrupt",
+        "-err_detect",
+        "ignore_err",
+        "-probesize",
+        "10000000",
+        "-analyzeduration",
+        "10000000"
     ];
 
     if (normalizedStartSeconds > 0) {
@@ -587,7 +648,8 @@ function startNativePlayback(
         buildProgramFilterGraph(
             hashtag,
             programState,
-            watermarkEnabled
+            watermarkEnabled,
+            programState.videoStreamIndex
         ),
         "-map",
         "[program]",

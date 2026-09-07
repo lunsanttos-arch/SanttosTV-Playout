@@ -751,7 +751,23 @@ function addMedia(filePaths) {
             .replace(".", "")
             .toLowerCase();
 
-        if (!["mp4", "mov"].includes(extension)) {
+        const supportedContainers = new Set([
+            "mp4",
+            "mov",
+            "mkv",
+            "avi",
+            "mxf",
+            "ts",
+            "mts",
+            "m2ts",
+            "webm",
+            "mpg",
+            "mpeg",
+            "m4v",
+            "wmv"
+        ]);
+
+        if (!supportedContainers.has(extension)) {
             continue;
         }
 
