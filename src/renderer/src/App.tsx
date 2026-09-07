@@ -141,6 +141,7 @@ declare global {
             importMedia: (
                 filePaths: string[]
             ) => Promise<ImportResult>;
+            getDroppedFilePath: (file: File) => string;
             removeMedia: (
                 mediaId: string
             ) => Promise<RemoveResult>;
@@ -311,6 +312,40 @@ export default function App() {
         }
     }
 
+    async function importDroppedFiles(
+        filePaths: string[]
+    ): Promise<ImportResult> {
+        if (filePaths.length === 0) {
+            return {
+                importedItems: [],
+                duplicatedItems: [],
+                media
+            };
+        }
+
+        setIsLoading(true);
+        setMessage("");
+        try {
+            const result =
+                await window.santtosAPI.importMedia(filePaths);
+            setMedia(result.media);
+
+            if (result.importedItems.length > 0) {
+                setMessage(
+                    `${result.importedItems.length} vídeo(s) importado(s) por arrastar e soltar.`
+                );
+            } else if (result.duplicatedItems.length > 0) {
+                setMessage(
+                    "A mídia arrastada já estava cadastrada."
+                );
+            }
+
+            return result;
+        } finally {
+            setIsLoading(false);
+        }
+    }
+
     async function handleRemoveMedia(
         mediaItem: MediaItem
     ) {
@@ -411,6 +446,7 @@ export default function App() {
                             hashtagStyle={hashtagStyle}
                             onSelectMedia={setSelectedMedia}
                             onAddVideos={addVideos}
+                            onImportDroppedFiles={importDroppedFiles}
                             onRemoveMedia={handleRemoveMedia}
                         />
                     )}
@@ -498,6 +534,9 @@ interface PlayoutPanelProps {
         media: MediaItem
     ) => void;
     onAddVideos: () => Promise<void>;
+    onImportDroppedFiles: (
+        filePaths: string[]
+    ) => Promise<ImportResult>;
     onRemoveMedia: (
         media: MediaItem
     ) => Promise<void>;
@@ -511,6 +550,7 @@ function PlayoutPanel({
     hashtagStyle,
     onSelectMedia,
     onAddVideos,
+    onImportDroppedFiles,
     onRemoveMedia
 }: PlayoutPanelProps) {
     const videoRef =
@@ -1481,6 +1521,43 @@ function PlayoutPanel({
         });
     }
 
+    async function importExplorerFilesToTimeline(
+        files: FileList,
+        targetMediaId?: string
+    ) {
+        const paths = Array.from(files)
+            .map((file) =>
+                window.santtosAPI.getDroppedFilePath(file)
+            )
+            .filter((value): value is string => Boolean(value));
+
+        if (paths.length === 0) {
+            return;
+        }
+
+        try {
+            const result = await onImportDroppedFiles(paths);
+            const normalized = (value: string) =>
+                value.replace(/\\/g, "/").toLowerCase();
+            const wanted = new Set(paths.map(normalized));
+            const items = result.media.filter((item) =>
+                wanted.has(normalized(item.path))
+            );
+
+            items.forEach((item, index) => {
+                addTimelineItem(
+                    item,
+                    index === 0 ? targetMediaId : undefined
+                );
+            });
+        } catch (error) {
+            console.error(
+                "Erro ao importar arquivos do Explorer para a timeline:",
+                error
+            );
+        }
+    }
+
     function moveTimelineItem(targetMediaId: string) {
         if (
             !draggedMediaId ||
@@ -1698,17 +1775,28 @@ function PlayoutPanel({
                 <section
                     className="panel compact-logs-panel"
                     onDragOver={(event) => {
-                        if (
+                        const hasFiles =
+                            event.dataTransfer.types.includes("Files");
+                        const hasLibraryMedia =
                             event.dataTransfer.types.includes(
                                 "application/x-santtos-library-media"
-                            )
-                        ) {
+                            );
+
+                        if (hasFiles || hasLibraryMedia) {
                             event.preventDefault();
-                            event.dataTransfer.dropEffect =
-                                "copy";
+                            event.dataTransfer.dropEffect = "copy";
                         }
                     }}
                     onDrop={(event) => {
+                        if (event.dataTransfer.files.length > 0) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            void importExplorerFilesToTimeline(
+                                event.dataTransfer.files
+                            );
+                            return;
+                        }
+
                         const mediaId =
                             event.dataTransfer.getData(
                                 "application/x-santtos-library-media"
@@ -1720,8 +1808,7 @@ function PlayoutPanel({
 
                         event.preventDefault();
                         const item = media.find(
-                            (entry) =>
-                                entry.id === mediaId
+                            (entry) => entry.id === mediaId
                         );
 
                         if (item) {
@@ -1778,8 +1865,11 @@ function PlayoutPanel({
                                                     event.dataTransfer.types.includes(
                                                         "application/x-santtos-library-media"
                                                     );
+                                                const hasFiles =
+                                                    event.dataTransfer.types.includes("Files");
 
                                                 if (
+                                                    hasFiles ||
                                                     isLibraryMedia ||
                                                     !isCurrent
                                                 ) {
@@ -1789,6 +1879,14 @@ function PlayoutPanel({
                                             onDrop={(event) => {
                                                 event.preventDefault();
                                                 event.stopPropagation();
+
+                                                if (event.dataTransfer.files.length > 0) {
+                                                    void importExplorerFilesToTimeline(
+                                                        event.dataTransfer.files,
+                                                        item.id
+                                                    );
+                                                    return;
+                                                }
 
                                                 const libraryId =
                                                     event.dataTransfer.getData(
@@ -1981,6 +2079,7 @@ function PlayoutPanel({
                     isLoading={isLoading}
                     message={message}
                     onAddVideos={onAddVideos}
+                    onImportDroppedFiles={onImportDroppedFiles}
                     onRemoveMedia={onRemoveMedia}
                     onAddToTimeline={addTimelineItem}
                 />
@@ -2187,6 +2286,9 @@ interface LibraryPanelProps {
     isLoading: boolean;
     message: string;
     onAddVideos: () => Promise<void>;
+    onImportDroppedFiles: (
+        filePaths: string[]
+    ) => Promise<ImportResult>;
     onRemoveMedia: (
         media: MediaItem
     ) => Promise<void>;
@@ -2200,6 +2302,7 @@ function LibraryPanel({
     isLoading,
     message,
     onAddVideos,
+    onImportDroppedFiles,
     onRemoveMedia,
     onAddToTimeline
 }: LibraryPanelProps) {
@@ -2221,8 +2324,38 @@ function LibraryPanel({
         );
     }, [media, search]);
 
+    async function handleExplorerDrop(
+        files: FileList
+    ) {
+        const paths = Array.from(files)
+            .map((file) =>
+                window.santtosAPI.getDroppedFilePath(file)
+            )
+            .filter((value): value is string => Boolean(value));
+
+        if (paths.length > 0) {
+            await onImportDroppedFiles(paths);
+        }
+    }
+
     return (
-        <section className="panel module-panel">
+        <section
+            className="panel module-panel"
+            onDragOver={(event) => {
+                if (event.dataTransfer.types.includes("Files")) {
+                    event.preventDefault();
+                    event.dataTransfer.dropEffect = "copy";
+                }
+            }}
+            onDrop={(event) => {
+                if (event.dataTransfer.files.length === 0) {
+                    return;
+                }
+                event.preventDefault();
+                event.stopPropagation();
+                void handleExplorerDrop(event.dataTransfer.files);
+            }}
+        >
             <div className="module-header">
                 <div>
                     <div className="panel-title">
