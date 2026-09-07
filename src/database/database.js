@@ -656,6 +656,16 @@ function getTimeline() {
                     entry.sourceMediaId,
                 loop: Boolean(entry.loop),
                 watermark: Boolean(entry.watermark),
+                inPoint: normalizeClipNumber(entry.inPoint, 0),
+                outPoint: normalizeClipNumber(
+                    entry.outPoint,
+                    sourceMedia.duration ?? 0
+                ),
+                blockLabel: normalizeText(
+                    entry.blockLabel,
+                    "",
+                    80
+                ),
                 hashtag:
                     normalizeHashtag(
                         entry.hashtag ?? ""
@@ -663,6 +673,13 @@ function getTimeline() {
             };
         })
         .filter(Boolean);
+}
+
+function normalizeClipNumber(value, fallback = 0) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed)
+        ? Math.max(0, parsed)
+        : Math.max(0, Number(fallback) || 0);
 }
 
 function saveTimeline(timelineItems) {
@@ -697,6 +714,16 @@ function saveTimeline(timelineItems) {
                 sourceMediaId,
                 loop: Boolean(item.loop),
                 watermark: Boolean(item.watermark),
+                inPoint: normalizeClipNumber(item.inPoint, 0),
+                outPoint: normalizeClipNumber(
+                    item.outPoint,
+                    item.duration ?? 0
+                ),
+                blockLabel: normalizeText(
+                    item.blockLabel,
+                    "",
+                    80
+                ),
                 hashtag:
                     normalizeHashtag(
                         item.hashtag ?? ""

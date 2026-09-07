@@ -593,6 +593,20 @@ function startNativePlayback(
         startSeconds:
             normalizedStartSeconds
     };
+    const normalizedOutPoint =
+        Number.isFinite(Number(programState.outPointSeconds))
+            ? Math.max(
+                  normalizedStartSeconds,
+                  Number(programState.outPointSeconds)
+              )
+            : null;
+    const clipRemainingSeconds =
+        normalizedOutPoint !== null
+            ? Math.max(
+                  0.001,
+                  normalizedOutPoint - normalizedStartSeconds
+              )
+            : null;
 
     console.log(
         `[GC] watermark=${watermarkEnabled ? "ON" : "OFF"}` +
@@ -602,7 +616,8 @@ function startNativePlayback(
             ` | hashtag=${hashtag ? "ON" : "OFF"}` +
             ` | vstream=${programState.videoStreamIndex ?? "auto"}` +
             ` | astream=${programState.audioStreamIndex ?? "01"}` +
-            ` | timing=${programState.timingMode ?? "unknown"}`
+            ` | timing=${programState.timingMode ?? "unknown"}` +
+            ` | OUT=${normalizedOutPoint ?? "EOF"}`
     );
 
     const args = [
@@ -631,6 +646,13 @@ function startNativePlayback(
         "-i",
         filePath
     );
+
+    if (clipRemainingSeconds !== null) {
+        args.push(
+            "-t",
+            clipRemainingSeconds.toFixed(3)
+        );
+    }
 
     if (watermarkEnabled) {
         args.push(

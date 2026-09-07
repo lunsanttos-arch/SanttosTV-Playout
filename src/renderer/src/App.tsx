@@ -20,6 +20,9 @@ interface MediaItem {
     loop?: boolean;
     watermark?: boolean;
     hashtag?: string;
+    inPoint?: number;
+    outPoint?: number | null;
+    blockLabel?: string;
     name: string;
     path: string;
     extension: string;
@@ -168,6 +171,7 @@ declare global {
                     videoStreamIndex?: number | null;
                     audioStreamIndex?: number | null;
                     timingMode?: string;
+                    outPointSeconds?: number | null;
                 }
             ) => Promise<NdiCommandResult>;
             getWatermarkPreview: (
@@ -532,6 +536,9 @@ function PlayoutPanel({
         );
     const [watermarkPreviewUrl, setWatermarkPreviewUrl] =
         useState("");
+    const [editingFilm, setEditingFilm] =
+        useState<MediaItem | null>(null);
+    const clipAdvanceGuardRef = useRef(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -660,7 +667,13 @@ function PlayoutPanel({
                         sourceMediaId: sourceId,
                         loop: Boolean(entry.loop),
                         watermark: Boolean(entry.watermark),
-                        hashtag: entry.hashtag ?? ""
+                        hashtag: entry.hashtag ?? "",
+                        inPoint: normalizeClipPoint(entry.inPoint, 0),
+                        outPoint: normalizeClipOutPoint(
+                            entry.outPoint,
+                            source.duration
+                        ),
+                        blockLabel: entry.blockLabel ?? ""
                     };
                 })
                 .filter(
@@ -712,6 +725,14 @@ function PlayoutPanel({
               ] ?? null
             : null;
 
+    const selectedClipIn = getClipIn(selectedMedia);
+    const selectedClipOut = getClipOut(selectedMedia);
+    const selectedClipDuration = getClipDuration(selectedMedia);
+    const selectedClipCurrent = Math.max(
+        0,
+        currentTime - selectedClipIn
+    );
+
     const watermarkFadeSeconds = Math.max(
         0,
         watermarkStyle.fadeMs / 1000
@@ -727,8 +748,8 @@ function PlayoutPanel({
             nextActive: Boolean(
                 nextMedia?.watermark
             ),
-            currentTime,
-            duration,
+            currentTime: selectedClipCurrent,
+            duration: selectedClipDuration,
             fadeSeconds:
                 watermarkFadeSeconds
         });
@@ -743,8 +764,8 @@ function PlayoutPanel({
             nextActive: Boolean(
                 nextMedia?.hashtag
             ),
-            currentTime,
-            duration,
+            currentTime: selectedClipCurrent,
+            duration: selectedClipDuration,
             fadeSeconds: 0.2
         });
 
@@ -759,12 +780,12 @@ function PlayoutPanel({
             : null;
 
     const progressPercent =
-        duration > 0
+        selectedClipDuration > 0
             ? Math.min(
                   100,
                   Math.max(
                       0,
-                      (currentTime / duration) * 100
+                      (selectedClipCurrent / selectedClipDuration) * 100
                   )
               )
             : 0;
@@ -795,8 +816,12 @@ function PlayoutPanel({
                 const itemDuration =
                     index === 0 &&
                     selectedMediaIndex >= 0
-                        ? duration || item.duration || 0
-                        : item.duration || 0;
+                        ? Math.max(
+                              0,
+                              getClipDuration(item) -
+                                  selectedClipCurrent
+                          )
+                        : getClipDuration(item);
 
                 cursor = new Date(
                     cursor.getTime() +
@@ -816,9 +841,15 @@ function PlayoutPanel({
         }
 
         video.pause();
-        video.currentTime = 0;
         video.load();
-        setCurrentTime(0);
+        const inPoint = getClipIn(selectedMedia);
+        try {
+            video.currentTime = inPoint;
+        } catch {
+            // loadedmetadata will apply IN again.
+        }
+        setCurrentTime(inPoint);
+        clipAdvanceGuardRef.current = false;
         setIsPlaying(false);
     }, [selectedMediaUrl]);
 
@@ -849,7 +880,9 @@ function PlayoutPanel({
 
         return {
             durationSeconds:
-                mediaItem.duration ?? 0,
+                getClipOut(mediaItem),
+            outPointSeconds:
+                getClipOut(mediaItem),
             watermarkEnabled:
                 Boolean(mediaItem.watermark),
             watermarkFadeIn:
@@ -953,9 +986,18 @@ function PlayoutPanel({
         }
 
         try {
+            const clipIn = getClipIn(mediaToPlay);
+            const clipOut = getClipOut(mediaToPlay);
+            if (
+                !Number.isFinite(video.currentTime) ||
+                video.currentTime < clipIn ||
+                video.currentTime >= clipOut
+            ) {
+                video.currentTime = clipIn;
+            }
             await startNativeNdi(
                 mediaToPlay,
-                video.currentTime || 0
+                video.currentTime || clipIn
             );
             await video.play();
             setIsPlaying(true);
@@ -979,10 +1021,11 @@ function PlayoutPanel({
 
         if (video) {
             video.pause();
-            video.currentTime = 0;
+            const inPoint = getClipIn(selectedMedia);
+            video.currentTime = inPoint;
         }
 
-        setCurrentTime(0);
+        setCurrentTime(getClipIn(selectedMedia));
         setIsPlaying(false);
     }
 
@@ -993,10 +1036,11 @@ function PlayoutPanel({
                 return;
             }
 
-            video.currentTime = 0;
+            const clipIn = getClipIn(selectedMedia);
+            video.currentTime = clipIn;
             await startNativeNdi(
                 selectedMedia,
-                0,
+                clipIn,
                 true
             );
             await video.play();
@@ -1011,8 +1055,9 @@ function PlayoutPanel({
         }
 
         onSelectMedia(nextMedia);
-        setCurrentTime(0);
-        setDuration(0);
+        setCurrentTime(getClipIn(nextMedia));
+        setDuration(getClipDuration(nextMedia));
+        clipAdvanceGuardRef.current = false;
         await delay(120);
 
         const video = videoRef.current;
@@ -1020,14 +1065,51 @@ function PlayoutPanel({
             return;
         }
 
-        await startNativeNdi(nextMedia, 0);
+        const nextIn = getClipIn(nextMedia);
+        video.currentTime = nextIn;
+        await startNativeNdi(nextMedia, nextIn);
         await video.play();
         setIsPlaying(true);
+    }
+
+    async function handleProgramTimeUpdate(
+        video: HTMLVideoElement
+    ) {
+        setCurrentTime(video.currentTime);
+
+        if (!selectedMedia) {
+            return;
+        }
+
+        const outPoint = getClipOut(selectedMedia);
+        if (
+            video.currentTime >= outPoint - 0.035 &&
+            !clipAdvanceGuardRef.current
+        ) {
+            clipAdvanceGuardRef.current = true;
+            await playNextMedia();
+        }
     }
 
     async function handleSeeked(
         video: HTMLVideoElement
     ) {
+        if (selectedMedia) {
+            const inPoint = getClipIn(selectedMedia);
+            const outPoint = getClipOut(selectedMedia);
+            if (video.currentTime < inPoint) {
+                video.currentTime = inPoint;
+                return;
+            }
+            if (video.currentTime >= outPoint) {
+                video.currentTime = Math.max(
+                    inPoint,
+                    outPoint - 0.04
+                );
+                return;
+            }
+        }
+
         setCurrentTime(video.currentTime);
 
         if (!isPlaying || !selectedMedia) {
@@ -1063,7 +1145,10 @@ function PlayoutPanel({
             sourceMediaId,
             loop: false,
             watermark: false,
-            hashtag: ""
+            hashtag: "",
+            inPoint: 0,
+            outPoint: mediaItem.duration ?? null,
+            blockLabel: ""
         };
 
         setTimelineQueue((current) => {
@@ -1208,6 +1293,116 @@ function PlayoutPanel({
                 }
             }
         }
+    }
+
+    function applyFilmEdit(
+        mediaId: string,
+        inPoint: number,
+        outPoint: number
+    ) {
+        const safeIn = Math.max(0, inPoint);
+        const source = timelineQueue.find(
+            (item) => item.id === mediaId
+        );
+        if (!source) return;
+        const safeOut = Math.min(
+            source.duration ?? outPoint,
+            Math.max(safeIn + 0.1, outPoint)
+        );
+
+        setTimelineQueue((current) =>
+            current.map((item) =>
+                item.id === mediaId
+                    ? {
+                          ...item,
+                          inPoint: safeIn,
+                          outPoint: safeOut
+                      }
+                    : item
+            )
+        );
+
+        if (selectedMedia?.id === mediaId) {
+            const updated = {
+                ...selectedMedia,
+                inPoint: safeIn,
+                outPoint: safeOut
+            };
+            onSelectMedia(updated);
+            const video = videoRef.current;
+            if (video) {
+                video.currentTime = safeIn;
+            }
+            setCurrentTime(safeIn);
+        }
+
+        setEditingFilm(null);
+    }
+
+    function splitFilmIntoBlocks(
+        mediaId: string,
+        inPoint: number,
+        cut1: number,
+        cut2: number,
+        outPoint: number
+    ) {
+        const sourceIndex = timelineQueue.findIndex(
+            (item) => item.id === mediaId
+        );
+        const source = timelineQueue[sourceIndex];
+        if (!source || sourceIndex < 0) return;
+
+        const points = [inPoint, cut1, cut2, outPoint];
+        if (
+            points.some((value) => !Number.isFinite(value)) ||
+            !(points[0] >= 0 &&
+              points[0] < points[1] &&
+              points[1] < points[2] &&
+              points[2] < points[3])
+        ) {
+            window.alert(
+                "Os cortes precisam estar em ordem: IN < Corte 1 < Corte 2 < OUT."
+            );
+            return;
+        }
+
+        const sourceDuration = source.duration ?? outPoint;
+        if (outPoint > sourceDuration + 0.01) {
+            window.alert(
+                "O ponto OUT não pode ultrapassar a duração do arquivo."
+            );
+            return;
+        }
+
+        const sourceMediaId =
+            source.sourceMediaId ?? source.id;
+        const stamp = Date.now();
+        const blocks = [0, 1, 2].map((index) => ({
+            ...source,
+            id: `${sourceMediaId}-block-${stamp}-${index + 1}`,
+            sourceMediaId,
+            inPoint: points[index],
+            outPoint: points[index + 1],
+            blockLabel: `Bloco ${index + 1}`,
+            loop: false
+        }));
+
+        setTimelineQueue((current) => {
+            const index = current.findIndex(
+                (item) => item.id === mediaId
+            );
+            if (index < 0) return current;
+            const updated = [...current];
+            updated.splice(index, 1, ...blocks);
+            return updated;
+        });
+
+        if (selectedMedia?.id === mediaId) {
+            onSelectMedia(blocks[0]);
+            setCurrentTime(blocks[0].inPoint ?? 0);
+        }
+
+        setEditingFilm(null);
     }
 
     function cutQueueTo(mediaId: string) {
@@ -1365,18 +1560,24 @@ function PlayoutPanel({
                                     controls
                                     preload="auto"
                                     onTimeUpdate={(event) =>
-                                        setCurrentTime(
-                                            event.currentTarget.currentTime
+                                        handleProgramTimeUpdate(
+                                            event.currentTarget
                                         )
                                     }
-                                    onLoadedMetadata={(event) =>
+                                    onLoadedMetadata={(event) => {
+                                        const video =
+                                            event.currentTarget;
+                                        const inPoint =
+                                            getClipIn(selectedMedia);
+                                        video.currentTime = inPoint;
+                                        setCurrentTime(inPoint);
                                         setDuration(
-                                            event.currentTarget.duration
-                                        )
-                                    }
-                                    onDurationChange={(event) =>
+                                            getClipDuration(selectedMedia)
+                                        );
+                                    }}
+                                    onDurationChange={() =>
                                         setDuration(
-                                            event.currentTarget.duration
+                                            getClipDuration(selectedMedia)
                                         )
                                     }
                                     onSeeked={(event) =>
@@ -1443,9 +1644,9 @@ function PlayoutPanel({
                         >⏭</button>
 
                         <div className="program-time">
-                            {formatDuration(currentTime)}
+                            {formatDuration(selectedClipCurrent)}
                             {" / "}
-                            {formatDuration(duration)}
+                            {formatDuration(selectedClipDuration)}
                         </div>
                     </div>
 
@@ -1624,76 +1825,29 @@ function PlayoutPanel({
                                             </div>
 
                                             <div className="timeline-content">
-                                                <strong>{item.name}</strong>
+                                                <strong>
+                                                    {item.blockLabel
+                                                        ? `${item.name} — ${item.blockLabel}`
+                                                        : item.name}
+                                                </strong>
                                                 <span>
                                                     {isCurrent
                                                         ? `${formatDuration(
-                                                              currentTime
+                                                              selectedClipCurrent
                                                           )} / ${formatDuration(
-                                                              duration
+                                                              selectedClipDuration
                                                           )}`
                                                         : formatDuration(
-                                                              item.duration
+                                                              getClipDuration(item)
                                                           )}
+                                                    {item.inPoint || item.outPoint != null
+                                                        ? ` • IN ${formatDuration(
+                                                              getClipIn(item)
+                                                          )} • OUT ${formatDuration(
+                                                              getClipOut(item)
+                                                          )}`
+                                                        : ""}
                                                 </span>
-
-                                                <label
-                                                    className="timeline-watermark-toggle"
-                                                    onClick={(event) =>
-                                                        event.stopPropagation()
-                                                    }
-                                                    onDoubleClick={(event) =>
-                                                        event.stopPropagation()
-                                                    }
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={Boolean(
-                                                            item.watermark
-                                                        )}
-                                                        onChange={() =>
-                                                            toggleTimelineWatermark(
-                                                                item.id
-                                                            )
-                                                        }
-                                                    />
-                                                    <span>
-                                                        Marca d'água
-                                                    </span>
-                                                </label>
-
-                                                <div
-                                                    className="timeline-hashtag-editor"
-                                                    onClick={(event) =>
-                                                        event.stopPropagation()
-                                                    }
-                                                    onDoubleClick={(event) =>
-                                                        event.stopPropagation()
-                                                    }
-                                                >
-                                                    <span>H</span>
-                                                    <input
-                                                        key={`${item.id}-${item.hashtag ?? ""}`}
-                                                        defaultValue={
-                                                            item.hashtag ?? ""
-                                                        }
-                                                        placeholder="#Hashtag"
-                                                        maxLength={80}
-                                                        onBlur={(event) =>
-                                                            updateTimelineHashtag(
-                                                                item.id,
-                                                                event.currentTarget.value
-                                                            )
-                                                        }
-                                                        onKeyDown={(event) => {
-                                                            if (
-                                                                event.key === "Enter"
-                                                            ) {
-                                                                event.currentTarget.blur();
-                                                            }
-                                                        }}
-                                                    />
-                                                </div>
 
                                                 <span className="timeline-air-time">
                                                     {isCurrent
@@ -1706,43 +1860,98 @@ function PlayoutPanel({
                                             </div>
 
                                             <div
-                                                className="timeline-actions"
+                                                className="timeline-right-controls"
                                                 onClick={(event) =>
                                                     event.stopPropagation()
                                                 }
+                                                onDoubleClick={(event) =>
+                                                    event.stopPropagation()
+                                                }
                                             >
-                                                {!isCurrent && (
+                                                <div className="timeline-gc-controls">
+                                                    <label
+                                                        className="timeline-watermark-toggle"
+                                                        title="Marca d'água"
+                                                    >
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={Boolean(
+                                                                item.watermark
+                                                            )}
+                                                            onChange={() =>
+                                                                toggleTimelineWatermark(
+                                                                    item.id
+                                                                )
+                                                            }
+                                                        />
+                                                        <span>Logo</span>
+                                                    </label>
+
+                                                    <div className="timeline-hashtag-editor">
+                                                        <span>#</span>
+                                                        <input
+                                                            key={`${item.id}-${item.hashtag ?? ""}`}
+                                                            defaultValue={
+                                                                item.hashtag ?? ""
+                                                            }
+                                                            placeholder="Hashtag"
+                                                            maxLength={80}
+                                                            onBlur={(event) =>
+                                                                updateTimelineHashtag(
+                                                                    item.id,
+                                                                    event.currentTarget.value
+                                                                )
+                                                            }
+                                                            onKeyDown={(event) => {
+                                                                if (event.key === "Enter") {
+                                                                    event.currentTarget.blur();
+                                                                }
+                                                            }}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="timeline-actions">
                                                     <button
-                                                        title="Colocar como próximo"
+                                                        className="timeline-film-edit"
+                                                        title="Editar / separar filme em blocos"
                                                         onClick={() =>
-                                                            moveToNext(item.id)
+                                                            setEditingFilm(item)
                                                         }
-                                                    >⏭</button>
-                                                )}
-                                                <button
-                                                    className={
-                                                        item.loop
-                                                            ? "timeline-loop-button active"
-                                                            : "timeline-loop-button"
-                                                    }
-                                                    title="Loop"
-                                                    onClick={() =>
-                                                        toggleTimelineLoop(
-                                                            item.id
-                                                        )
-                                                    }
-                                                >↻</button>
-                                                {!isCurrent && (
+                                                    >✂ Blocos</button>
+                                                    {!isCurrent && (
+                                                        <button
+                                                            title="Colocar como próximo"
+                                                            onClick={() =>
+                                                                moveToNext(item.id)
+                                                            }
+                                                        >⏭</button>
+                                                    )}
                                                     <button
-                                                        className="timeline-remove"
-                                                        title="Remover da timeline"
+                                                        className={
+                                                            item.loop
+                                                                ? "timeline-loop-button active"
+                                                                : "timeline-loop-button"
+                                                        }
+                                                        title="Loop"
                                                         onClick={() =>
-                                                            removeTimelineItem(
+                                                            toggleTimelineLoop(
                                                                 item.id
                                                             )
                                                         }
-                                                    >×</button>
-                                                )}
+                                                    >↻</button>
+                                                    {!isCurrent && (
+                                                        <button
+                                                            className="timeline-remove"
+                                                            title="Remover da timeline"
+                                                            onClick={() =>
+                                                                removeTimelineItem(
+                                                                    item.id
+                                                                )
+                                                            }
+                                                        >×</button>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     );
@@ -1757,6 +1966,15 @@ function PlayoutPanel({
                 </section>
             </div>
 
+            {editingFilm && (
+                <FilmBlockEditor
+                    item={editingFilm}
+                    onClose={() => setEditingFilm(null)}
+                    onSaveEdit={applyFilmEdit}
+                    onSplit={splitFilmIntoBlocks}
+                />
+            )}
+
             <div className="playout-library-column">
                 <LibraryPanel
                     media={media}
@@ -1768,6 +1986,199 @@ function PlayoutPanel({
                 />
             </div>
         </div>
+    );
+}
+
+interface FilmBlockEditorProps {
+    item: MediaItem;
+    onClose: () => void;
+    onSaveEdit: (
+        mediaId: string,
+        inPoint: number,
+        outPoint: number
+    ) => void;
+    onSplit: (
+        mediaId: string,
+        inPoint: number,
+        cut1: number,
+        cut2: number,
+        outPoint: number
+    ) => void;
+}
+
+function FilmBlockEditor({
+    item,
+    onClose,
+    onSaveEdit,
+    onSplit
+}: FilmBlockEditorProps) {
+    const duration = Math.max(0, item.duration ?? 0);
+    const initialIn = getClipIn(item);
+    const initialOut = getClipOut(item);
+    const span = Math.max(0.3, initialOut - initialIn);
+
+    const [inText, setInText] = useState(
+        formatEditorTime(initialIn)
+    );
+    const [outText, setOutText] = useState(
+        formatEditorTime(initialOut)
+    );
+    const [cut1Text, setCut1Text] = useState(
+        formatEditorTime(initialIn + span / 3)
+    );
+    const [cut2Text, setCut2Text] = useState(
+        formatEditorTime(initialIn + (span * 2) / 3)
+    );
+
+    const parsedIn = parseEditorTime(inText);
+    const parsedOut = parseEditorTime(outText);
+    const parsedCut1 = parseEditorTime(cut1Text);
+    const parsedCut2 = parseEditorTime(cut2Text);
+
+    const validEdit =
+        parsedIn !== null &&
+        parsedOut !== null &&
+        parsedIn >= 0 &&
+        parsedOut > parsedIn &&
+        parsedOut <= duration + 0.01;
+
+    const validSplit =
+        validEdit &&
+        parsedCut1 !== null &&
+        parsedCut2 !== null &&
+        parsedIn! < parsedCut1 &&
+        parsedCut1 < parsedCut2 &&
+        parsedCut2 < parsedOut!;
+
+    return (
+        <div
+            className="film-editor-backdrop"
+            onMouseDown={(event) => {
+                if (event.target === event.currentTarget) {
+                    onClose();
+                }
+            }}
+        >
+            <section className="film-editor-window">
+                <header className="film-editor-header">
+                    <div>
+                        <span>EDIÇÃO NÃO DESTRUTIVA</span>
+                        <h2>Editar / separar filme em blocos</h2>
+                        <strong>{item.name}</strong>
+                    </div>
+                    <button onClick={onClose}>×</button>
+                </header>
+
+                <div className="film-editor-summary">
+                    <span>Duração original</span>
+                    <strong>{formatDuration(duration)}</strong>
+                    <small>
+                        O arquivo original não será alterado. Os blocos apenas guardam pontos IN/OUT.
+                    </small>
+                </div>
+
+                <div className="film-editor-grid">
+                    <TimecodeField
+                        label="INÍCIO / IN"
+                        value={inText}
+                        onChange={setInText}
+                    />
+                    <TimecodeField
+                        label="CORTE 1"
+                        value={cut1Text}
+                        onChange={setCut1Text}
+                    />
+                    <TimecodeField
+                        label="CORTE 2"
+                        value={cut2Text}
+                        onChange={setCut2Text}
+                    />
+                    <TimecodeField
+                        label="FINAL / OUT"
+                        value={outText}
+                        onChange={setOutText}
+                    />
+                </div>
+
+                <div className="film-editor-block-preview">
+                    <div>
+                        <strong>Bloco 1</strong>
+                        <span>{formatRange(parsedIn, parsedCut1)}</span>
+                    </div>
+                    <div>
+                        <strong>Bloco 2</strong>
+                        <span>{formatRange(parsedCut1, parsedCut2)}</span>
+                    </div>
+                    <div>
+                        <strong>Bloco 3</strong>
+                        <span>{formatRange(parsedCut2, parsedOut)}</span>
+                    </div>
+                </div>
+
+                {!validEdit && (
+                    <div className="film-editor-error">
+                        IN/OUT inválidos. Use mm:ss ou hh:mm:ss e não ultrapasse a duração do filme.
+                    </div>
+                )}
+
+                <footer className="film-editor-footer">
+                    <button onClick={onClose}>Cancelar</button>
+                    <button
+                        disabled={!validEdit}
+                        onClick={() =>
+                            validEdit &&
+                            onSaveEdit(
+                                item.id,
+                                parsedIn!,
+                                parsedOut!
+                            )
+                        }
+                    >
+                        Salvar somente edição
+                    </button>
+                    <button
+                        className="primary-button"
+                        disabled={!validSplit}
+                        onClick={() =>
+                            validSplit &&
+                            onSplit(
+                                item.id,
+                                parsedIn!,
+                                parsedCut1!,
+                                parsedCut2!,
+                                parsedOut!
+                            )
+                        }
+                    >
+                        Separar em 3 blocos
+                    </button>
+                </footer>
+            </section>
+        </div>
+    );
+}
+
+function TimecodeField({
+    label,
+    value,
+    onChange
+}: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+}) {
+    return (
+        <label className="film-timecode-field">
+            <span>{label}</span>
+            <input
+                value={value}
+                inputMode="numeric"
+                placeholder="00:00"
+                onChange={(event) =>
+                    onChange(event.currentTarget.value)
+                }
+            />
+        </label>
     );
 }
 
@@ -2513,6 +2924,108 @@ function hexToRgba(
     const blue = parseInt(value.slice(4, 6), 16);
 
     return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
+function normalizeClipPoint(
+    value: unknown,
+    fallback = 0
+) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed)
+        ? Math.max(0, parsed)
+        : fallback;
+}
+
+function normalizeClipOutPoint(
+    value: unknown,
+    sourceDuration: number | null | undefined
+) {
+    const duration = Math.max(
+        0,
+        Number(sourceDuration) || 0
+    );
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+        return duration;
+    }
+    return duration > 0
+        ? Math.min(duration, parsed)
+        : parsed;
+}
+
+function getClipIn(item: MediaItem | null) {
+    return normalizeClipPoint(item?.inPoint, 0);
+}
+
+function getClipOut(item: MediaItem | null) {
+    const sourceDuration = Math.max(
+        0,
+        Number(item?.duration) || 0
+    );
+    return normalizeClipOutPoint(
+        item?.outPoint,
+        sourceDuration
+    );
+}
+
+function getClipDuration(item: MediaItem | null) {
+    return Math.max(
+        0,
+        getClipOut(item) - getClipIn(item)
+    );
+}
+
+function parseEditorTime(value: string) {
+    const clean = value.trim();
+    if (!clean) return null;
+
+    if (/^\d+(?:[.,]\d+)?$/.test(clean)) {
+        const numeric = Number(clean.replace(",", "."));
+        return Number.isFinite(numeric) ? numeric : null;
+    }
+
+    const parts = clean.split(":");
+    if (parts.length < 2 || parts.length > 3) {
+        return null;
+    }
+
+    const numbers = parts.map((part) =>
+        Number(part.replace(",", "."))
+    );
+    if (numbers.some((part) => !Number.isFinite(part))) {
+        return null;
+    }
+
+    if (parts.length === 2) {
+        return numbers[0] * 60 + numbers[1];
+    }
+
+    return (
+        numbers[0] * 3600 +
+        numbers[1] * 60 +
+        numbers[2]
+    );
+}
+
+function formatEditorTime(seconds: number) {
+    const safe = Math.max(0, seconds || 0);
+    const hours = Math.floor(safe / 3600);
+    const minutes = Math.floor((safe % 3600) / 60);
+    const secs = Math.floor(safe % 60);
+
+    return hours > 0
+        ? `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`
+        : `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function formatRange(
+    start: number | null,
+    end: number | null
+) {
+    if (start === null || end === null || end <= start) {
+        return "--:--";
+    }
+    return `${formatEditorTime(start)} → ${formatEditorTime(end)} • ${formatDuration(end - start)}`;
 }
 
 function normalizeHashtag(value: string) {
