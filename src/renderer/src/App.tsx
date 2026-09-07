@@ -212,6 +212,10 @@ export default function App() {
         useState<HashtagStyle>(
             DEFAULT_HASHTAG_STYLE
         );
+    const [programmedRemainingSeconds, setProgrammedRemainingSeconds] =
+        useState(0);
+    const [programmedIndefinite, setProgrammedIndefinite] =
+        useState(false);
 
     useEffect(() => {
         const updateClock = () =>
@@ -400,6 +404,29 @@ export default function App() {
         setHashtagStyle(result.hashtagStyle);
     }
 
+    const programmedDurationLabel =
+        programmedIndefinite
+            ? "LOOP"
+            : formatProgrammedDuration(
+                  programmedRemainingSeconds
+              );
+    const programmedUntilLabel =
+        programmedIndefinite
+            ? "SEM PREVISÃO"
+            : programmedRemainingSeconds > 0
+              ? new Date(
+                    Date.now() +
+                        programmedRemainingSeconds * 1000
+                ).toLocaleTimeString(
+                    "pt-BR",
+                    {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit"
+                    }
+                )
+              : "--:--:--";
+
     return (
         <div className="app-shell">
             <header className="topbar">
@@ -408,8 +435,20 @@ export default function App() {
                     <span>Automation</span>
                 </div>
 
-                <div className="master-clock">
-                    {clock}
+                <div className="header-time-center">
+                    <div className="master-clock">
+                        {clock}
+                    </div>
+                    <div className="programmed-time-summary">
+                        <div>
+                            <span>PROGRAMADO</span>
+                            <strong>{programmedDurationLabel}</strong>
+                        </div>
+                        <div>
+                            <span>ATÉ</span>
+                            <strong>{programmedUntilLabel}</strong>
+                        </div>
+                    </div>
                 </div>
 
                 <div className="system-status">
@@ -448,6 +487,10 @@ export default function App() {
                             onAddVideos={addVideos}
                             onImportDroppedFiles={importDroppedFiles}
                             onRemoveMedia={handleRemoveMedia}
+                            onScheduleSummary={(remainingSeconds, indefinite) => {
+                                setProgrammedRemainingSeconds(remainingSeconds);
+                                setProgrammedIndefinite(indefinite);
+                            }}
                         />
                     )}
 
@@ -540,6 +583,10 @@ interface PlayoutPanelProps {
     onRemoveMedia: (
         media: MediaItem
     ) => Promise<void>;
+    onScheduleSummary: (
+        remainingSeconds: number,
+        indefinite: boolean
+    ) => void;
 }
 
 function PlayoutPanel({
@@ -551,7 +598,8 @@ function PlayoutPanel({
     onSelectMedia,
     onAddVideos,
     onImportDroppedFiles,
-    onRemoveMedia
+    onRemoveMedia,
+    onScheduleSummary
 }: PlayoutPanelProps) {
     const videoRef =
         useRef<HTMLVideoElement | null>(null);
@@ -772,6 +820,51 @@ function PlayoutPanel({
         0,
         currentTime - selectedClipIn
     );
+
+    useEffect(() => {
+        if (timelineQueue.length === 0) {
+            onScheduleSummary(0, false);
+            return;
+        }
+
+        const startIndex =
+            selectedMediaIndex >= 0
+                ? selectedMediaIndex
+                : 0;
+        const remainingItems =
+            timelineQueue.slice(startIndex);
+        const indefinite =
+            remainingItems.some((item) => Boolean(item.loop));
+
+        if (indefinite) {
+            onScheduleSummary(0, true);
+            return;
+        }
+
+        let remaining = 0;
+        remainingItems.forEach((item, index) => {
+            if (
+                index === 0 &&
+                selectedMediaIndex >= 0
+            ) {
+                remaining += Math.max(
+                    0,
+                    getClipDuration(item) -
+                        selectedClipCurrent
+                );
+                return;
+            }
+
+            remaining += getClipDuration(item);
+        });
+
+        onScheduleSummary(remaining, false);
+    }, [
+        timelineQueue,
+        selectedMediaIndex,
+        selectedClipCurrent,
+        onScheduleSummary
+    ]);
 
     const watermarkFadeSeconds = Math.max(
         0,
@@ -3057,6 +3150,17 @@ function hexToRgba(
     const blue = parseInt(value.slice(4, 6), 16);
 
     return `rgba(${red}, ${green}, ${blue}, ${opacity})`;
+}
+
+function formatProgrammedDuration(seconds: number) {
+    const safe = Math.max(0, Math.floor(Number(seconds) || 0));
+    const hours = Math.floor(safe / 3600);
+    const minutes = Math.floor((safe % 3600) / 60);
+    const secs = safe % 60;
+
+    return [hours, minutes, secs]
+        .map((value) => String(value).padStart(2, "0"))
+        .join(":");
 }
 
 function normalizeClipPoint(

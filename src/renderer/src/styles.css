@@ -1480,3 +1480,50 @@ button {
         grid-column: 1 / 3;
     }
 }
+
+
+/* ===== TEMPO PROGRAMADO NO CABEÇALHO ===== */
+.header-time-center {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    min-width: 0;
+}
+
+.programmed-time-summary {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.programmed-time-summary > div {
+    min-width: 108px;
+    padding: 6px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+    background: #101010;
+    border: 1px solid #343434;
+    border-radius: 6px;
+}
+
+.programmed-time-summary span {
+    color: #777777;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.9px;
+}
+
+.programmed-time-summary strong {
+    color: #e5e5e5;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+@media (max-width: 1250px) {
+    .programmed-time-summary {
+        display: none;
+    }
+}
