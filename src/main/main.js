@@ -1042,7 +1042,18 @@ function registerIpcHandlers() {
                                 "Vídeos compatíveis",
                             extensions: [
                                 "mp4",
-                                "mov"
+                                "mov",
+                                "mkv",
+                                "avi",
+                                "mxf",
+                                "ts",
+                                "mts",
+                                "m2ts",
+                                "webm",
+                                "mpg",
+                                "mpeg",
+                                "m4v",
+                                "wmv"
                             ]
                         }
                     ]
