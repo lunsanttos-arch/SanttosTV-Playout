@@ -157,3 +157,5 @@ jobs:
           git add src/main/main.js src/renderer/src/App.tsx
           git commit -m "feat: add resilient multi-format ingest with decoder fallback and audio 01 priority"
           git push
+
+# validation rerun after migration script syntax repair
