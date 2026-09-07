@@ -1,0 +1,35 @@
+name: Fix Explorer Drag Drop
+
+on:
+  push:
+    paths:
+      - ".github/workflows/fix-explorer-drag-drop.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply patch
+        run: python scripts/fix-explorer-drag-drop.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Validate preload
+        run: node --check src/main/preload.js
+      - name: Build renderer
+        run: npm run build:renderer
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/renderer/src/App.tsx src/main/preload.js
+          git commit -m "fix: restore Windows Explorer drag and drop into library and timeline"
+          git push
