@@ -1,6 +1,7 @@
 const {
     execFile
 } = require("node:child_process");
+const path = require("node:path");
 
 const ffprobeModule = require(
     "@derhuerst/ffprobe-static"
@@ -18,26 +19,49 @@ if (!ffprobePath) {
     );
 }
 
-function probeMedia(filePath) {
+function runProbe(filePath, options = {}) {
     return new Promise(
         (resolve, reject) => {
             const argumentsList = [
                 "-v",
                 "error",
+                "-probesize",
+                String(
+                    options.probeSize ??
+                    50000000
+                ),
+                "-analyzeduration",
+                String(
+                    options.analyzeDuration ??
+                    50000000
+                ),
+                "-fflags",
+                "+genpts+discardcorrupt"
+            ];
+
+            if (options.formatHint) {
+                argumentsList.push(
+                    "-f",
+                    options.formatHint
+                );
+            }
+
+            argumentsList.push(
                 "-print_format",
                 "json",
                 "-show_format",
                 "-show_streams",
                 filePath
-            ];
+            );
 
             execFile(
                 ffprobePath,
                 argumentsList,
                 {
                     windowsHide: true,
+                    timeout: 30000,
                     maxBuffer:
-                        32 * 1024 * 1024
+                        64 * 1024 * 1024
                 },
                 (error, stdout, stderr) => {
                     if (error) {
@@ -51,13 +75,8 @@ function probeMedia(filePath) {
                     }
 
                     try {
-                        const probeResult =
-                            JSON.parse(stdout);
-
                         resolve(
-                            parseProbeResult(
-                                probeResult
-                            )
+                            JSON.parse(stdout)
                         );
                     } catch (parseError) {
                         reject(
@@ -70,6 +89,68 @@ function probeMedia(filePath) {
             );
         }
     );
+}
+
+function getProbeFormatHint(filePath) {
+    const extension = path
+        .extname(filePath)
+        .toLowerCase();
+
+    if (
+        extension === ".ts" ||
+        extension === ".mts" ||
+        extension === ".m2ts"
+    ) {
+        return "mpegts";
+    }
+
+    return null;
+}
+
+async function probeMedia(filePath) {
+    let firstError = null;
+
+    try {
+        const probeResult =
+            await runProbe(filePath);
+
+        return parseProbeResult(
+            probeResult
+        );
+    } catch (error) {
+        firstError = error;
+    }
+
+    const formatHint =
+        getProbeFormatHint(filePath);
+
+    if (formatHint) {
+        try {
+            const probeResult =
+                await runProbe(
+                    filePath,
+                    {
+                        formatHint,
+                        probeSize: 100000000,
+                        analyzeDuration: 100000000
+                    }
+                );
+
+            return parseProbeResult(
+                probeResult
+            );
+        } catch (retryError) {
+            throw new Error(
+                [
+                    "FFprobe não conseguiu analisar o arquivo após a tentativa de recuperação.",
+                    `Primeira tentativa: ${firstError?.message ?? "erro desconhecido"}`,
+                    `Segunda tentativa: ${retryError?.message ?? "erro desconhecido"}`
+                ].join("\n")
+            );
+        }
+    }
+
+    throw firstError;
 }
 
 function parseProbeResult(probeResult) {
@@ -338,10 +419,9 @@ function choosePrimaryAudioStream(streams) {
         return null;
     }
 
-    // Regra editorial do Santtos TV:
-    // Áudio 01 é sempre o áudio principal do PROGRAM.
-    // Outras faixas permanecem catalogadas para usos futuros
-    // como audiodescrição, SAP ou idioma alternativo.
+    // Política editorial: Áudio 01 é sempre o áudio principal.
+    // As demais faixas ficam catalogadas para audiodescrição,
+    // SAP e idiomas alternativos no futuro.
     return streams[0] ?? null;
 }
 
@@ -605,6 +685,7 @@ function normalizeCodec(codecName) {
         pcm_s32le: "PCM 32-bit",
         flac: "FLAC",
         alac: "ALAC",
+        mp2: "MP2",
         mp3: "MP3",
         ac3: "AC-3",
         eac3: "E-AC-3",
@@ -622,5 +703,6 @@ module.exports = {
     probeMedia,
     parseProbeResult,
     chooseBestVideoStream,
-    choosePrimaryAudioStream
+    choosePrimaryAudioStream,
+    runProbe
 };
