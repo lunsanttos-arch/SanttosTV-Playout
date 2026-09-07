@@ -1,0 +1,27 @@
+/* Biblioteca integrada ao tamanho do painel, sem barra de rolagem visível. */
+.playout-library-column .module-panel {
+    min-height: 0;
+    overflow: hidden;
+}
+
+.playout-library-column .media-list {
+    flex: 1;
+    min-height: 0;
+    max-height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.playout-library-column .media-list::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+    display: none;
+}
+
+.playout-library-column .empty-state {
+    flex: 1;
+    min-height: 0;
+}
