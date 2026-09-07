@@ -183,6 +183,27 @@ declare global {
                 error?: string;
             }>;
             stopNdiFile: () => Promise<NdiCommandResult>;
+            startPlayoutReport: (
+                mediaItem: MediaItem & {
+                    plannedDurationSeconds: number;
+                }
+            ) => Promise<{
+                ok: boolean;
+                id?: string;
+                error?: string;
+            }>;
+            finishPlayoutReport: (
+                entryId: string,
+                status: "EXECUTADO" | "PULADO",
+                playedSeconds: number
+            ) => Promise<{
+                ok: boolean;
+                error?: string;
+            }>;
+            getPlayoutReportFolder: () => Promise<{
+                ok: boolean;
+                folder?: string;
+            }>;
             sendNdiFrame: (
                 frameData: Uint8Array
             ) => void;
@@ -634,6 +655,7 @@ function PlayoutPanel({
     const [editingFilm, setEditingFilm] =
         useState<MediaItem | null>(null);
     const clipAdvanceGuardRef = useRef(false);
+    const activeReportIdRef = useRef<string | null>(null);
 
     useEffect(() => {
         let cancelled = false;
@@ -1048,6 +1070,73 @@ function PlayoutPanel({
         };
     }
 
+    async function startExecutionReport(mediaItem: MediaItem) {
+        if (activeReportIdRef.current) {
+            return;
+        }
+
+        try {
+            const result = await window.santtosAPI.startPlayoutReport({
+                ...mediaItem,
+                inPoint: getClipIn(mediaItem),
+                outPoint: getClipOut(mediaItem),
+                plannedDurationSeconds: getClipDuration(mediaItem)
+            });
+
+            if (result.ok && result.id) {
+                activeReportIdRef.current = result.id;
+            } else if (!result.ok) {
+                console.error(
+                    "Não foi possível iniciar o relatório de exibição:",
+                    result.error
+                );
+            }
+        } catch (error) {
+            console.error(
+                "Erro no relatório de exibição:",
+                error
+            );
+        }
+    }
+
+    async function finishExecutionReport(
+        status: "EXECUTADO" | "PULADO",
+        mediaItem: MediaItem | null = selectedMedia,
+        forcedPlayedSeconds?: number
+    ) {
+        const reportId = activeReportIdRef.current;
+        if (!reportId) {
+            return;
+        }
+
+        activeReportIdRef.current = null;
+
+        const videoTime = videoRef.current?.currentTime ?? currentTime;
+        const playedSeconds = forcedPlayedSeconds ?? Math.max(
+            0,
+            videoTime - getClipIn(mediaItem)
+        );
+
+        try {
+            const result = await window.santtosAPI.finishPlayoutReport(
+                reportId,
+                status,
+                playedSeconds
+            );
+            if (!result.ok) {
+                console.error(
+                    "Não foi possível finalizar o relatório de exibição:",
+                    result.error
+                );
+            }
+        } catch (error) {
+            console.error(
+                "Erro ao finalizar relatório de exibição:",
+                error
+            );
+        }
+    }
+
     async function startNativeNdi(
         mediaItem: MediaItem,
         startSeconds = 0,
@@ -1141,6 +1230,7 @@ function PlayoutPanel({
             );
             await video.play();
             setIsPlaying(true);
+            await startExecutionReport(mediaToPlay);
         } catch (error) {
             console.error(error);
             window.alert(
@@ -1156,6 +1246,7 @@ function PlayoutPanel({
     }
 
     async function stopVideo() {
+        await finishExecutionReport("PULADO");
         await window.santtosAPI.stopNdiFile();
         const video = videoRef.current;
 
@@ -1169,7 +1260,17 @@ function PlayoutPanel({
         setIsPlaying(false);
     }
 
-    async function playNextMedia() {
+    async function playNextMedia(
+        reason: "completed" | "skipped" = "skipped"
+    ) {
+        await finishExecutionReport(
+            reason === "completed" ? "EXECUTADO" : "PULADO",
+            selectedMedia,
+            reason === "completed"
+                ? getClipDuration(selectedMedia)
+                : undefined
+        );
+
         if (selectedMedia?.loop) {
             const video = videoRef.current;
             if (!video) {
@@ -1185,6 +1286,7 @@ function PlayoutPanel({
             );
             await video.play();
             setIsPlaying(true);
+            await startExecutionReport(selectedMedia);
             return;
         }
 
@@ -1210,6 +1312,7 @@ function PlayoutPanel({
         await startNativeNdi(nextMedia, nextIn);
         await video.play();
         setIsPlaying(true);
+        await startExecutionReport(nextMedia);
     }
 
     async function handleProgramTimeUpdate(
@@ -1227,7 +1330,7 @@ function PlayoutPanel({
             !clipAdvanceGuardRef.current
         ) {
             clipAdvanceGuardRef.current = true;
-            await playNextMedia();
+            await playNextMedia("completed");
         }
     }
 
@@ -1762,7 +1865,7 @@ function PlayoutPanel({
                                             event.currentTarget
                                         )
                                     }
-                                    onEnded={playNextMedia}
+                                    onEnded={() => playNextMedia("completed")}
                                 />
 
                                 {watermarkPreviewUrl && (
@@ -1816,7 +1919,7 @@ function PlayoutPanel({
                         >■</button>
                         <button
                             title="Próximo vídeo"
-                            onClick={playNextMedia}
+                            onClick={() => playNextMedia("skipped")}
                             disabled={!nextMedia}
                         >⏭</button>
 

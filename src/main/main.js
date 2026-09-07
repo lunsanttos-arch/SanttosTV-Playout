@@ -40,6 +40,16 @@ const {
     "../core/media/decode-check"
 );
 
+const {
+    initializePlayoutReports,
+    startPlayoutEntry,
+    finishPlayoutEntry,
+    closeOpenEntriesAsSkipped,
+    getReportFolder
+} = require(
+    "../core/reporting/playout-report"
+);
+
 const isDevelopment = !app.isPackaged;
 
 const NDI_FRAME_WIDTH = 1920;
@@ -1054,6 +1064,61 @@ function registerIpcHandlers() {
     );
 
     ipcMain.handle(
+        "report:playout-start",
+        async (_event, mediaItem) => {
+            try {
+                return {
+                    ok: true,
+                    ...startPlayoutEntry(mediaItem)
+                };
+            } catch (error) {
+                console.error(
+                    "Falha ao iniciar registro de exibição:",
+                    error
+                );
+                return {
+                    ok: false,
+                    error: error instanceof Error
+                        ? error.message
+                        : "Não foi possível iniciar o registro de exibição."
+                };
+            }
+        }
+    );
+
+    ipcMain.handle(
+        "report:playout-finish",
+        async (_event, entryId, status, playedSeconds) => {
+            try {
+                return finishPlayoutEntry(
+                    entryId,
+                    status,
+                    playedSeconds
+                );
+            } catch (error) {
+                console.error(
+                    "Falha ao finalizar registro de exibição:",
+                    error
+                );
+                return {
+                    ok: false,
+                    error: error instanceof Error
+                        ? error.message
+                        : "Não foi possível finalizar o registro de exibição."
+                };
+            }
+        }
+    );
+
+    ipcMain.handle(
+        "report:folder",
+        async () => ({
+            ok: true,
+            folder: getReportFolder()
+        })
+    );
+
+    ipcMain.handle(
         "timeline:list",
         async () => getTimeline()
     );
@@ -1350,9 +1415,16 @@ function startSystem() {
     );
 
     initializeDatabase();
+    initializePlayoutReports({
+        userDataPath: app.getPath("userData"),
+        documentsPath: app.getPath("documents")
+    });
     addLog("Sistema iniciado");
 
     console.log("Banco de dados OK");
+    console.log(
+        `Relatórios de exibição: ${getReportFolder()}`
+    );
 }
 
 app.whenReady().then(() => {
@@ -1373,6 +1445,7 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
+    closeOpenEntriesAsSkipped();
     stopNativePlayback();
     stopNdiSender();
 });

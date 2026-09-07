@@ -110,6 +110,25 @@ contextBridge.exposeInMainWorld(
                 "ndi:stop-file"
             ),
 
+        startPlayoutReport: (mediaItem) =>
+            ipcRenderer.invoke(
+                "report:playout-start",
+                mediaItem
+            ),
+
+        finishPlayoutReport: (entryId, status, playedSeconds) =>
+            ipcRenderer.invoke(
+                "report:playout-finish",
+                entryId,
+                status,
+                playedSeconds
+            ),
+
+        getPlayoutReportFolder: () =>
+            ipcRenderer.invoke(
+                "report:folder"
+            ),
+
         sendNdiFrame: (frameData) =>
             ipcRenderer.send(
                 "ndi:frame",
