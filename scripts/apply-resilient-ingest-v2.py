@@ -113,7 +113,8 @@ new = '''            const metadata =
                         new Date().toISOString()
                 }
             );'''
-t = replace_once(t, old, new, "decode preflight analysis")\n
+t = replace_once(t, old, new, "decode preflight analysis")
+
 # Filter graph must target the video stream selected by ffprobe.
 old = '''function buildProgramFilterGraph(
     hashtag,
