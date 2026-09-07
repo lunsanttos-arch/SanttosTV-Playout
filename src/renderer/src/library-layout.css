@@ -1,4 +1,4 @@
-/* Biblioteca integrada ao tamanho do painel, sem barra de rolagem visível. */
+/* Biblioteca mantém o tamanho original dos itens, com rolagem apenas vertical. */
 .playout-library-column .module-panel {
     min-height: 0;
     overflow: hidden;
@@ -11,14 +11,15 @@
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior: contain;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
 }
 
 .playout-library-column .media-list::-webkit-scrollbar {
-    width: 0;
+    width: 10px;
     height: 0;
-    display: none;
+}
+
+.playout-library-column .media-list::-webkit-scrollbar:horizontal {
+    height: 0;
 }
 
 .playout-library-column .empty-state {
