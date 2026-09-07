@@ -1,0 +1,67 @@
+/* Biblioteca: somente rolagem vertical, sem overflow horizontal. */
+.playout-library-column,
+.playout-library-column .module-panel,
+.playout-library-column .media-list,
+.playout-library-column .media-item,
+.playout-library-column .media-information {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.playout-library-column .module-panel {
+    overflow: hidden;
+}
+
+.playout-library-column .media-list {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+}
+
+.playout-library-column .media-item {
+    width: 100%;
+    overflow: hidden;
+}
+
+.playout-library-column .media-information,
+.playout-library-column .media-information strong,
+.playout-library-column .media-information span,
+.playout-library-column .media-metadata {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.playout-library-column .media-information strong,
+.playout-library-column .media-information span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.playout-library-column .media-metadata {
+    overflow: hidden;
+}
+
+/* Barra vertical no mesmo tema do Santtos TV. */
+.playout-library-column .media-list::-webkit-scrollbar {
+    width: 10px;
+    height: 0;
+}
+
+.playout-library-column .media-list::-webkit-scrollbar-track {
+    background: #121212;
+    border-radius: 999px;
+}
+
+.playout-library-column .media-list::-webkit-scrollbar-thumb {
+    background: #3a3a3a;
+    border: 2px solid #121212;
+    border-radius: 999px;
+}
+
+.playout-library-column .media-list::-webkit-scrollbar-thumb:hover {
+    background: #555555;
+}
