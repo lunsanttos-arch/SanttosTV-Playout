@@ -476,7 +476,14 @@ export default function App() {
                 />
 
                 <main className="main-content">
-                    {activePanel === "playout" && (
+                    <div
+                        className={
+                            activePanel === "playout"
+                                ? "persistent-playout-view active"
+                                : "persistent-playout-view hidden"
+                        }
+                        aria-hidden={activePanel !== "playout"}
+                    >
                         <PlayoutPanel
                             media={media}
                             isLoading={isLoading}
@@ -492,7 +499,7 @@ export default function App() {
                                 setProgrammedIndefinite(indefinite);
                             }}
                         />
-                    )}
+                    </div>
 
                     {activePanel === "settings" && (
                         <BroadcastSettingsPanel

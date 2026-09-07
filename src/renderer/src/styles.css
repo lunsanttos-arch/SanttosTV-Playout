@@ -1527,3 +1527,24 @@ button {
         display: none;
     }
 }
+
+
+/* Playout permanece montado durante a navegação para não interromper o PROGRAM. */
+.main-content {
+    position: relative;
+}
+
+.persistent-playout-view {
+    width: 100%;
+    height: 100%;
+}
+
+.persistent-playout-view.hidden {
+    position: absolute;
+    inset: 15px;
+    width: auto;
+    height: auto;
+    visibility: hidden;
+    pointer-events: none;
+    z-index: -1;
+}
