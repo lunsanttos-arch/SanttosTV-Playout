@@ -62,8 +62,8 @@ jobs:
             /tmp/santtos-media/prores.mov
 
           "$FFMPEG" -hide_banner -loglevel error \
-            -f lavfi -i "testsrc2=size=720x480:rate=30000/1001:duration=1" \
-            -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=1" \
+            -f lavfi -i "testsrc2=size=720x480:rate=30000/1001:duration=3" \
+            -f lavfi -i "sine=frequency=440:sample_rate=48000:duration=3" \
             -c:v mpeg2video -c:a mp2 -shortest -f mpegts \
             /tmp/santtos-media/mpeg2.ts
 
@@ -158,4 +158,4 @@ jobs:
           git commit -m "feat: add resilient multi-format ingest with decoder fallback and audio 01 priority"
           git push
 
-# validation rerun after migration script syntax repair
+# validation rerun after ffprobe recovery changes
