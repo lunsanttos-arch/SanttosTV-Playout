@@ -24,13 +24,10 @@ function probeMedia(filePath) {
             const argumentsList = [
                 "-v",
                 "error",
-
                 "-print_format",
                 "json",
-
                 "-show_format",
                 "-show_streams",
-
                 filePath
             ];
 
@@ -54,7 +51,6 @@ function probeMedia(filePath) {
                                 error.message
                             )
                         );
-
                         return;
                     }
 
@@ -89,23 +85,23 @@ function parseProbeResult(probeResult) {
     const format =
         probeResult.format ?? {};
 
-    const videoStream =
-        streams.find(
-            (stream) =>
-                stream.codec_type ===
-                "video"
-        );
+    const videoStreams = streams.filter(
+        (stream) =>
+            stream.codec_type === "video" &&
+            stream.disposition?.attached_pic !== 1
+    );
 
-    const audioStream =
-        streams.find(
-            (stream) =>
-                stream.codec_type ===
-                "audio"
-        );
+    const audioStreams = streams.filter(
+        (stream) =>
+            stream.codec_type === "audio"
+    );
+
+    const videoStream = videoStreams[0];
+    const audioStream = audioStreams[0];
 
     if (!videoStream) {
         throw new Error(
-            "O arquivo não possui uma faixa de vídeo."
+            "O arquivo não possui uma faixa de vídeo reproduzível."
         );
     }
 
@@ -121,64 +117,54 @@ function parseProbeResult(probeResult) {
 
     const metadata = {
         duration,
-
-        width:
-            parseInteger(
-                videoStream.width
-            ),
-
-        height:
-            parseInteger(
-                videoStream.height
-            ),
-
+        width: parseInteger(
+            videoStream.width
+        ),
+        height: parseInteger(
+            videoStream.height
+        ),
         fps:
             fps === null
                 ? null
                 : Number(
                     fps.toFixed(3)
                 ),
-
         videoCodec:
             normalizeCodec(
                 videoStream.codec_name
             ),
-
         videoProfile:
-            videoStream.profile ??
-            null,
-
+            videoStream.profile ?? null,
         pixelFormat:
-            videoStream.pix_fmt ??
-            null,
-
+            videoStream.pix_fmt ?? null,
         audioCodec:
             normalizeCodec(
                 audioStream?.codec_name
             ),
-
         audioChannels:
             parseInteger(
                 audioStream?.channels
             ),
-
         audioLayout:
-            audioStream
-                ?.channel_layout ??
+            audioStream?.channel_layout ??
             null,
-
         sampleRate:
             parseInteger(
-                audioStream
-                    ?.sample_rate
+                audioStream?.sample_rate
             ),
-
         bitRate:
             parseInteger(
                 format.bit_rate ??
                 videoStream.bit_rate
             ),
-
+        container:
+            normalizeContainer(
+                format.format_name
+            ),
+        videoStreamCount:
+            videoStreams.length,
+        audioStreamCount:
+            audioStreams.length,
         metadataError: null
     };
 
@@ -187,69 +173,73 @@ function parseProbeResult(probeResult) {
 
     return {
         ...metadata,
-
-        status:
-            validation.status,
-
-        compatibility:
-            validation
+        status: validation.status,
+        compatibility: validation
     };
 }
 
 function validateMedia(metadata) {
-    const issues = [];
+    const warnings = [];
 
-    const isFullHdCompatible =
-        metadata.width === 1920 &&
-        metadata.height !== null &&
-        metadata.height > 0 &&
-        metadata.height <= 1080;
-
-    if (!isFullHdCompatible) {
-        issues.push(
-            "A resolução precisa ter 1920 pixels de largura e altura de até 1080."
-        );
+    if (
+        metadata.width === null ||
+        metadata.height === null ||
+        metadata.width <= 0 ||
+        metadata.height <= 0
+    ) {
+        return {
+            status: "incompatible",
+            issues: [
+                "A faixa de vídeo não possui dimensões válidas."
+            ],
+            warnings
+        };
     }
 
-    if (metadata.videoCodec !== "H.264") {
-        issues.push(
-            "O codec de vídeo não é H.264."
+    if (
+        metadata.width !== 1920 ||
+        metadata.height !== 1080
+    ) {
+        warnings.push(
+            `A origem é ${metadata.width}x${metadata.height}; o PROGRAM normalizará para o formato de saída.`
         );
     }
 
     if (
         metadata.fps === null ||
-        !isSupportedFrameRate(metadata.fps)
+        metadata.fps <= 0
     ) {
-        issues.push(
-            "O FPS não é compatível."
+        warnings.push(
+            "O FPS da origem não pôde ser determinado com precisão; o engine usará timestamps do arquivo e normalização do PROGRAM."
+        );
+    }
+
+    if (
+        metadata.videoCodec &&
+        ![
+            "H.264",
+            "H.265",
+            "VP9",
+            "AV1",
+            "MPEG2VIDEO",
+            "PRORES",
+            "DNXHD",
+            "MJPEG",
+            "VC1",
+            "WMV3",
+            "MPEG4"
+        ].includes(metadata.videoCodec)
+    ) {
+        warnings.push(
+            `Codec ${metadata.videoCodec} será reproduzido por fallback de software se o FFmpeg oferecer decoder.`
         );
     }
 
     return {
-        status:
-            issues.length === 0
-                ? "compatible"
-                : "incompatible",
-
-        issues
+        status: "compatible",
+        issues: [],
+        warnings
     };
-}
-function isSupportedFrameRate(fps) {
-    const supportedRates = [
-        24000 / 1001,
-        23.98,
-        24,
-        60000 / 1001,
-        60
-    ];
-
-    return supportedRates.some(
-        (supportedRate) =>
-            Math.abs(
-                fps - supportedRate
-            ) < 0.03
-    );
 }
 
 function parseFrameRate(value) {
@@ -302,6 +292,19 @@ function parseInteger(value) {
         : null;
 }
 
+function normalizeContainer(formatName) {
+    if (!formatName) {
+        return null;
+    }
+
+    const names = String(formatName)
+        .split(",")
+        .map((value) => value.trim())
+        .filter(Boolean);
+
+    return names[0] ?? null;
+}
+
 function normalizeCodec(codecName) {
     if (!codecName) {
         return null;
@@ -314,11 +317,26 @@ function normalizeCodec(codecName) {
     const codecNames = {
         h264: "H.264",
         hevc: "H.265",
+        av1: "AV1",
+        vp9: "VP9",
+        prores: "PRORES",
+        dnxhd: "DNXHD",
+        mjpeg: "MJPEG",
+        mpeg2video: "MPEG2VIDEO",
+        mpeg4: "MPEG4",
+        vc1: "VC1",
+        wmv3: "WMV3",
         aac: "AAC",
         pcm_s16le: "PCM",
         pcm_s24le: "PCM 24-bit",
+        pcm_s32le: "PCM 32-bit",
+        flac: "FLAC",
+        alac: "ALAC",
         mp3: "MP3",
-        ac3: "AC-3"
+        ac3: "AC-3",
+        eac3: "E-AC-3",
+        opus: "OPUS",
+        vorbis: "VORBIS"
     };
 
     return (
