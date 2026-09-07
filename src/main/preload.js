@@ -1,6 +1,7 @@
 const {
     contextBridge,
-    ipcRenderer
+    ipcRenderer,
+    webUtils
 } = require("electron");
 
 const {
@@ -25,6 +26,14 @@ contextBridge.exposeInMainWorld(
                 "media:import",
                 filePaths
             ),
+
+        getDroppedFilePath: (file) => {
+            try {
+                return webUtils.getPathForFile(file);
+            } catch {
+                return "";
+            }
+        },
 
         removeMedia: (mediaId) =>
             ipcRenderer.invoke(
