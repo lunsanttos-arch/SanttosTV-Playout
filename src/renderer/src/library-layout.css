@@ -11,6 +11,11 @@
     overflow-y: auto;
     overflow-x: hidden;
     overscroll-behavior: contain;
+
+    /* Mantém os arquivos agrupados no topo; o espaço restante fica vazio. */
+    align-content: start;
+    grid-auto-rows: 66px;
+    gap: 8px;
 }
 
 .playout-library-column .media-list::-webkit-scrollbar {
@@ -29,6 +34,7 @@
     padding: 7px 9px;
     gap: 9px;
     overflow: hidden;
+    align-self: start;
 }
 
 .playout-library-column .media-thumbnail {
