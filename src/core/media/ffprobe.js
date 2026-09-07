@@ -99,7 +99,7 @@ function parseProbeResult(probeResult) {
     const videoStream =
         chooseBestVideoStream(videoStreams);
     const audioStream =
-        chooseBestAudioStream(audioStreams);
+        choosePrimaryAudioStream(audioStreams);
 
     if (!videoStream) {
         throw new Error(
@@ -133,6 +133,44 @@ function parseProbeResult(probeResult) {
     const timingMode = detectTimingMode(
         averageFps,
         nominalFps
+    );
+
+    const audioTracks = audioStreams.map(
+        (stream, ordinal) => ({
+            ordinal,
+            channelLabel:
+                `Áudio ${String(ordinal + 1).padStart(2, "0")}`,
+            streamIndex:
+                parseInteger(stream.index),
+            codec:
+                normalizeCodec(
+                    stream.codec_name
+                ),
+            channels:
+                parseInteger(stream.channels),
+            layout:
+                stream.channel_layout ?? null,
+            sampleRate:
+                parseInteger(
+                    stream.sample_rate
+                ),
+            language:
+                normalizeTrackText(
+                    stream.tags?.language
+                ),
+            title:
+                normalizeTrackText(
+                    stream.tags?.title
+                ),
+            default:
+                stream.disposition?.default === 1,
+            forced:
+                stream.disposition?.forced === 1,
+            role:
+                ordinal === 0
+                    ? "program"
+                    : "alternate"
+        })
     );
 
     const metadata = {
@@ -213,10 +251,12 @@ function parseProbeResult(probeResult) {
         audioStreamIndex:
             parseInteger(audioStream?.index),
         audioStreamOrdinal:
-            getStreamOrdinal(
-                audioStreams,
-                audioStream
-            ),
+            audioStream ? 0 : null,
+        primaryAudioTrack:
+            audioStream ? 0 : null,
+        audioTrackPolicy:
+            "track-01-priority",
+        audioTracks,
         bitRate:
             parseInteger(
                 format.bit_rate ??
@@ -293,37 +333,16 @@ function scoreVideoStream(stream) {
     return score;
 }
 
-function chooseBestAudioStream(streams) {
+function choosePrimaryAudioStream(streams) {
     if (!Array.isArray(streams) || streams.length === 0) {
         return null;
     }
 
-    return [...streams].sort(
-        (left, right) =>
-            scoreAudioStream(right) -
-            scoreAudioStream(left)
-    )[0] ?? null;
-}
-
-function scoreAudioStream(stream) {
-    const channels =
-        parseInteger(stream.channels) ?? 0;
-    const sampleRate =
-        parseInteger(stream.sample_rate) ?? 0;
-
-    let score =
-        channels * 100000 +
-        sampleRate;
-
-    if (stream.disposition?.default === 1) {
-        score += 10000000;
-    }
-
-    if (stream.disposition?.forced === 1) {
-        score += 100000;
-    }
-
-    return score;
+    // Regra editorial do Santtos TV:
+    // Áudio 01 é sempre o áudio principal do PROGRAM.
+    // Outras faixas permanecem catalogadas para usos futuros
+    // como audiodescrição, SAP ou idioma alternativo.
+    return streams[0] ?? null;
 }
 
 function getStreamOrdinal(streams, selected) {
@@ -365,10 +384,9 @@ function getRotation(stream) {
         return 0;
     }
 
-    const normalized =
-        ((Math.round(parsed) % 360) + 360) % 360;
-
-    return normalized;
+    return (
+        ((Math.round(parsed) % 360) + 360) % 360
+    );
 }
 
 function detectTimingMode(
@@ -465,7 +483,7 @@ function validateMedia(metadata) {
         metadata.audioStreamCount > 1
     ) {
         warnings.push(
-            `O arquivo possui ${metadata.audioStreamCount} faixas de áudio; a faixa ${metadata.audioStreamIndex} foi escolhida automaticamente.`
+            `O arquivo possui ${metadata.audioStreamCount} faixas de áudio; o PROGRAM priorizará sempre o Áudio 01. As demais faixas foram catalogadas para seleção futura.`
         );
     }
 
@@ -534,6 +552,16 @@ function normalizeRatio(value) {
     return value;
 }
 
+function normalizeTrackText(value) {
+    if (typeof value !== "string") {
+        return null;
+    }
+
+    const normalized = value.trim();
+
+    return normalized || null;
+}
+
 function normalizeContainer(formatName) {
     if (!formatName) {
         return null;
@@ -594,5 +622,5 @@ module.exports = {
     probeMedia,
     parseProbeResult,
     chooseBestVideoStream,
-    chooseBestAudioStream
+    choosePrimaryAudioStream
 };
