@@ -1,0 +1,154 @@
+.library-category-tabs {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+}
+
+.library-category-tabs button {
+    flex: 0 0 auto;
+    min-height: 30px;
+    padding: 0 10px;
+    color: #bdbdbd;
+    background: #202020;
+    border: 1px solid #3b3b3b;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.library-category-tabs button:hover {
+    color: #ffffff;
+    background: #2d2d2d;
+}
+
+.library-category-tabs button.active {
+    color: #ffffff;
+    background: #8f2034;
+    border-color: #b12b45;
+}
+
+.library-category-tabs .library-new-tab {
+    color: #d0d0d0;
+    border-style: dashed;
+}
+
+.library-category-status {
+    min-height: 28px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+    color: #8d8d8d;
+    font-size: 11px;
+}
+
+.library-category-status strong {
+    color: #cfcfcf;
+}
+
+.library-refresh-button {
+    min-height: 34px;
+    padding: 0 12px;
+    color: #ededed;
+    background: #252525;
+    border: 1px solid #494949;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.library-refresh-button:hover {
+    background: #343434;
+}
+
+.library-settings-tab {
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.library-settings-intro,
+.library-settings-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.library-settings-intro h2 {
+    margin: 0 0 6px;
+}
+
+.library-settings-intro p {
+    margin: 0;
+    color: #8d8d8d;
+}
+
+.library-settings-intro button,
+.library-folder-row button {
+    min-height: 34px;
+    padding: 0 11px;
+    color: #dddddd;
+    background: #242424;
+    border: 1px solid #484848;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.library-folder-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.library-folder-row {
+    display: grid;
+    grid-template-columns: minmax(130px, 0.45fr) minmax(240px, 1.7fr) auto auto;
+    align-items: center;
+    gap: 10px;
+    padding: 10px;
+    background: #171717;
+    border: 1px solid #343434;
+    border-radius: 6px;
+}
+
+.library-folder-name {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.library-folder-name span,
+.library-settings-actions span {
+    color: #858585;
+    font-size: 11px;
+}
+
+.library-folder-path {
+    min-width: 0;
+    overflow: hidden;
+    color: #b2b2b2;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.library-folder-row .danger-button {
+    color: #e7a0ad;
+    border-color: #60333c;
+}
+
+@media (max-width: 1200px) {
+    .library-folder-row {
+        grid-template-columns: 1fr auto;
+    }
+
+    .library-folder-path {
+        grid-column: 1 / 3;
+        grid-row: 2;
+    }
+}
