@@ -5,9 +5,11 @@ import {
 
 import "./broadcast-settings.css";
 import WatermarkSettingsTab from "./WatermarkSettingsTab";
+import LibraryFolderSettingsTab from "./LibraryFolderSettingsTab";
 
 type SettingsTab =
     | "output"
+    | "library"
     | "watermark"
     | "hashtag";
 
@@ -278,6 +280,19 @@ export default function BroadcastSettingsPanel({
                     <button
                         type="button"
                         className={
+                            tab === "library"
+                                ? "active"
+                                : ""
+                        }
+                        onClick={() =>
+                            setTab("library")
+                        }
+                    >
+                        Biblioteca
+                    </button>
+                    <button
+                        type="button"
+                        className={
                             tab === "watermark"
                                 ? "active"
                                 : ""
@@ -312,6 +327,8 @@ export default function BroadcastSettingsPanel({
                     patchNdi={patchNdi}
                     patchSrt={patchSrt}
                 />
+            ) : tab === "library" ? (
+                <LibraryFolderSettingsTab />
             ) : tab === "watermark" ? (
                 <WatermarkSettingsTab />
             ) : (
@@ -338,7 +355,7 @@ export default function BroadcastSettingsPanel({
                               : undefined
                     }
                     style={
-                        tab === "watermark"
+                        (tab === "watermark" || tab === "library")
                             ? { display: "none" }
                             : undefined
                     }

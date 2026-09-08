@@ -53,6 +53,28 @@ contextBridge.exposeInMainWorld(
                 rundown
             ),
 
+        getLibraryCategories: () =>
+            ipcRenderer.invoke(
+                "library-categories:get"
+            ),
+
+        saveLibraryCategories: (categories) =>
+            ipcRenderer.invoke(
+                "library-categories:save",
+                categories
+            ),
+
+        selectLibraryFolder: () =>
+            ipcRenderer.invoke(
+                "library-categories:select-folder"
+            ),
+
+        scanLibraryCategory: (categoryId) =>
+            ipcRenderer.invoke(
+                "library-categories:scan",
+                categoryId
+            ),
+
         getTimeline: () =>
             ipcRenderer.invoke(
                 "timeline:list"

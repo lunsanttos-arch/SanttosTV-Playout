@@ -52,6 +52,15 @@ const {
     "../core/reporting/playout-report"
 );
 
+const {
+    initializeLibraryCategories,
+    getLibraryCategories,
+    saveLibraryCategories,
+    scanLibraryCategory
+} = require(
+    "../core/library/library-categories"
+);
+
 const isDevelopment = !app.isPackaged;
 
 const NDI_FRAME_WIDTH = 1920;
@@ -912,6 +921,68 @@ function registerIpcHandlers() {
     );
 
     ipcMain.handle(
+        "library-categories:get",
+        async () => getLibraryCategories()
+    );
+
+    ipcMain.handle(
+        "library-categories:save",
+        async (_event, categories) => {
+            try {
+                return {
+                    ok: true,
+                    categories: saveLibraryCategories(categories)
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+                    error: error instanceof Error
+                        ? error.message
+                        : "Não foi possível salvar as abas da Biblioteca."
+                };
+            }
+        }
+    );
+
+    ipcMain.handle(
+        "library-categories:select-folder",
+        async () => {
+            const result = await dialog.showOpenDialog(
+                mainWindow ?? undefined,
+                {
+                    title: "Selecionar pasta da Biblioteca",
+                    properties: ["openDirectory", "createDirectory"]
+                }
+            );
+
+            if (result.canceled || result.filePaths.length === 0) {
+                return { ok: false, canceled: true };
+            }
+
+            return { ok: true, folderPath: result.filePaths[0] };
+        }
+    );
+
+    ipcMain.handle(
+        "library-categories:scan",
+        async (_event, categoryId) => {
+            try {
+                return {
+                    ok: true,
+                    ...scanLibraryCategory(categoryId)
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+                    error: error instanceof Error
+                        ? error.message
+                        : "Não foi possível atualizar a pasta da Biblioteca."
+                };
+            }
+        }
+    );
+
+    ipcMain.handle(
         "settings:get",
         async () => getSettings()
     );
@@ -1442,6 +1513,7 @@ function startSystem() {
     );
 
     initializeDatabase();
+    initializeLibraryCategories(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
         documentsPath: app.getPath("documents")
