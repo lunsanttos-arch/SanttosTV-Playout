@@ -21,6 +21,8 @@ const {
     getMedia,
     getTimeline,
     saveTimeline,
+    getDailyRundown,
+    saveDailyRundown,
     addMedia,
     removeMedia,
     updateMediaMetadata
@@ -1116,6 +1118,31 @@ function registerIpcHandlers() {
             ok: true,
             folder: getReportFolder()
         })
+    );
+
+    ipcMain.handle(
+        "rundown:get",
+        async (_event, date) => getDailyRundown(date)
+    );
+
+    ipcMain.handle(
+        "rundown:save",
+        async (_event, rundown) => {
+            try {
+                return {
+                    ok: true,
+                    rundown: saveDailyRundown(rundown)
+                };
+            } catch (error) {
+                console.error("Falha ao salvar roteiro diário:", error);
+                return {
+                    ok: false,
+                    error: error instanceof Error
+                        ? error.message
+                        : "Não foi possível salvar o roteiro."
+                };
+            }
+        }
     );
 
     ipcMain.handle(

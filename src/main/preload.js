@@ -41,6 +41,18 @@ contextBridge.exposeInMainWorld(
                 mediaId
             ),
 
+        getDailyRundown: (date) =>
+            ipcRenderer.invoke(
+                "rundown:get",
+                date
+            ),
+
+        saveDailyRundown: (rundown) =>
+            ipcRenderer.invoke(
+                "rundown:save",
+                rundown
+            ),
+
         getTimeline: () =>
             ipcRenderer.invoke(
                 "timeline:list"

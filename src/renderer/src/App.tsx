@@ -6,6 +6,7 @@ import {
 } from "react";
 import type { CSSProperties } from "react";
 import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
+import OpecSchedulerPanel from "./OpecSchedulerPanel";
 
 type Panel =
     | "playout"
@@ -145,6 +146,28 @@ declare global {
             removeMedia: (
                 mediaId: string
             ) => Promise<RemoveResult>;
+            getDailyRundown: (date: string) => Promise<{
+                date: string;
+                title: string;
+                startTime: string;
+                items: MediaItem[];
+                updatedAt?: string | null;
+            }>;
+            saveDailyRundown: (rundown: {
+                date: string;
+                title: string;
+                startTime: string;
+                items: MediaItem[];
+            }) => Promise<{
+                ok: boolean;
+                rundown: {
+                    date: string;
+                    title: string;
+                    startTime: string;
+                    items: MediaItem[];
+                };
+                error?: string;
+            }>;
             getTimeline: () => Promise<MediaItem[]>;
             saveTimeline: (
                 timelineItems: MediaItem[]
@@ -237,6 +260,10 @@ export default function App() {
         useState(0);
     const [programmedIndefinite, setProgrammedIndefinite] =
         useState(false);
+    const [rundownApplyRequest, setRundownApplyRequest] = useState<{
+        key: number;
+        items: MediaItem[];
+    } | null>(null);
 
     useEffect(() => {
         const updateClock = () =>
@@ -515,12 +542,26 @@ export default function App() {
                             onAddVideos={addVideos}
                             onImportDroppedFiles={importDroppedFiles}
                             onRemoveMedia={handleRemoveMedia}
+                            rundownApplyRequest={rundownApplyRequest}
                             onScheduleSummary={(remainingSeconds, indefinite) => {
                                 setProgrammedRemainingSeconds(remainingSeconds);
                                 setProgrammedIndefinite(indefinite);
                             }}
                         />
                     </div>
+
+                    {activePanel === "scheduler" && (
+                        <OpecSchedulerPanel
+                            media={media}
+                            onApply={(items) => {
+                                setRundownApplyRequest({
+                                    key: Date.now(),
+                                    items: items as MediaItem[]
+                                });
+                                setActivePanel("playout");
+                            }}
+                        />
+                    )}
 
                     {activePanel === "settings" && (
                         <BroadcastSettingsPanel
@@ -530,7 +571,8 @@ export default function App() {
                     )}
 
                     {activePanel !== "playout" &&
-                        activePanel !== "settings" && (
+                        activePanel !== "settings" &&
+                        activePanel !== "scheduler" && (
                         <EmptyPanel
                             title={activePanel}
                             message="Módulo em desenvolvimento."
@@ -611,6 +653,10 @@ interface PlayoutPanelProps {
     onRemoveMedia: (
         media: MediaItem
     ) => Promise<void>;
+    rundownApplyRequest: {
+        key: number;
+        items: MediaItem[];
+    } | null;
     onScheduleSummary: (
         remainingSeconds: number,
         indefinite: boolean
@@ -627,6 +673,7 @@ function PlayoutPanel({
     onAddVideos,
     onImportDroppedFiles,
     onRemoveMedia,
+    rundownApplyRequest,
     onScheduleSummary
 }: PlayoutPanelProps) {
     const videoRef =
@@ -732,6 +779,46 @@ function PlayoutPanel({
             cancelled = true;
         };
     }, []);
+
+    useEffect(() => {
+        if (!rundownApplyRequest) {
+            return;
+        }
+
+        const prepared = rundownApplyRequest.items.map((item, index) => {
+            const sourceMediaId = item.sourceMediaId ?? item.id;
+            return {
+                ...item,
+                id: `${sourceMediaId}-rundown-${rundownApplyRequest.key}-${index}`,
+                sourceMediaId,
+                loop: false,
+                watermark: Boolean(item.watermark),
+                hashtag: item.hashtag ?? "",
+                inPoint: getClipIn(item),
+                outPoint: getClipOut(item)
+            };
+        });
+
+        if (prepared.length === 0) {
+            return;
+        }
+
+        if (isPlaying && selectedMedia) {
+            setTimelineQueue((current) => {
+                const currentIndex = current.findIndex(
+                    (item) => item.id === selectedMedia.id
+                );
+                const preserved = currentIndex >= 0
+                    ? current.slice(0, currentIndex + 1)
+                    : [selectedMedia];
+                return [...preserved, ...prepared];
+            });
+        } else {
+            setTimelineQueue(prepared);
+            onSelectMedia(prepared[0]);
+            setCurrentTime(getClipIn(prepared[0]));
+        }
+    }, [rundownApplyRequest]);
 
     useEffect(() => {
         if (!timelineLoadedRef.current) {

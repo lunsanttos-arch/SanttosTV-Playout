@@ -94,6 +94,7 @@ const initialData = {
     media: [],
     timeline: [],
     playlists: [],
+    dailyRundowns: {},
     logs: []
 };
 
@@ -535,6 +536,13 @@ function loadDatabase() {
                 ? parsedData.playlists
                 : [],
 
+            dailyRundowns:
+                parsedData.dailyRundowns &&
+                typeof parsedData.dailyRundowns === "object" &&
+                !Array.isArray(parsedData.dailyRundowns)
+                    ? parsedData.dailyRundowns
+                    : {},
+
             logs: Array.isArray(parsedData.logs)
                 ? parsedData.logs
                 : []
@@ -735,6 +743,105 @@ function saveTimeline(timelineItems) {
     saveDatabase();
 
     return getTimeline();
+}
+
+function normalizeRundownDate(value) {
+    const date = normalizeText(value, "", 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        throw new TypeError("Data do roteiro inválida.");
+    }
+    return date;
+}
+
+function normalizeRundownTime(value) {
+    const time = normalizeText(value, "06:00", 5);
+    return /^([01]\d|2[0-3]):[0-5]\d$/.test(time)
+        ? time
+        : "06:00";
+}
+
+function getDailyRundown(dateValue) {
+    const date = normalizeRundownDate(dateValue);
+    const stored = data.dailyRundowns?.[date] ?? {
+        date,
+        title: "Roteiro diário",
+        startTime: "06:00",
+        items: []
+    };
+    const mediaById = new Map(
+        data.media.map((item) => [item.id, item])
+    );
+
+    const items = Array.isArray(stored.items)
+        ? stored.items.map((entry) => {
+              const source = mediaById.get(entry.sourceMediaId);
+              if (!source) return null;
+              return {
+                  ...source,
+                  rundownItemId: entry.rundownItemId,
+                  sourceMediaId: entry.sourceMediaId,
+                  blockLabel: normalizeText(entry.blockLabel, "", 80),
+                  notes: normalizeText(entry.notes, "", 500),
+                  watermark: Boolean(entry.watermark),
+                  hashtag: normalizeHashtag(entry.hashtag ?? ""),
+                  inPoint: normalizeClipNumber(entry.inPoint, 0),
+                  outPoint: normalizeClipNumber(
+                      entry.outPoint,
+                      source.duration ?? 0
+                  )
+              };
+          }).filter(Boolean)
+        : [];
+
+    return {
+        date,
+        title: normalizeText(stored.title, "Roteiro diário", 120) || "Roteiro diário",
+        startTime: normalizeRundownTime(stored.startTime),
+        items,
+        updatedAt: stored.updatedAt ?? null
+    };
+}
+
+function saveDailyRundown(rundown) {
+    if (!rundown || typeof rundown !== "object") {
+        throw new TypeError("Roteiro inválido.");
+    }
+
+    const date = normalizeRundownDate(rundown.date);
+    const mediaIds = new Set(data.media.map((item) => item.id));
+    const sourceItems = Array.isArray(rundown.items) ? rundown.items : [];
+
+    const items = sourceItems.map((item) => {
+        const sourceMediaId = item?.sourceMediaId ?? item?.id;
+        if (typeof sourceMediaId !== "string" || !mediaIds.has(sourceMediaId)) {
+            return null;
+        }
+        return {
+            rundownItemId:
+                typeof item.rundownItemId === "string" && item.rundownItemId
+                    ? item.rundownItemId
+                    : crypto.randomUUID(),
+            sourceMediaId,
+            blockLabel: normalizeText(item.blockLabel, "", 80),
+            notes: normalizeText(item.notes, "", 500),
+            watermark: Boolean(item.watermark),
+            hashtag: normalizeHashtag(item.hashtag ?? ""),
+            inPoint: normalizeClipNumber(item.inPoint, 0),
+            outPoint: normalizeClipNumber(item.outPoint, item.duration ?? 0)
+        };
+    }).filter(Boolean);
+
+    data.dailyRundowns = data.dailyRundowns ?? {};
+    data.dailyRundowns[date] = {
+        date,
+        title: normalizeText(rundown.title, "Roteiro diário", 120) || "Roteiro diário",
+        startTime: normalizeRundownTime(rundown.startTime),
+        items,
+        updatedAt: new Date().toISOString()
+    };
+
+    saveDatabase();
+    return getDailyRundown(date);
 }
 
 function addMedia(filePaths) {
@@ -946,6 +1053,8 @@ module.exports = {
     getMedia,
     getTimeline,
     saveTimeline,
+    getDailyRundown,
+    saveDailyRundown,
     addMedia,
     removeMedia,
     updateMediaMetadata
