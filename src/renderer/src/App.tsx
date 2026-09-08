@@ -2699,21 +2699,57 @@ function LibraryPanel({
     async function createCategory() {
         const name = window.prompt("Nome da nova aba da Biblioteca:")?.trim();
         if (!name) return;
-        const created: LibraryCategory = {
-            id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-            name: name.slice(0, 40),
-            folderPath: "",
-            builtIn: false
-        };
-        const result = await window.santtosAPI.saveLibraryCategories([...categories, created]);
-        if (!result.ok) {
-            setCategoryStatus(result.error ?? "Não foi possível criar a aba.");
-            return;
+
+        setCategoryStatus("Selecione a pasta da nova aba...");
+
+        try {
+            const folderResult = await window.santtosAPI.selectLibraryFolder();
+
+            if (!folderResult.ok || !folderResult.folderPath) {
+                setCategoryStatus(
+                    folderResult.canceled
+                        ? "Criação cancelada: nenhuma pasta foi selecionada."
+                        : "Não foi possível selecionar a pasta da nova aba."
+                );
+                return;
+            }
+
+            const created: LibraryCategory = {
+                id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+                name: name.slice(0, 40),
+                folderPath: folderResult.folderPath,
+                builtIn: false
+            };
+
+            const result = await window.santtosAPI.saveLibraryCategories([
+                ...categories,
+                created
+            ]);
+
+            if (!result.ok) {
+                setCategoryStatus(
+                    result.error ?? "Não foi possível criar a aba."
+                );
+                return;
+            }
+
+            const saved = result.categories ?? [...categories, created];
+            setCategories(saved);
+            setActiveCategoryId(created.id);
+            setSearch("");
+            setCategoryStatus(`Aba ${created.name} criada e vinculada à pasta selecionada.`);
+
+            const scanResult = await window.santtosAPI.scanLibraryCategory(created.id);
+            if (scanResult.ok && (scanResult.filePaths?.length ?? 0) > 0) {
+                await onImportDroppedFiles(scanResult.filePaths ?? []);
+                setCategoryStatus(
+                    `Aba ${created.name} criada. ${scanResult.filePaths?.length ?? 0} arquivo(s) encontrado(s).`
+                );
+            }
+        } catch (error) {
+            console.error(error);
+            setCategoryStatus("Não foi possível criar a nova aba da Biblioteca.");
         }
-        const saved = result.categories ?? [...categories, created];
-        setCategories(saved);
-        setActiveCategoryId(created.id);
-        setCategoryStatus("Aba criada. Configure a pasta em Configurações → Biblioteca.");
     }
 
     async function handleExplorerDrop(files: FileList) {
