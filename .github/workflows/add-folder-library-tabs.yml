@@ -1,0 +1,52 @@
+name: Add Folder Library Tabs
+
+on:
+  push:
+    paths:
+      - ".github/workflows/add-folder-library-tabs.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply library tabs integration
+        run: python scripts/add-folder-library-tabs.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate backend syntax
+        run: |
+          node --check src/main/main.js
+          node --check src/main/preload.js
+          node --check src/core/library/library-categories.js
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Validate library structure
+        shell: pwsh
+        run: |
+          $app = Get-Content src/renderer/src/App.tsx -Raw
+          if ($app -match 'panel: "library".*label: "Biblioteca"') { throw 'Left Biblioteca navigation still exists' }
+          if ($app -notmatch 'Comerciais|library-category-tabs') { throw 'Library category tabs missing' }
+          $settings = Get-Content src/renderer/src/BroadcastSettingsPanel.tsx -Raw
+          if ($settings -notmatch 'LibraryFolderSettingsTab') { throw 'Library settings tab missing' }
+
+      - name: Commit feature
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/main/main.js src/main/preload.js src/renderer/src/App.tsx src/renderer/src/main.tsx src/renderer/src/BroadcastSettingsPanel.tsx
+          git commit -m "feat: organize playout library into configurable folder tabs"
+          git push
