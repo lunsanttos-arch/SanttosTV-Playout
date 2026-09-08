@@ -58,11 +58,65 @@ contextBridge.exposeInMainWorld(
                 "library-categories:get"
             ),
 
-        saveLibraryCategories: (categories) =>
-            ipcRenderer.invoke(
+        saveLibraryCategories: async (categories) => {
+            const currentCategories =
+                await ipcRenderer.invoke(
+                    "library-categories:get"
+                );
+            const currentIds = new Set(
+                Array.isArray(currentCategories)
+                    ? currentCategories.map(
+                          (category) => category.id
+                      )
+                    : []
+            );
+            const preparedCategories =
+                Array.isArray(categories)
+                    ? categories.map(
+                          (category) => ({
+                              ...category
+                          })
+                      )
+                    : [];
+            const newUnconfiguredCategory =
+                preparedCategories.find(
+                    (category) =>
+                        !currentIds.has(category.id) &&
+                        !category.builtIn &&
+                        !String(
+                            category.folderPath ?? ""
+                        ).trim()
+                );
+
+            if (newUnconfiguredCategory) {
+                const folderResult =
+                    await ipcRenderer.invoke(
+                        "library-categories:select-folder"
+                    );
+
+                if (
+                    !folderResult?.ok ||
+                    !folderResult.folderPath
+                ) {
+                    return {
+                        ok: false,
+                        canceled: Boolean(
+                            folderResult?.canceled
+                        ),
+                        error:
+                            "Criação cancelada: selecione uma pasta para a nova aba."
+                    };
+                }
+
+                newUnconfiguredCategory.folderPath =
+                    folderResult.folderPath;
+            }
+
+            return ipcRenderer.invoke(
                 "library-categories:save",
-                categories
-            ),
+                preparedCategories
+            );
+        },
 
         selectLibraryFolder: () =>
             ipcRenderer.invoke(
