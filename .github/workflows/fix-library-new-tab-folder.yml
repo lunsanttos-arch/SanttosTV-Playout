@@ -1,0 +1,37 @@
+name: Fix Library New Tab Folder
+
+on:
+  push:
+    paths:
+      - ".github/workflows/fix-library-new-tab-folder.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply library new tab folder flow
+        run: python scripts/fix-library-new-tab-folder.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Commit feature
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/renderer/src/App.tsx
+          git commit -m "fix: bind new library tabs to selected folders on creation"
+          git push
