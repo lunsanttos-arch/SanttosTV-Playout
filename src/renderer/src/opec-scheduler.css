@@ -1,0 +1,333 @@
+.opec-shell {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.opec-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.opec-header h1 {
+    margin: 0;
+    font-size: 24px;
+}
+
+.opec-header p {
+    margin: 6px 0 0;
+    color: #858585;
+    font-size: 12px;
+}
+
+.opec-header-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.opec-header-actions button,
+.opec-library-item button {
+    min-height: 36px;
+    padding: 0 13px;
+    color: #eeeeee;
+    background: #252525;
+    border: 1px solid #484848;
+    border-radius: 6px;
+    cursor: pointer;
+}
+
+.opec-header-actions .primary-button {
+    background: #9e1f36;
+    border-color: #bc3048;
+}
+
+.opec-header-actions button:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.opec-meta-row {
+    display: grid;
+    grid-template-columns: 160px minmax(240px, 1fr) 170px 160px;
+    gap: 10px;
+}
+
+.opec-meta-row label,
+.opec-summary {
+    min-width: 0;
+    padding: 9px 10px;
+    background: #151515;
+    border: 1px solid #343434;
+    border-radius: 7px;
+}
+
+.opec-meta-row label {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.opec-meta-row span,
+.opec-summary span {
+    color: #777777;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.7px;
+}
+
+.opec-meta-row input,
+.opec-search,
+.opec-item-fields input,
+.opec-hashtag {
+    min-width: 0;
+    color: #eeeeee;
+    background: #0f0f0f;
+    border: 1px solid #3c3c3c;
+    border-radius: 5px;
+    outline: none;
+}
+
+.opec-meta-row input {
+    height: 32px;
+    padding: 0 8px;
+}
+
+.opec-summary {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 2px;
+}
+
+.opec-summary strong {
+    font-size: 17px;
+    font-variant-numeric: tabular-nums;
+}
+
+.opec-summary small {
+    color: #a0a0a0;
+}
+
+.opec-status {
+    padding: 8px 10px;
+    color: #d7c4c8;
+    background: #24191b;
+    border: 1px solid #543039;
+    border-radius: 6px;
+    font-size: 12px;
+}
+
+.opec-layout {
+    min-height: 0;
+    flex: 1;
+    display: grid;
+    grid-template-columns: minmax(620px, 1.45fr) minmax(320px, 0.75fr);
+    gap: 12px;
+}
+
+.opec-rundown-panel,
+.opec-library-panel {
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 12px;
+    background: #161616;
+    border: 1px solid #353535;
+    border-radius: 8px;
+}
+
+.opec-section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+    color: #999999;
+    font-size: 11px;
+    letter-spacing: 0.8px;
+}
+
+.opec-section-title span {
+    color: #666666;
+}
+
+.opec-rundown-list,
+.opec-library-list {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.opec-rundown-list {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+}
+
+.opec-rundown-item {
+    min-height: 74px;
+    display: grid;
+    grid-template-columns: 34px 72px minmax(260px, 1fr) 150px 30px;
+    align-items: center;
+    gap: 9px;
+    padding: 8px;
+    background: #1e1e1e;
+    border: 1px solid #343434;
+    border-radius: 6px;
+}
+
+.opec-rundown-item.dragging {
+    opacity: 0.45;
+}
+
+.opec-order {
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    color: #686868;
+}
+
+.opec-entry-time {
+    font-size: 13px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.opec-item-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.opec-item-main > strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.opec-item-main > span {
+    color: #858585;
+    font-size: 11px;
+}
+
+.opec-item-fields {
+    display: grid;
+    grid-template-columns: 150px minmax(120px, 1fr);
+    gap: 6px;
+}
+
+.opec-item-fields input,
+.opec-hashtag {
+    height: 25px;
+    padding: 0 7px;
+    font-size: 11px;
+}
+
+.opec-item-gc {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.opec-item-gc label {
+    color: #aaaaaa;
+    font-size: 11px;
+}
+
+.opec-remove {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    color: #c7a9af;
+    background: transparent;
+    border: 1px solid #5a3a40;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.opec-remove:hover {
+    color: #ffffff;
+    background: #702b39;
+}
+
+.opec-empty {
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #666666;
+    border: 1px dashed #3c3c3c;
+    border-radius: 6px;
+}
+
+.opec-search {
+    height: 36px;
+    flex-shrink: 0;
+    margin-bottom: 9px;
+    padding: 0 10px;
+}
+
+.opec-library-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.opec-library-item {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: #1d1d1d;
+    border: 1px solid #343434;
+    border-radius: 6px;
+}
+
+.opec-library-item > div {
+    min-width: 0;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.opec-library-item strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.opec-library-item span {
+    color: #777777;
+    font-size: 10px;
+}
+
+.opec-library-item button {
+    min-height: 29px;
+    padding: 0 9px;
+    flex-shrink: 0;
+    font-size: 11px;
+}
+
+@media (max-width: 1250px) {
+    .opec-meta-row {
+        grid-template-columns: 150px 1fr 160px;
+    }
+
+    .opec-summary {
+        display: none;
+    }
+
+    .opec-layout {
+        grid-template-columns: 1fr;
+    }
+}
