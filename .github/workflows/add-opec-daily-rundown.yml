@@ -1,0 +1,44 @@
+name: Add OPEC Daily Rundown
+
+on:
+  push:
+    paths:
+      - ".github/workflows/add-opec-daily-rundown.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Apply OPEC rundown integration
+        run: python scripts/add-opec-daily-rundown.py
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate backend syntax
+        run: |
+          node --check src/database/database.js
+          node --check src/main/main.js
+          node --check src/main/preload.js
+
+      - name: Build renderer
+        run: npm run build:renderer
+
+      - name: Commit feature
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -f src/database/database.js
+          git add src/main/main.js src/main/preload.js src/renderer/src/App.tsx
+          git commit -m "feat: add OPEC daily rundown and apply it to playout"
+          git push
