@@ -1,0 +1,25 @@
+name: NPM Audit Inspect
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/npm-audit-inspect.yml"
+      - "package.json"
+      - "package-lock.json"
+
+jobs:
+  audit:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Audit JSON
+        shell: pwsh
+        run: |
+          npm audit --json | Out-File -Encoding utf8 audit.json
+          Get-Content audit.json
+          exit 0
