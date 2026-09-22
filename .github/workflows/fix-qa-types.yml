@@ -1,0 +1,35 @@
+name: Apply QA Type Fixes
+
+on:
+  push:
+    paths:
+      - ".github/workflows/fix-qa-types.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Apply fixes
+        run: python scripts/fix-qa-types.py
+      - name: Install dependencies
+        run: npm ci
+      - name: Typecheck
+        run: npm exec tsc -- --noEmit
+      - name: Build renderer
+        run: npm run build:renderer
+      - name: Commit fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/renderer/src/App.tsx src/renderer/src/OpecSchedulerPanel.tsx
+          git commit -m "fix: align OPEC and timeline TypeScript contracts"
+          git push
