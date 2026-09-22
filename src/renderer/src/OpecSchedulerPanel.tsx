@@ -1,32 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
+import type { MediaItem, RundownItem } from "./App";
 import "./opec-scheduler.css";
-
-interface MediaItem {
-    id: string;
-    sourceMediaId?: string;
-    name: string;
-    path: string;
-    extension: string;
-    duration: number | null;
-    inPoint?: number;
-    outPoint?: number | null;
-    blockLabel?: string;
-    watermark?: boolean;
-    hashtag?: string;
-}
-
-interface RundownItem extends MediaItem {
-    rundownItemId: string;
-    sourceMediaId: string;
-    notes: string;
-}
 
 interface DailyRundown {
     date: string;
     title: string;
     startTime: string;
     items: RundownItem[];
-    updatedAt?: string;
+    updatedAt?: string | null;
 }
 
 interface Props {

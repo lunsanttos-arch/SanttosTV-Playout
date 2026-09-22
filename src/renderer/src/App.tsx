@@ -15,7 +15,7 @@ type Panel =
     | "scheduler"
     | "settings";
 
-interface MediaItem {
+export interface MediaItem {
     id: string;
     sourceMediaId?: string;
     loop?: boolean;
@@ -44,6 +44,12 @@ interface MediaItem {
     thumbnail: string | null;
     status: string;
     createdAt: string;
+}
+
+export interface RundownItem extends MediaItem {
+    rundownItemId: string;
+    sourceMediaId: string;
+    notes: string;
 }
 
 interface WatermarkStyle {
@@ -157,21 +163,21 @@ declare global {
                 date: string;
                 title: string;
                 startTime: string;
-                items: MediaItem[];
+                items: RundownItem[];
                 updatedAt?: string | null;
             }>;
             saveDailyRundown: (rundown: {
                 date: string;
                 title: string;
                 startTime: string;
-                items: MediaItem[];
+                items: RundownItem[];
             }) => Promise<{
                 ok: boolean;
                 rundown: {
                     date: string;
                     title: string;
                     startTime: string;
-                    items: MediaItem[];
+                    items: RundownItem[];
                 };
                 error?: string;
             }>;
@@ -879,7 +885,7 @@ function PlayoutPanel({
 
         setTimelineQueue((current) =>
             current
-                .map((entry) => {
+                .map((entry): MediaItem | null => {
                     const sourceId =
                         entry.sourceMediaId ??
                         entry.id;
