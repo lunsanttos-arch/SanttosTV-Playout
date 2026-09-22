@@ -9,6 +9,15 @@ on:
       - "scripts/test-backend.js"
       - "scripts/test-frontend.js"
       - "src/**"
+  pull_request:
+    paths:
+      - ".github/workflows/qa.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/test-backend.js"
+      - "scripts/test-frontend.js"
+      - "src/**"
+      - ".qa-trigger"
 
 jobs:
   backend-and-frontend:
