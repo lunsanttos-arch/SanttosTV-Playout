@@ -1,0 +1,43 @@
+name: Santtos TV QA
+
+on:
+  push:
+    paths:
+      - ".github/workflows/qa.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "scripts/test-backend.js"
+      - "scripts/test-frontend.js"
+      - "src/**"
+
+jobs:
+  backend-and-frontend:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Backend syntax
+        run: |
+          node --check src/main/main.js
+          node --check src/main/preload.js
+          node --check src/database/database.js
+          node --check src/core/library/library-categories.js
+          node --check src/core/reporting/playout-report.js
+
+      - name: Backend regression tests
+        run: npm run test:backend
+
+      - name: Frontend typecheck and regression tests
+        run: npm run test:frontend
+
+      - name: Playout smoke stress
+        run: npm run stress:smoke
