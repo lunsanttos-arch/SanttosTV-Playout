@@ -2,15 +2,15 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const databaseFolder = path.join(
+const legacyDatabaseFolder = path.join(
     __dirname,
     "../../database"
 );
+const legacyDatabaseFile = path.join(legacyDatabaseFolder, "santtos-tv.json");
 
-const databaseFile = path.join(
-    databaseFolder,
-    "santtos-tv.json"
-);
+// A instalacao empacotada deve persistir no userData, jamais no app.asar.
+let databaseFolder = legacyDatabaseFolder;
+let databaseFile = legacyDatabaseFile;
 
 const DEFAULT_HASHTAG_STYLE = {
     fontFamily: "Arial",
@@ -111,11 +111,19 @@ function ensureDatabaseFolder() {
 function saveDatabase() {
     ensureDatabaseFolder();
 
-    fs.writeFileSync(
-        databaseFile,
-        JSON.stringify(data, null, 2),
-        "utf8"
-    );
+    const temporaryFile = `${databaseFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    try {
+        fs.writeFileSync(
+            temporaryFile,
+            JSON.stringify(data, null, 2),
+            "utf8"
+        );
+        fs.renameSync(temporaryFile, databaseFile);
+    } finally {
+        if (fs.existsSync(temporaryFile)) {
+            fs.rmSync(temporaryFile, { force: true });
+        }
+    }
 }
 
 function normalizeNumber(
@@ -572,7 +580,25 @@ function loadDatabase() {
     }
 }
 
-function initializeDatabase() {
+function initializeDatabase(userDataPath) {
+    if (typeof userDataPath === "string" && userDataPath.trim()) {
+        databaseFolder = path.join(userDataPath, "database");
+        databaseFile = path.join(databaseFolder, "santtos-tv.json");
+
+        // Migracao sem sobrescrever um banco ja criado em userData.
+        if (
+            !fs.existsSync(databaseFile) &&
+            fs.existsSync(legacyDatabaseFile) &&
+            path.resolve(databaseFile) !== path.resolve(legacyDatabaseFile)
+        ) {
+            ensureDatabaseFolder();
+            fs.copyFileSync(
+                legacyDatabaseFile,
+                databaseFile,
+                fs.constants.COPYFILE_EXCL
+            );
+        }
+    }
     loadDatabase();
 }
 
