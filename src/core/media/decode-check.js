@@ -16,7 +16,10 @@ function runDecodeProbe(
 ) {
     return new Promise((resolve) => {
         const inputSelector =
-            Number.isInteger(Number(videoStreamIndex))
+            videoStreamIndex !== null &&
+            videoStreamIndex !== undefined &&
+            Number.isInteger(Number(videoStreamIndex)) &&
+            Number(videoStreamIndex) >= 0
                 ? `0:${Number(videoStreamIndex)}`
                 : "0:v:0";
 
