@@ -13,19 +13,14 @@ async function waitFor(predicate, timeoutMs = 6000) {
 }
 
 async function main() {
-    const repoRoot = path.resolve(__dirname, "..");
-    const databaseDir = path.join(repoRoot, "database");
-    const databaseFile = path.join(databaseDir, "santtos-tv.json");
-    const hadDatabase = fs.existsSync(databaseFile);
-    const databaseBackup = hadDatabase ? fs.readFileSync(databaseFile) : null;
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-tests-"));
 
     try {
-        fs.mkdirSync(databaseDir, { recursive: true });
-        if (fs.existsSync(databaseFile)) fs.rmSync(databaseFile, { force: true });
-
+        // Testes nunca tocam o banco em uso pela emissora.
         const db = require("../src/database/database");
-        db.initializeDatabase();
+        const isolatedData = path.join(tempRoot, "userData");
+        db.initializeDatabase(isolatedData);
+        assert(fs.existsSync(path.join(isolatedData, "database", "santtos-tv.json")));
 
         const mediaFolder = path.join(tempRoot, "media");
         fs.mkdirSync(mediaFolder, { recursive: true });
@@ -160,16 +155,6 @@ async function main() {
         console.log("✓ timeline e roteiro diário");
         console.log("✓ relatório Excel");
     } finally {
-        try {
-            if (hadDatabase && databaseBackup) {
-                fs.mkdirSync(databaseDir, { recursive: true });
-                fs.writeFileSync(databaseFile, databaseBackup);
-            } else if (fs.existsSync(databaseFile)) {
-                fs.rmSync(databaseFile, { force: true });
-            }
-        } catch (error) {
-            console.warn("Aviso ao restaurar banco de teste:", error.message);
-        }
         fs.rmSync(tempRoot, { recursive: true, force: true });
     }
 }
