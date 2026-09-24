@@ -35,13 +35,52 @@ function initializePlayoutReports({ userDataPath, documentsPath }) {
         }
     } catch (error) {
         console.error("Não foi possível carregar o histórico de exibição:", error);
+        if (fs.existsSync(stateFile)) {
+            try {
+                const backup = path.join(
+                    stateFolder,
+                    `playout-report-corrompido-${Date.now()}.json`
+                );
+                fs.copyFileSync(stateFile, backup);
+            } catch (backupError) {
+                console.error("Falha no backup do relatório corrompido:", backupError);
+            }
+        }
         state = { entries: [] };
     }
 
-    return {
-        reportFolder,
-        stateFile
-    };
+    // Uma falha de energia deixa EM_EXIBICAO sem encerramento.
+    // Nao inventar horario de saida ou duracao de um evento nao confirmado.
+    const datesToExport = new Set();
+    let recovered = false;
+    for (const entry of state.entries) {
+        if (entry.status === "EM_EXIBICAO") {
+            entry.status = "PULADO";
+            entry.endedAt = null;
+            entry.playedSeconds = null;
+            entry.recoveryNote =
+                "Exibição interrompida: horário de saída e duração efetiva desconhecidos.";
+            datesToExport.add(entry.reportDate);
+            recovered = true;
+        }
+    }
+    if (recovered) saveState();
+
+    // Reconstruir arquivos que nao chegaram a ser escritos antes de fechar.
+    for (const entry of state.entries) {
+        if (!["PULADO", "EXECUTADO"].includes(entry.status)) continue;
+        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(entry.reportDate))) continue;
+        const xlsx = path.join(
+            reportFolder,
+            `Relatorio_Exibicao_${entry.reportDate}.xlsx`
+        );
+        const fileMtime = fs.existsSync(xlsx) ? fs.statSync(xlsx).mtimeMs : 0;
+        const endedAt = Date.parse(entry.endedAt) || 0;
+        if (!fileMtime || endedAt > fileMtime) datesToExport.add(entry.reportDate);
+    }
+    for (const dateKey of datesToExport) queueExport(dateKey);
+
+    return { reportFolder, stateFile };
 }
 
 function saveState() {
@@ -50,11 +89,17 @@ function saveState() {
     }
 
     ensureFolder(path.dirname(stateFile));
-    fs.writeFileSync(
-        stateFile,
-        JSON.stringify(state, null, 2),
-        "utf8"
-    );
+    const temporaryFile = `${stateFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    try {
+        fs.writeFileSync(
+            temporaryFile,
+            JSON.stringify(state, null, 2),
+            "utf8"
+        );
+        fs.renameSync(temporaryFile, stateFile);
+    } finally {
+        if (fs.existsSync(temporaryFile)) fs.rmSync(temporaryFile, { force: true });
+    }
 }
 
 function pad(value) {
@@ -96,7 +141,7 @@ function sanitizeNumber(value, fallback = 0) {
 }
 
 async function exportDate(dateKey) {
-    if (!reportFolder) {
+    if (!reportFolder || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(dateKey))) {
         return;
     }
 
@@ -134,7 +179,8 @@ async function exportDate(dateKey) {
         { header: "Duração prevista", key: "plannedDuration", width: 19 },
         { header: "Duração exibida", key: "playedDuration", width: 19 },
         { header: "Status", key: "status", width: 14 },
-        { header: "Caminho", key: "filePath", width: 60 }
+        { header: "Caminho", key: "filePath", width: 60 },
+        { header: "Observação", key: "recoveryNote", width: 68 }
     ];
 
     for (const entry of rows) {
@@ -145,9 +191,12 @@ async function exportDate(dateKey) {
             startTime: localTimeLabel(entry.startedAt),
             endTime: entry.endedAt ? localTimeLabel(entry.endedAt) : "",
             plannedDuration: formatDuration(entry.plannedDurationSeconds),
-            playedDuration: formatDuration(entry.playedSeconds),
+            playedDuration: entry.recoveryNote
+                ? "DESCONHECIDA"
+                : formatDuration(entry.playedSeconds),
             status: entry.status,
-            filePath: entry.filePath
+            filePath: sanitizeText(entry.filePath),
+            recoveryNote: sanitizeText(entry.recoveryNote)
         });
     }
 
@@ -163,7 +212,7 @@ async function exportDate(dateKey) {
 
     sheet.autoFilter = {
         from: "A1",
-        to: "I1"
+        to: "J1"
     };
 
     sheet.eachRow((row, rowNumber) => {
@@ -182,7 +231,13 @@ async function exportDate(dateKey) {
         `Relatorio_Exibicao_${dateKey}.xlsx`
     );
 
-    await workbook.xlsx.writeFile(filePath);
+    const temporaryFile = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    try {
+        await workbook.xlsx.writeFile(temporaryFile);
+        fs.renameSync(temporaryFile, filePath);
+    } finally {
+        if (fs.existsSync(temporaryFile)) fs.rmSync(temporaryFile, { force: true });
+    }
     return filePath;
 }
 
@@ -282,10 +337,15 @@ function getReportFolder() {
     return reportFolder;
 }
 
+function flushReportExports() {
+    return writeQueue;
+}
+
 module.exports = {
     initializePlayoutReports,
     startPlayoutEntry,
     finishPlayoutEntry,
     closeOpenEntriesAsSkipped,
-    getReportFolder
+    getReportFolder,
+    flushReportExports
 };
