@@ -144,10 +144,34 @@ async function main() {
         assert.strictEqual(finished.entry.status, "EXECUTADO");
 
         const reportDir = path.join(docs, "Santtos TV", "Relatórios de Exibição");
-        await waitFor(() =>
+        await reports.flushReportExports();
+        assert(
             fs.existsSync(reportDir) &&
-            fs.readdirSync(reportDir).some((name) => name.endsWith(".xlsx"))
+            fs.readdirSync(reportDir).some((name) => name.endsWith(".xlsx")),
+            "Relatorio Excel completo precisa existir."
         );
+
+        // Simula um encerramento abrupto seguido da proxima inicializacao.
+        const interrupted = reports.startPlayoutEntry({
+            id: "occ-interrupted",
+            sourceMediaId: source.id,
+            name: "interrompido.mp4",
+            path: mp4,
+            plannedDurationSeconds: 30
+        });
+        reports.initializePlayoutReports({
+            userDataPath: path.join(tempRoot, "report-user"),
+            documentsPath: docs
+        });
+        const savedEntries = JSON.parse(fs.readFileSync(
+            path.join(tempRoot, "report-user", "reporting", "playout-report-state.json"),
+            "utf8"
+        )).entries;
+        const recovered = savedEntries.find((row) => row.id === interrupted.id);
+        assert.strictEqual(recovered.status, "PULADO");
+        assert.strictEqual(recovered.endedAt, null);
+        assert(recovered.recoveryNote.includes("desconhecidos"));
+        await reports.flushReportExports();
 
         console.log("BACKEND QA: APROVADO");
         console.log("✓ banco e normalização");
