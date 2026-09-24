@@ -471,7 +471,10 @@ function buildProgramFilterGraph(
     );
 
     const sourceVideo =
-        Number.isInteger(Number(videoStreamIndex))
+        videoStreamIndex !== null &&
+        videoStreamIndex !== undefined &&
+        Number.isInteger(Number(videoStreamIndex)) &&
+        Number(videoStreamIndex) >= 0
             ? `[0:${Number(videoStreamIndex)}]`
             : "[0:v:0]";
 
@@ -674,11 +677,11 @@ function startNativePlayback(
             normalizedStartSeconds
     };
     const normalizedOutPoint =
-        Number.isFinite(Number(programState.outPointSeconds))
-            ? Math.max(
-                  normalizedStartSeconds,
-                  Number(programState.outPointSeconds)
-              )
+        programState.outPointSeconds !== null &&
+        programState.outPointSeconds !== undefined &&
+        Number.isFinite(Number(programState.outPointSeconds)) &&
+        Number(programState.outPointSeconds) > normalizedStartSeconds
+            ? Number(programState.outPointSeconds)
             : null;
     const clipRemainingSeconds =
         normalizedOutPoint !== null
@@ -1304,8 +1307,16 @@ function registerIpcHandlers() {
                 return;
             }
 
-            const frameBuffer =
-                Buffer.from(frameData);
+            // Rejeitar tamanho e tipo ANTES de criar uma copia de 8MB.
+            if (
+                !(frameData instanceof Uint8Array) ||
+                frameData.byteLength !== NDI_FRAME_SIZE
+            ) {
+                console.warn("Frame NDI invalido ou fora do tamanho esperado.");
+                return;
+            }
+
+            const frameBuffer = Buffer.from(frameData);
 
             if (
                 frameBuffer.length !==
