@@ -580,13 +580,14 @@ function loadDatabase() {
     }
 }
 
-function initializeDatabase(userDataPath) {
+function initializeDatabase(userDataPath, options = {}) {
     if (typeof userDataPath === "string" && userDataPath.trim()) {
         databaseFolder = path.join(userDataPath, "database");
         databaseFile = path.join(databaseFolder, "santtos-tv.json");
 
         // Migracao sem sobrescrever um banco ja criado em userData.
         if (
+            options.migrateLegacy !== false &&
             !fs.existsSync(databaseFile) &&
             fs.existsSync(legacyDatabaseFile) &&
             path.resolve(databaseFile) !== path.resolve(legacyDatabaseFile)
