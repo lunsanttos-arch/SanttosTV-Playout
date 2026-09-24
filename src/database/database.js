@@ -711,6 +711,9 @@ function getTimeline() {
 }
 
 function normalizeClipNumber(value, fallback = 0) {
+    if (value === null || value === undefined || value === "") {
+        return Math.max(0, Number(fallback) || 0);
+    }
     const parsed = Number(value);
     return Number.isFinite(parsed)
         ? Math.max(0, parsed)
