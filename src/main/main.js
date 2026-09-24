@@ -63,6 +63,17 @@ const {
 );
 
 const isDevelopment = !app.isPackaged;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+    app.quit();
+}
+app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+    }
+});
 
 const NDI_FRAME_WIDTH = 1920;
 const NDI_FRAME_HEIGHT = 1080;
@@ -1601,6 +1612,7 @@ function startSystem() {
 }
 
 app.whenReady().then(() => {
+    if (!hasSingleInstanceLock) return;
     startSystem();
     startNdiSender();
     registerIpcHandlers();
