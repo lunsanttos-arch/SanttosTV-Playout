@@ -26,6 +26,7 @@ function initializePlayoutReports({ userDataPath, documentsPath }) {
     ensureFolder(stateFolder);
     ensureFolder(reportFolder);
 
+    state = { entries: [] };
     try {
         if (fs.existsSync(stateFile)) {
             const parsed = JSON.parse(fs.readFileSync(stateFile, "utf8"));
@@ -69,7 +70,7 @@ function initializePlayoutReports({ userDataPath, documentsPath }) {
     // Reconstruir arquivos que nao chegaram a ser escritos antes de fechar.
     for (const entry of state.entries) {
         if (!["PULADO", "EXECUTADO"].includes(entry.status)) continue;
-        if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(entry.reportDate))) continue;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(String(entry.reportDate))) continue;
         const xlsx = path.join(
             reportFolder,
             `Relatorio_Exibicao_${entry.reportDate}.xlsx`
@@ -141,7 +142,7 @@ function sanitizeNumber(value, fallback = 0) {
 }
 
 async function exportDate(dateKey) {
-    if (!reportFolder || !/^\\d{4}-\\d{2}-\\d{2}$/.test(String(dateKey))) {
+    if (!reportFolder || !/^\d{4}-\d{2}-\d{2}$/.test(String(dateKey))) {
         return;
     }
 
