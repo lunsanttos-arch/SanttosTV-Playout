@@ -19,7 +19,7 @@ async function main() {
         // Testes nunca tocam o banco em uso pela emissora.
         const db = require("../src/database/database");
         const isolatedData = path.join(tempRoot, "userData");
-        db.initializeDatabase(isolatedData);
+        db.initializeDatabase(isolatedData, { migrateLegacy: false });
         assert(fs.existsSync(path.join(isolatedData, "database", "santtos-tv.json")));
 
         const mediaFolder = path.join(tempRoot, "media");
