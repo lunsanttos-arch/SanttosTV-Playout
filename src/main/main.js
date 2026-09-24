@@ -8,6 +8,7 @@ const {
 
 const path = require("path");
 const fs = require("fs");
+const { pathToFileURL } = require("node:url");
 const { spawn } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
 
@@ -104,6 +105,41 @@ let nativePlaybackActive = false;
 
 const analysesInProgress = new Map();
 
+// Somente o documento principal do Playout pode executar comandos com
+// privilegios do processo principal. Iframes e janelas externas sao bloqueados.
+function isTrustedIpcEvent(event) {
+    return Boolean(
+        mainWindow &&
+        !mainWindow.isDestroyed() &&
+        event.sender === mainWindow.webContents &&
+        event.senderFrame === mainWindow.webContents.mainFrame
+    );
+}
+
+function secureIpcHandle(channel, handler) {
+    ipcMain.handle(channel, (event, ...args) => {
+        if (!isTrustedIpcEvent(event)) {
+            console.warn(`IPC nao autorizado bloqueado: ${channel}`);
+            throw new Error("Origem IPC nao autorizada.");
+        }
+        return handler(event, ...args);
+    });
+}
+
+function isAllowedMainNavigation(targetUrl, expectedUrl) {
+    try {
+        const target = new URL(targetUrl);
+        const expected = new URL(expectedUrl);
+        return (
+            target.protocol === expected.protocol &&
+            target.host === expected.host &&
+            target.pathname === expected.pathname
+        );
+    } catch {
+        return false;
+    }
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1500,
@@ -115,6 +151,9 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
+            webviewTag: false,
+            devTools: isDevelopment,
+            // TODO: remover apos substituir previews file:// por protocolo seguro.
             webSecurity: false,
             preload: path.join(
                 __dirname,
@@ -122,6 +161,26 @@ function createWindow() {
             )
         }
     });
+
+    // Impede que links externos herdem acesso ao bridge privilegiado.
+    const expectedUrl = isDevelopment
+        ? "http://localhost:5173/"
+        : pathToFileURL(
+              path.join(__dirname, "../../dist/index.html")
+          ).toString();
+
+    mainWindow.webContents.setWindowOpenHandler(() => ({
+        action: "deny"
+    }));
+    for (const eventName of ["will-navigate", "will-redirect"]) {
+        mainWindow.webContents.on(eventName, (event, target) => {
+            const targetUrl =
+                typeof target === "string" ? target : target?.url;
+            if (!isAllowedMainNavigation(targetUrl, expectedUrl)) {
+                event.preventDefault();
+            }
+        });
+    }
 
     mainWindow.maximize();
 
@@ -869,7 +928,7 @@ function createWatermarkPreviewDataUrl(filePath) {
 }
 
 function registerIpcHandlers() {
-    ipcMain.handle(
+    secureIpcHandle(
         "ndi:status",
         async () => ({
             online:
@@ -882,7 +941,7 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "ndi:play-file",
         async (
             _event,
@@ -912,7 +971,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "ndi:stop-file",
         async () => {
             stopNativePlayback();
@@ -920,12 +979,12 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "library-categories:get",
         async () => getLibraryCategories()
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "library-categories:save",
         async (_event, categories) => {
             try {
@@ -944,7 +1003,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "library-categories:select-folder",
         async () => {
             const result = await dialog.showOpenDialog(
@@ -963,7 +1022,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "library-categories:scan",
         async (_event, categoryId) => {
             try {
@@ -982,12 +1041,12 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "settings:get",
         async () => getSettings()
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "settings:set-output",
         async (_event, output) => ({
             ok: true,
@@ -996,7 +1055,7 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "settings:set-hashtag-style",
         async (_event, style) => ({
             ok: true,
@@ -1005,7 +1064,7 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "watermark:preview",
         async (_event, filePath) => {
             try {
@@ -1035,7 +1094,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "watermark:select",
         async () => {
             try {
@@ -1104,7 +1163,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "settings:set-watermark-style",
         async (_event, style) => {
             try {
@@ -1136,7 +1195,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "report:playout-start",
         async (_event, mediaItem) => {
             try {
@@ -1159,7 +1218,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "report:playout-finish",
         async (_event, entryId, status, playedSeconds) => {
             try {
@@ -1183,7 +1242,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "report:folder",
         async () => ({
             ok: true,
@@ -1191,12 +1250,12 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "rundown:get",
         async (_event, date) => getDailyRundown(date)
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "rundown:save",
         async (_event, rundown) => {
             try {
@@ -1216,12 +1275,12 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "timeline:list",
         async () => getTimeline()
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "timeline:save",
         async (_event, timelineItems) =>
             saveTimeline(timelineItems)
@@ -1229,7 +1288,11 @@ function registerIpcHandlers() {
 
     ipcMain.on(
         "ndi:frame",
-        (_event, frameData) => {
+        (event, frameData) => {
+            if (!isTrustedIpcEvent(event)) {
+                console.warn("Frame NDI nao autorizado bloqueado.");
+                return;
+            }
             if (
                 nativePlaybackActive ||
                 !ndiProcess ||
@@ -1272,7 +1335,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "media:select",
         async () => {
             const result =
@@ -1314,7 +1377,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "media:list",
         async () => {
             const media = getMedia();
@@ -1336,7 +1399,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "media:import",
         async (_event, filePaths) => {
             const importResult =
@@ -1354,7 +1417,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "media:remove",
         async (_event, mediaId) =>
             removeMedia(mediaId)
@@ -1512,7 +1575,7 @@ function startSystem() {
         "Inicializando Santtos TV Automation..."
     );
 
-    initializeDatabase();
+    initializeDatabase(app.getPath("userData"));
     initializeLibraryCategories(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
