@@ -69,9 +69,9 @@ function buildExhibitionDrawtext(inputLabel, type, watermarkStyle, fontFile) {
         `text='${overlay.text}'`,
         `fontsize=${overlay.fontSize}`,
         "fontcolor=white",
-        "box=1",
-        "boxcolor=0x111111@0.78",
-        `boxborderw=${overlay.padding}`,
+        // Sem tarja de fundo: apenas um contorno discreto para legibilidade.
+        "borderw=1",
+        "bordercolor=0x000000@0.65",
         // FFmpeg filtergraph expressions require escaped commas.
         `x='max(8\\,min(w-text_w-8\\,${overlay.right}-text_w))'`,
         `y=${overlay.top}`
