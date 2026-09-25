@@ -29,6 +29,12 @@ contextBridge.exposeInMainWorld(
                 filePaths
             ),
 
+        prepareMediaPreview: (filePath) =>
+            ipcRenderer.invoke(
+                "media:prepare-preview",
+                filePath
+            ),
+
         getDroppedFilePath: (file) => {
             try {
                 return webUtils.getPathForFile(file);
