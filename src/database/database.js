@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { DEFAULT_EXHIBITION_STYLE, normalizeExhibitionStyle } = require("../core/graphics/exhibition-overlay");
 
 const legacyDatabaseFolder = path.join(__dirname, "../../database");
 let databaseFolder = legacyDatabaseFolder;
@@ -82,7 +83,8 @@ const initialData = {
         },
         hashtagStyle: {
             ...DEFAULT_HASHTAG_STYLE
-        }
+        },
+        exhibitionStyle: structuredClone(DEFAULT_EXHIBITION_STYLE)
     },
 
     media: [],
@@ -532,7 +534,10 @@ function loadDatabase() {
                 hashtagStyle:
                     normalizeHashtagStyle(
                         parsedSettings.hashtagStyle
-                    )
+                    ),
+                exhibitionStyle: normalizeExhibitionStyle(
+                    parsedSettings.exhibitionStyle
+                )
             },
 
             media: Array.isArray(parsedData.media)
@@ -644,6 +649,18 @@ function updateHashtagStyle(style) {
     return structuredClone(
         data.settings.hashtagStyle
     );
+}
+
+function updateExhibitionStyle(style) {
+    const previous = data.settings.exhibitionStyle;
+    data.settings.exhibitionStyle = normalizeExhibitionStyle(style);
+    try {
+        saveDatabase();
+    } catch (error) {
+        data.settings.exhibitionStyle = previous;
+        throw error;
+    }
+    return structuredClone(data.settings.exhibitionStyle);
 }
 
 function addLog(message, level = "info") {
@@ -1090,6 +1107,7 @@ module.exports = {
     updateOutputSettings,
     updateWatermarkStyle,
     updateHashtagStyle,
+    updateExhibitionStyle,
     addLog,
     getMedia,
     getTimeline,
