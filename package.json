@@ -10,7 +10,7 @@
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "start": "npm run dev",
     "build:renderer": "vite build",
-    "build": "npm run build:renderer && electron-builder",
+    "build": "npm run build:windows",
     "test:backend": "node scripts/test-backend.js",
     "test:frontend": "npm exec tsc -- --noEmit && npm run build:renderer && node scripts/test-frontend.js",
     "test:security": "node --test scripts/test-security.js",
