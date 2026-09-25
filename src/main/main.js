@@ -883,73 +883,81 @@ function startNativePlayback(
         }
     );
 
+    const session = {
+        playbackId: crypto.randomUUID(),
+        startSeconds: normalizedStartSeconds,
+        plannedSeconds: clipRemainingSeconds,
+        framesQueued: 0,
+        firstFrameSequence: 0,
+        lastFrameSequence: 0,
+        trailingBytes: 0,
+        exitCode: null,
+        ffmpegFinished: false,
+        finished: false,
+        cancelled: false,
+        error: "",
+        ackTimer: null,
+        pump: null
+    };
+    nativeSession = session;
     ffmpegProcess = processRef;
     nativePlaybackActive = true;
     ndiFrameBusy = false;
 
-    processRef.stdout.pipe(
+    // Complete-frame assembly prevents an interrupted rawvideo frame from
+    // bleeding into the next item on the shared NDI stdin.
+    session.pump = forwardCompleteFrames(
+        processRef.stdout,
         ndiProcess.stdin,
-        { end: false }
-    );
-
-    processRef.stderr.on(
-        "data",
-        (data) => {
-            const message =
-                data.toString().trim();
-
-            if (message) {
-                console.warn(
-                    `[FFmpeg] ${message}`
-                );
+        NDI_FRAME_SIZE,
+        () => {
+            if (session.cancelled) return;
+            session.framesQueued++;
+            session.lastFrameSequence = ++ndiQueuedFrames;
+            if (!session.firstFrameSequence) {
+                session.firstFrameSequence = session.lastFrameSequence;
+            }
+        },
+        () => session.cancelled
+    ).then((result) => {
+        session.trailingBytes = result.trailingBytes;
+    }).catch((error) => {
+        if (!session.cancelled) {
+            session.error = error.message;
+            processRef.stdout?.destroy();
+            if (processRef.exitCode === null && !processRef.killed) {
+                processRef.kill();
             }
         }
-    );
+    });
 
-    processRef.on(
-        "error",
-        (error) => {
-            console.error(
-                "Falha no playout FFmpeg:",
-                error
-            );
+    processRef.stderr.on("data", (data) => {
+        const message = data.toString().trim();
+        if (message) console.warn(`[FFmpeg] ${message}`);
+    });
 
-            if (ffmpegProcess === processRef) {
-                ffmpegProcess = null;
-                nativePlaybackActive = false;
-            }
-        }
-    );
+    processRef.on("error", (error) => {
+        if (session.cancelled) return;
+        session.error = error.message;
+        console.error("Falha no playout FFmpeg:", error);
+    });
 
-    processRef.on(
-        "exit",
-        (code, signal) => {
-            if (
-                ndiProcess &&
-                ndiProcess.stdin &&
-                processRef.stdout
-            ) {
-                processRef.stdout.unpipe(
-                    ndiProcess.stdin
-                );
-            }
-
-            console.log(
-                `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`
-            );
-
-            if (ffmpegProcess === processRef) {
-                ffmpegProcess = null;
-                nativePlaybackActive = false;
-            }
-        }
-    );
+    processRef.on("close", async (code, signal) => {
+        await session.pump;
+        if (session.cancelled) return;
+        console.log(
+            `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`
+        );
+        session.exitCode = code;
+        session.ffmpegFinished = true;
+        maybeCompleteNativeSession(session);
+    });
 
     return {
         ok: true,
+        playbackId: session.playbackId,
         filePath,
-        startSeconds:
-            normalizedStartSeconds
+        startSeconds: normalizedStartSeconds
     };
 }
 
