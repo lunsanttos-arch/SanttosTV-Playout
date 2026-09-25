@@ -26,22 +26,50 @@ function initializePlayoutReports({ userDataPath, documentsPath }) {
     ensureFolder(stateFolder);
     ensureFolder(reportFolder);
 
+    state = { entries: [] };
     try {
         if (fs.existsSync(stateFile)) {
             const parsed = JSON.parse(fs.readFileSync(stateFile, "utf8"));
-            state.entries = Array.isArray(parsed?.entries)
-                ? parsed.entries
-                : [];
+            if (!Array.isArray(parsed?.entries)) {
+                throw new Error("Historico de exibicao com estrutura invalida.");
+            }
+            state.entries = parsed.entries;
         }
     } catch (error) {
-        console.error("Não foi possível carregar o histórico de exibição:", error);
-        state = { entries: [] };
+        console.error("Nao foi possivel carregar o historico de exibicao:", error);
+        try {
+            fs.copyFileSync(stateFile, `${stateFile}.corrompido-${Date.now()}`);
+        } catch (copyError) {
+            console.error("Falha ao preservar historico danificado:", copyError);
+        }
+        throw new Error(
+            "Historico de exibicao danificado. Original preservado em " +
+            stateFile + ". Verifique o arquivo .bak antes de restaurar."
+        );
     }
 
-    return {
-        reportFolder,
-        stateFile
-    };
+    // Uma queda brusca deixa entradas em EM_EXIBICAO. Nao marcar como
+    // EXECUTADO nem inventar segundos reproduzidos durante a indisponibilidade.
+    const recoveredAt = new Date().toISOString();
+    let recovered = false;
+    for (const entry of state.entries) {
+        if (entry.status !== "EM_EXIBICAO") continue;
+        entry.status = "PULADO";
+        entry.endedAt = recoveredAt;
+        entry.playedSeconds = 0;
+        entry.recoveredAfterCrash = true;
+        recovered = true;
+    }
+    if (recovered) saveState();
+    const reportDates = new Set(
+        state.entries
+            .filter((entry) => entry.status === "EXECUTADO" || entry.status === "PULADO")
+            .map((entry) => entry.reportDate)
+            .filter((value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value))
+    );
+    for (const dateKey of reportDates) queueExport(dateKey);
+
+    return { reportFolder, stateFile };
 }
 
 function saveState() {
@@ -50,11 +78,20 @@ function saveState() {
     }
 
     ensureFolder(path.dirname(stateFile));
-    fs.writeFileSync(
-        stateFile,
-        JSON.stringify(state, null, 2),
-        "utf8"
-    );
+    const temporary = `${stateFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    let handle;
+    try {
+        handle = fs.openSync(temporary, "wx");
+        fs.writeFileSync(handle, JSON.stringify(state, null, 2), "utf8");
+        fs.fsyncSync(handle);
+        fs.closeSync(handle);
+        handle = undefined;
+        if (fs.existsSync(stateFile)) fs.copyFileSync(stateFile, `${stateFile}.bak`);
+        fs.renameSync(temporary, stateFile);
+    } finally {
+        if (handle !== undefined) fs.closeSync(handle);
+        if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true });
+    }
 }
 
 function pad(value) {
@@ -182,8 +219,14 @@ async function exportDate(dateKey) {
         `Relatorio_Exibicao_${dateKey}.xlsx`
     );
 
-    await workbook.xlsx.writeFile(filePath);
-    return filePath;
+    const temporaryFile = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    try {
+        await workbook.xlsx.writeFile(temporaryFile);
+        fs.renameSync(temporaryFile, filePath);
+        return filePath;
+    } finally {
+        if (fs.existsSync(temporaryFile)) fs.rmSync(temporaryFile, { force: true });
+    }
 }
 
 function queueExport(dateKey) {
