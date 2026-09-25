@@ -7,6 +7,7 @@ import {
 import type { CSSProperties } from "react";
 import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
+import { buildTimelineForecast, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
 import { EXHIBITION_OPTIONS, DEFAULT_EXHIBITION_STYLE, exhibitionLabel, exhibitionPreviewStyle, exhibitionText, normalizeExhibitionType } from "./exhibition";
 import type { ExhibitionStyle, ExhibitionType } from "./exhibition";
 
@@ -320,6 +321,8 @@ export default function App() {
         useState(0);
     const [programmedIndefinite, setProgrammedIndefinite] =
         useState(false);
+    const [programmedEndAtMs, setProgrammedEndAtMs] =
+        useState<number | null>(null);
     const [rundownApplyRequest, setRundownApplyRequest] = useState<{
         key: number;
         items: MediaItem[];
@@ -530,27 +533,15 @@ export default function App() {
     }
 
     const programmedDurationLabel =
-        programmedIndefinite
-            ? "LOOP"
-            : formatProgrammedDuration(
-                  programmedRemainingSeconds
-              );
-    const programmedUntilLabel =
-        programmedIndefinite
-            ? "SEM PREVISÃO"
-            : programmedRemainingSeconds > 0
-              ? new Date(
-                    Date.now() +
-                        programmedRemainingSeconds * 1000
-                ).toLocaleTimeString(
-                    "pt-BR",
-                    {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit"
-                    }
-                )
+        programmedIndefinite ? "LOOP"
+            : programmedEndAtMs !== null
+              ? formatProgrammedDuration(programmedRemainingSeconds)
               : "--:--:--";
+    const programmedUntilLabel =
+        programmedIndefinite ? "SEM PREVISÃO"
+            : programmedEndAtMs !== null
+              ? formatEstimatedClock(programmedEndAtMs, Date.now())
+              : "AGUARDANDO PLAY";
 
     return (
         <div className="app-shell">
@@ -626,9 +617,10 @@ export default function App() {
                             onImportDroppedFiles={importDroppedFiles}
                             onRemoveMedia={handleRemoveMedia}
                             rundownApplyRequest={rundownApplyRequest}
-                            onScheduleSummary={(remainingSeconds, indefinite) => {
-                                setProgrammedRemainingSeconds(remainingSeconds);
+                            onScheduleSummary={(remainingSeconds, indefinite, endsAtMs) => {
+                                setProgrammedRemainingSeconds(remainingSeconds ?? 0);
                                 setProgrammedIndefinite(indefinite);
+                                setProgrammedEndAtMs(endsAtMs);
                             }}
                         />
                     </div>
@@ -747,8 +739,9 @@ interface PlayoutPanelProps {
         items: MediaItem[];
     } | null;
     onScheduleSummary: (
-        remainingSeconds: number,
-        indefinite: boolean
+        remainingSeconds: number | null,
+        indefinite: boolean,
+        endsAtMs: number | null
     ) => void;
 }
 
@@ -1045,50 +1038,6 @@ function PlayoutPanel({
         currentTime - selectedClipIn
     );
 
-    useEffect(() => {
-        if (timelineQueue.length === 0) {
-            onScheduleSummary(0, false);
-            return;
-        }
-
-        const startIndex =
-            selectedMediaIndex >= 0
-                ? selectedMediaIndex
-                : 0;
-        const remainingItems =
-            timelineQueue.slice(startIndex);
-        const indefinite =
-            remainingItems.some((item) => Boolean(item.loop));
-
-        if (indefinite) {
-            onScheduleSummary(0, true);
-            return;
-        }
-
-        let remaining = 0;
-        remainingItems.forEach((item, index) => {
-            if (
-                index === 0 &&
-                selectedMediaIndex >= 0
-            ) {
-                remaining += Math.max(
-                    0,
-                    getClipDuration(item) -
-                        selectedClipCurrent
-                );
-                return;
-            }
-
-            remaining += getClipDuration(item);
-        });
-
-        onScheduleSummary(remaining, false);
-    }, [
-        timelineQueue,
-        selectedMediaIndex,
-        selectedClipCurrent,
-        onScheduleSummary
-    ]);
 
     const watermarkFadeSeconds = Math.max(
         0,
@@ -1144,46 +1093,49 @@ function PlayoutPanel({
               )
             : 0;
 
-    // Horario de entrada calculado a partir do tempo restante, nao do
-    // timecode absoluto do arquivo (que pode comecar no meio do filme).
-    // Se houver loop anterior, os horarios seguintes sao indefinidos.
-    const timelineForecast = (() => {
-        const forecast = new Map<string, {
-            delaySeconds: number;
-            entryClock: string;
-        } | null>();
-        let delay = 0;
-        let blockedByLoop = false;
-        for (let index = 0; index < timelineMedia.length; index++) {
-            const item = timelineMedia[index];
-            if (blockedByLoop) {
-                forecast.set(item.id, null);
-                continue;
-            }
-            forecast.set(item.id, {
-                delaySeconds: delay,
-                entryClock: new Date(timelineClock + delay * 1000)
-                    .toLocaleTimeString("pt-BR", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                        second: "2-digit"
-                    })
-            });
-            const current = index === 0 && selectedMediaIndex >= 0;
-            delay += current
-                ? Math.max(0, getClipDuration(item) - selectedClipCurrent)
-                : getClipDuration(item);
-            if (item.loop) blockedByLoop = true;
+    // O relógio do PROGRAM é o cursor REAL do elemento de vídeo.
+    // Nunca extrapolar entradas quando o player/NDI está parado,
+    // carregando, buscando ou sem duração válida.
+    const programVideo = videoRef.current;
+    const forecastRunning = Boolean(
+        isPlaying &&
+        programVideo &&
+        !programVideo.paused &&
+        !programVideo.seeking &&
+        programVideo.readyState >= 2 &&
+        (testBench || (ndiOnline && nativePlaybackActive))
+    );
+    const timelineForecast = buildTimelineForecast(
+        timelineQueue,
+        selectedMedia?.id ?? null,
+        {
+            nowMs: timelineClock,
+            isRunning: forecastRunning,
+            currentTime: programVideo?.currentTime ?? currentTime
         }
-        return forecast;
-    })();
+    );
 
-    function describeForecast(item: MediaItem | null): string {
+    function describeForecast(item: MediaItem | null, isCurrent = false): string {
         if (!item) return "Nenhum próximo vídeo";
-        const entry = timelineForecast.get(item.id);
-        if (!entry) return "ENTRA: sem previsão (loop anterior)";
-        return `FALTA ${formatDuration(Math.ceil(entry.delaySeconds))}  •  ENTRA ${entry.entryClock}`;
+        return describeForecastEntry(
+            timelineForecast.entries.get(item.id),
+            timelineClock,
+            isCurrent
+        );
     }
+
+    useEffect(() => {
+        onScheduleSummary(
+            timelineForecast.remainingSeconds,
+            timelineForecast.hasLoop,
+            timelineForecast.endsAtMs
+        );
+    }, [
+        timelineForecast.remainingSeconds,
+        timelineForecast.hasLoop,
+        timelineForecast.endsAtMs,
+        onScheduleSummary
+    ]);
 
     useEffect(() => {
         setPreviewError("");
@@ -2388,6 +2340,10 @@ function PlayoutPanel({
                     <div className="panel-title">
                         TIMELINE
                     </div>
+                    <div className="timeline-time-legend">
+                        ENTRA EST. = previsão pelo PROGRAM em reprodução; não é horário fixo do roteiro.
+                        Ao pausar, perder sinal ou encontrar duração desconhecida, a previsão é suspensa.
+                    </div>
 
                     {timelineMedia.length > 0 ? (
                         <div className="timeline-list">
@@ -2487,7 +2443,7 @@ function PlayoutPanel({
                                             <div className="timeline-marker" />
                                             <div className="timeline-position">
                                                 {isCurrent
-                                                    ? "NO AR"
+                                                    ? forecastRunning ? "NO AR" : "PRONTO"
                                                     : `${index + 1}`}
                                             </div>
 
@@ -2522,18 +2478,7 @@ function PlayoutPanel({
                                                 </span>
 
                                                 <span className="timeline-air-time">
-                                                    {isCurrent
-                                                        ? `RESTA ${formatDuration(
-                                                              Math.max(0, selectedClipDuration - selectedClipCurrent)
-                                                          )} • FIM ESTIMADO ${new Date(
-                                                              timelineClock +
-                                                              Math.max(0, selectedClipDuration - selectedClipCurrent) * 1000
-                                                          ).toLocaleTimeString("pt-BR", {
-                                                              hour: "2-digit",
-                                                              minute: "2-digit",
-                                                              second: "2-digit"
-                                                          })}`
-                                                        : describeForecast(item)}
+                                                    {describeForecast(item, isCurrent)}
                                                 </span>
                                             </div>
 
