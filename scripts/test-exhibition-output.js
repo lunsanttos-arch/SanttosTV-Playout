@@ -7,7 +7,8 @@ const { execFileSync } = require("node:child_process");
 const ffmpegStatic = require("ffmpeg-static");
 const {
     getExhibitionOverlay,
-    buildExhibitionDrawtext
+    buildExhibitionDrawtext,
+    normalizeExhibitionStyle
 } = require("../src/core/graphics/exhibition-overlay");
 
 const defaultLogo = { x: 1680, y: 40, widthPx: 180 };
@@ -28,6 +29,37 @@ assert.throws(
     /input label/
 );
 assert.equal(buildExhibitionDrawtext("base", "NORMAL", defaultLogo, "arial.ttf"), null);
+
+const custom = normalizeExhibitionStyle({
+    fontFamily: "Tahoma",
+    fontSize: 38,
+    color: "#f0c020",
+    outlineWidth: 3,
+    shadowEnabled: true,
+    shadowX: 3,
+    backgroundEnabled: true,
+    backgroundColor: "#225588",
+    backgroundPadding: 8,
+    gapPx: 14,
+    rightOffsetPx: -35,
+    yOffsetPx: 5,
+    labels: { REPRISE: "OUTRA EXIBIÇÃO" }
+});
+assert.equal(getExhibitionOverlay("REPRISE", { x: 1650, y: 160, widthPx: 200 }, custom).text,
+    "OUTRA EXIBIÇÃO");
+assert.equal(getExhibitionOverlay("REPRISE", { x: 1650, y: 160, widthPx: 200 }, custom).right, 1815);
+assert.equal(getExhibitionOverlay("REPRISE", defaultLogo, { enabled: false }), null);
+const customFilter = buildExhibitionDrawtext("base", "REPRISE", defaultLogo,
+    "arial.ttf", custom);
+assert(customFilter.includes("fontsize=38"));
+assert(customFilter.includes("fontcolor=0xf0c020@1.000"));
+assert(customFilter.includes("borderw=3"));
+assert(customFilter.includes("box=1"));
+assert(customFilter.includes("shadowx=3"));
+assert(!buildExhibitionDrawtext("base", "REPRISE", defaultLogo, "arial.ttf",
+    { labels: { REPRISE: "expr=%{metadata}" } }).includes("expr="),
+    "Textos não autorizados devem voltar ao padrão.");
+
 
 // Render a full-HD frame with the exact filter used by the PROGRAM pipeline.
 // Parsing tests alone would miss an invalid FFmpeg expression on Windows.
@@ -98,4 +130,35 @@ for (const status of ["INEDITO", "REPRISE", "AO_VIVO"]) {
     assert(rawFrame[logoPixel] > 60 && rawFrame[logoPixel] < 190,
         `${status}: synthetic logo was overwritten or disappeared.`);
 }
-console.log("EXHIBITION OUTPUT QA: APROVADO — legenda visível acima do logo em três frames Full HD reais.");
+
+const customGraph = "[0:v]null[base];" +
+    buildExhibitionDrawtext("base", "REPRISE", { x: 1660, y: 165, widthPx: 190 },
+        fontForFilter, custom) +
+    ";[exhibition]null[program]";
+const customFrame = execFileSync(ffmpegStatic, [
+    "-hide_banner", "-loglevel", "error",
+    "-f", "lavfi", "-i", "color=c=black:s=1920x1080:r=1:d=0.1",
+    "-filter_complex", customGraph, "-map", "[program]",
+    "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"
+], {
+    windowsHide: true,
+    timeout: 25000,
+    maxBuffer: 10 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"]
+});
+assert.equal(customFrame.length, 1920 * 1080 * 3,
+    "Configuração personalizada precisa gerar um quadro de vídeo válido.");
+// Verify a nonblack caption rectangle in its personalized location, not
+// merely that FFmpeg accepted arguments.
+let customPixels = 0;
+for (let y = 95; y < 140; y++) {
+    for (let x = 1420; x < 1830; x++) {
+        const offset = (y * 1920 + x) * 3;
+        if (customFrame[offset] + customFrame[offset + 1] + customFrame[offset + 2] > 120) {
+            customPixels++;
+        }
+    }
+}
+assert(customPixels > 1000, "A tarja opcional e o texto personalizado precisam ser desenhados.");
+console.log("EXHIBITION OUTPUT QA: APROVADO — padrões sem tarja e estilo personalizado com tarja renderizados no FFmpeg.");
+

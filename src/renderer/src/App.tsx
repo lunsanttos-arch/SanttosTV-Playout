@@ -7,8 +7,8 @@ import {
 import type { CSSProperties } from "react";
 import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
-import { EXHIBITION_OPTIONS, exhibitionLabel, exhibitionPreviewAnchor, normalizeExhibitionType } from "./exhibition";
-import type { ExhibitionType } from "./exhibition";
+import { EXHIBITION_OPTIONS, DEFAULT_EXHIBITION_STYLE, exhibitionLabel, exhibitionPreviewStyle, exhibitionText, normalizeExhibitionType } from "./exhibition";
+import type { ExhibitionStyle, ExhibitionType } from "./exhibition";
 
 type Panel =
     | "playout"
@@ -89,6 +89,7 @@ interface AppSettings {
     ndiName: string;
     watermarkStyle: WatermarkStyle;
     hashtagStyle: HashtagStyle;
+    exhibitionStyle: ExhibitionStyle;
 }
 
 interface ImportResult {
@@ -114,6 +115,11 @@ interface NdiCommandResult {
 interface SaveHashtagStyleResult {
     ok: boolean;
     hashtagStyle: HashtagStyle;
+}
+
+interface SaveExhibitionStyleResult {
+    ok: boolean;
+    exhibitionStyle: ExhibitionStyle;
 }
 
 interface LibraryCategory {
@@ -216,6 +222,9 @@ declare global {
             saveHashtagStyle: (
                 style: HashtagStyle
             ) => Promise<SaveHashtagStyleResult>;
+            saveExhibitionStyle: (
+                style: ExhibitionStyle
+            ) => Promise<SaveExhibitionStyleResult>;
             getNdiStatus: () => Promise<{
                 online: boolean;
                 source: string;
@@ -305,6 +314,8 @@ export default function App() {
         useState<HashtagStyle>(
             DEFAULT_HASHTAG_STYLE
         );
+    const [exhibitionStyle, setExhibitionStyle] =
+        useState<ExhibitionStyle>(DEFAULT_EXHIBITION_STYLE);
     const [programmedRemainingSeconds, setProgrammedRemainingSeconds] =
         useState(0);
     const [programmedIndefinite, setProgrammedIndefinite] =
@@ -370,6 +381,9 @@ export default function App() {
                 setHashtagStyle(
                     settings.hashtagStyle ??
                         DEFAULT_HASHTAG_STYLE
+                );
+                setExhibitionStyle(
+                    settings.exhibitionStyle ?? DEFAULT_EXHIBITION_STYLE
                 );
             })
             .catch((error) => {
@@ -507,6 +521,14 @@ export default function App() {
         setHashtagStyle(result.hashtagStyle);
     }
 
+    async function saveExhibitionStyle(style: ExhibitionStyle) {
+        const result = await window.santtosAPI.saveExhibitionStyle(style);
+        if (!result.ok) {
+            throw new Error("Não foi possível salvar a identificação no vídeo.");
+        }
+        setExhibitionStyle(result.exhibitionStyle);
+    }
+
     const programmedDurationLabel =
         programmedIndefinite
             ? "LOOP"
@@ -598,6 +620,7 @@ export default function App() {
                             message={message}
                             selectedMedia={selectedMedia}
                             hashtagStyle={hashtagStyle}
+                            exhibitionStyle={exhibitionStyle}
                             onSelectMedia={setSelectedMedia}
                             onAddVideos={addVideos}
                             onImportDroppedFiles={importDroppedFiles}
@@ -627,6 +650,8 @@ export default function App() {
                         <BroadcastSettingsPanel
                             hashtagStyle={hashtagStyle}
                             onSaveHashtag={saveHashtagStyle}
+                            exhibitionStyle={exhibitionStyle}
+                            onSaveExhibition={saveExhibitionStyle}
                         />
                     )}
 
@@ -706,6 +731,7 @@ interface PlayoutPanelProps {
     message: string;
     selectedMedia: MediaItem | null;
     hashtagStyle: HashtagStyle;
+    exhibitionStyle: ExhibitionStyle;
     onSelectMedia: (
         media: MediaItem
     ) => void;
@@ -736,6 +762,7 @@ function PlayoutPanel({
     message,
     selectedMedia,
     hashtagStyle,
+    exhibitionStyle,
     onSelectMedia,
     onAddVideos,
     onImportDroppedFiles,
@@ -2190,13 +2217,13 @@ function PlayoutPanel({
                                     />
                                 )}
 
-                                {selectedMedia && normalizeExhibitionType(selectedMedia.exhibitionType) !== "NORMAL" && (
+                                {selectedMedia && exhibitionText(selectedMedia.exhibitionType, exhibitionStyle) && (
                                     <div
                                         className="program-exhibition-overlay"
                                         aria-label="Identificação editorial no vídeo"
-                                        style={exhibitionPreviewAnchor(watermarkStyle)}
+                                        style={exhibitionPreviewStyle(watermarkStyle, exhibitionStyle)}
                                     >
-                                        {exhibitionLabel(selectedMedia.exhibitionType).toLocaleUpperCase("pt-BR")}
+                                        {exhibitionText(selectedMedia.exhibitionType, exhibitionStyle)}
                                     </div>
                                 )}
 

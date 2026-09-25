@@ -107,6 +107,35 @@ async function main() {
         assert.strictEqual(normalizedOutput.ndi.name, "QA PROGRAM");
         assert.strictEqual(normalizedOutput.audio.sampleRate, 48000);
 
+        const configuredExhibition = db.updateExhibitionStyle({
+            ...db.getSettings().exhibitionStyle,
+            fontSize: 42,
+            color: "#eecc44",
+            backgroundEnabled: false,
+            gapPx: 22,
+            labels: { REPRISE: "SEGUNDA EXIBIÇÃO", INEDITO: "ESTREIA HOJE" }
+        });
+        assert.strictEqual(configuredExhibition.fontSize, 42);
+        assert.strictEqual(configuredExhibition.labels.REPRISE, "SEGUNDA EXIBIÇÃO");
+        assert.strictEqual(configuredExhibition.labels.INEDITO, "ESTREIA HOJE");
+        assert.strictEqual(configuredExhibition.labels.ESTREIA, "ESTREIA");
+        assert.strictEqual(configuredExhibition.backgroundEnabled, false);
+        assert.strictEqual(JSON.parse(fs.readFileSync(databaseFile, "utf8"))
+            .settings.exhibitionStyle.gapPx, 22,
+            "Identificação gráfica deve persistir no banco.");
+        const sanitizedExhibition = db.updateExhibitionStyle({
+            fontSize: 99999,
+            color: "invalid",
+            labels: { REPRISE: "text='%{evil}'" }
+        });
+        assert.strictEqual(sanitizedExhibition.fontSize, 100);
+        assert.strictEqual(sanitizedExhibition.color, "#ffffff");
+        assert.strictEqual(sanitizedExhibition.labels.REPRISE, "REPRISE");
+        db.updateExhibitionStyle(configuredExhibition);
+        // O arquivo .bak precisa conter a configuracao boa antes do teste de corrupção.
+        db.updateExhibitionStyle(configuredExhibition);
+
+
         const library = require("../src/core/library/library-categories");
         const userData = path.join(tempRoot, "userData");
         const categoryFolder = path.join(tempRoot, "comerciais");
@@ -194,6 +223,8 @@ async function main() {
         fs.copyFileSync(`${databaseFile}.bak`, databaseFile);
         db.initializeDatabase({ userDataPath: databaseUserData });
         assert.strictEqual(db.getTimeline().length, 1, "Backup deve permitir restaurar a timeline.");
+        assert.strictEqual(db.getSettings().exhibitionStyle.labels.REPRISE,
+            "SEGUNDA EXIBIÇÃO", "Configuração editorial deve sobreviver ao reinício.");
         assert.throws(() => db.getDailyRundown("2026-02-30"), /inexistente/);
 
         // Historico de exibição corrompido deve bloquear inicializacao.

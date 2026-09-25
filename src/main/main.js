@@ -24,6 +24,7 @@ const {
     updateOutputSettings,
     updateWatermarkStyle,
     updateHashtagStyle,
+    updateExhibitionStyle,
     addLog,
     getMedia,
     getTimeline,
@@ -602,11 +603,14 @@ function buildProgramFilterGraph(
     // Editorial identification belongs to the encoded PROGRAM picture.
     // Draw it after both the watermark and hashtag so it remains legible.
     if (state.exhibitionType && state.exhibitionType !== "NORMAL") {
+        const graphics = getSettings();
         const identification = buildExhibitionDrawtext(
             current,
             state.exhibitionType,
-            getSettings().watermarkStyle,
-            resolveHashtagFont({ fontFamily: "Arial", bold: true })
+            graphics.watermarkStyle,
+            resolveHashtagFont(graphics.exhibitionStyle)
+                .replaceAll("\\\\", "/"),
+            graphics.exhibitionStyle
         );
         if (identification) {
             chains.push(identification);
@@ -1106,6 +1110,14 @@ function registerIpcHandlers() {
             ok: true,
             hashtagStyle:
                 updateHashtagStyle(style)
+        })
+    );
+
+    registerTrustedHandle(
+        "settings:set-exhibition-style",
+        async (_event, style) => ({
+            ok: true,
+            exhibitionStyle: updateExhibitionStyle(style)
         })
     );
 
