@@ -65,10 +65,15 @@ export function buildTimelineForecast(
         nowMs: number;
         isRunning: boolean;
         currentTime: number;
+        /** Timestamp da última amostra válida do tempo do player. */
+        sampledAtMs?: number;
     }
 ): ForecastResult {
     const entries = new Map<string, ForecastEntry>();
     const now = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
+    const sampledAtMs = options.sampledAtMs !== undefined &&
+        Number.isFinite(options.sampledAtMs)
+            ? options.sampledAtMs : now;
     const selectedIndex = selectedMediaId === null
         ? -1 : queue.findIndex(item => item.id === selectedMediaId);
     // Loops já executados não podem bloquear a previsão da fila atual.
@@ -113,8 +118,13 @@ export function buildTimelineForecast(
                 blocker = "blocked-duration";
                 return;
             }
-            length = Math.max(0,
+            // Fixar o fim na amostra de tempo do vídeo, NÃO em cada
+            // redesenho do React. Assim o relógio de entrada não salta
+            // para frente entre dois eventos timeupdate.
+            const remainingAtSample = Math.max(0,
                 clip.outPoint - Math.max(clip.inPoint, currentTime));
+            const expectedClipEndMs = sampledAtMs + remainingAtSample * 1000;
+            length = Math.max(0, (expectedClipEndMs - now) / 1000);
         }
 
         const startsAtMs = now + cumulative * 1000;
