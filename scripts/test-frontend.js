@@ -29,6 +29,17 @@ assert(app.includes("exhibitionType:") && app.includes("normalizeExhibitionType(
 const exhibition = fs.readFileSync(
     path.join(root, "src", "renderer", "src", "exhibition.ts"), "utf8"
 );
+const exhibitionSettings = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "ExhibitionSettingsTab.tsx"), "utf8"
+);
+assert(settings.includes('tab === "exhibition"') && settings.includes("saveExhibition"),
+    "Identificação precisa de uma aba editável e de um botão Salvar.");
+assert(exhibitionSettings.includes("backgroundEnabled") && exhibitionSettings.includes("fontFamily") &&
+    exhibitionSettings.includes("rightOffsetPx") && exhibitionSettings.includes("patchLabel"),
+    "Aba precisa configurar fonte, texto, fundo opcional e posição.");
+assert(app.includes("saveExhibitionStyle") && app.includes("exhibitionPreviewStyle"),
+    "Alterações precisam chegar ao monitor do PROGRAM.");
+
 assert(exhibition.includes("exhibitionPreviewAnchor"),
     "A legenda no monitor precisa acompanhar a posicao configurada do logo.");
 
