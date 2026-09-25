@@ -823,6 +823,14 @@ function PlayoutPanel({
         atMs: Date.now()
     });
 
+    function markPlaybackSample(video: HTMLVideoElement) {
+        const sampledAtMs = Date.now();
+        const position = video.currentTime;
+        lastProgressRef.current = { position, atMs: sampledAtMs };
+        setCurrentTime(position);
+        setTimelineClock(sampledAtMs);
+    }
+
     useEffect(() => {
         let cancelled = false;
 
@@ -1489,6 +1497,8 @@ function PlayoutPanel({
                 throw error;
             }
             setPreviewError("");
+            // Resume and starts are NEW clock anchors, even after a short pause.
+            markPlaybackSample(video);
             setIsPlaying(true);
             await startExecutionReport(mediaToPlay);
         } catch (error) {
@@ -1558,7 +1568,9 @@ function PlayoutPanel({
                 true
             );
             await video.play();
+            markPlaybackSample(video);
             setIsPlaying(true);
+            clipAdvanceGuardRef.current = false;
             await startExecutionReport(selectedMedia);
             return;
         }
@@ -1584,6 +1596,7 @@ function PlayoutPanel({
         video.currentTime = nextIn;
         await startNativeNdi(nextMedia, nextIn);
         await video.play();
+        markPlaybackSample(video);
         setIsPlaying(true);
         await startExecutionReport(nextMedia);
     }
@@ -1592,6 +1605,7 @@ function PlayoutPanel({
         video: HTMLVideoElement
     ) {
         const position = video.currentTime;
+        const sampledAtMs = Date.now();
         // Detect a stalled preview or sender: stale cursors cannot be used
         // to present a supposedly precise future wall-clock time.
         if (Number.isFinite(position) && (
@@ -1599,9 +1613,10 @@ function PlayoutPanel({
             position > lastProgressRef.current.position + 0.015 ||
             position < lastProgressRef.current.position - 0.1
         )) {
-            lastProgressRef.current = { position, atMs: Date.now() };
+            lastProgressRef.current = { position, atMs: sampledAtMs };
         }
         setCurrentTime(position);
+        setTimelineClock(sampledAtMs);
 
         if (!selectedMedia) {
             return;
@@ -1639,8 +1654,7 @@ function PlayoutPanel({
             }
         }
 
-        setCurrentTime(video.currentTime);
-        lastProgressRef.current = { position: video.currentTime, atMs: Date.now() };
+        markPlaybackSample(video);
 
         if (!isPlaying || !selectedMedia) {
             return;
