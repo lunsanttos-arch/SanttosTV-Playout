@@ -104,6 +104,15 @@ assert.equal(looping.endsAtMs, null);
 const futureLoop = plan([queue[0], { ...queue[1], loop: true }, queue[2]]);
 assert.equal(futureLoop.entries.get("ad").startsAtMs, now + 90000);
 assert.equal(futureLoop.entries.get("movie-block-2").state, "blocked-loop");
+const previouslyLooped = plan([
+    { id: "completed-loop", duration: 20, loop: true },
+    queue[1], queue[2]
+], "ad", { currentTime: 10 });
+assert.equal(previouslyLooped.hasLoop, false,
+    "Um loop antes do vídeo atual não pode bloquear horários futuros.");
+assert.equal(previouslyLooped.entries.get("movie-block-2").remainingSeconds, 20);
+assert.notEqual(previouslyLooped.endsAtMs, null);
+
 
 const unknown = plan([queue[0], { id: "missing", duration: null }, queue[2]]);
 assert.equal(unknown.entries.get("missing").state, "unknown-duration");
