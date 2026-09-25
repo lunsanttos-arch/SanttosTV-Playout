@@ -13,19 +13,14 @@ async function waitFor(predicate, timeoutMs = 6000) {
 }
 
 async function main() {
-    const repoRoot = path.resolve(__dirname, "..");
-    const databaseDir = path.join(repoRoot, "database");
-    const databaseFile = path.join(databaseDir, "santtos-tv.json");
-    const hadDatabase = fs.existsSync(databaseFile);
-    const databaseBackup = hadDatabase ? fs.readFileSync(databaseFile) : null;
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-tests-"));
+    const databaseUserData = path.join(tempRoot, "userData");
+    const databaseFile = path.join(databaseUserData, "database", "santtos-tv.json");
 
     try {
-        fs.mkdirSync(databaseDir, { recursive: true });
-        if (fs.existsSync(databaseFile)) fs.rmSync(databaseFile, { force: true });
-
         const db = require("../src/database/database");
-        db.initializeDatabase();
+        db.initializeDatabase({ userDataPath: databaseUserData });
+        assert(fs.existsSync(databaseFile), "Banco deve ser gravado em userData, nao no executavel.");
 
         const mediaFolder = path.join(tempRoot, "media");
         fs.mkdirSync(mediaFolder, { recursive: true });
@@ -154,22 +149,27 @@ async function main() {
             fs.readdirSync(reportDir).some((name) => name.endsWith(".xlsx"))
         );
 
+        assert(fs.existsSync(`${databaseFile}.bak`), "Deve existir backup da geracao anterior.");
+        const persisted = JSON.parse(fs.readFileSync(databaseFile, "utf8"));
+        assert.strictEqual(persisted.timeline.length, 1, "Timeline nao deve se perder no disco.");
+        fs.writeFileSync(databaseFile, "{json interrompido", "utf8");
+        assert.throws(
+            () => db.initializeDatabase({ userDataPath: databaseUserData }),
+            /Banco de programacao invalido/,
+            "Nao iniciar com programacao vazia se o arquivo estiver corrompido."
+        );
+        assert.strictEqual(fs.readFileSync(databaseFile, "utf8"), "{json interrompido");
+        fs.copyFileSync(`${databaseFile}.bak`, databaseFile);
+        db.initializeDatabase({ userDataPath: databaseUserData });
+        assert.strictEqual(db.getTimeline().length, 1, "Backup deve permitir restaurar a timeline.");
+        assert.throws(() => db.getDailyRundown("2026-02-30"), /inexistente/);
+
         console.log("BACKEND QA: APROVADO");
         console.log("✓ banco e normalização");
         console.log("✓ biblioteca por pastas");
         console.log("✓ timeline e roteiro diário");
         console.log("✓ relatório Excel");
     } finally {
-        try {
-            if (hadDatabase && databaseBackup) {
-                fs.mkdirSync(databaseDir, { recursive: true });
-                fs.writeFileSync(databaseFile, databaseBackup);
-            } else if (fs.existsSync(databaseFile)) {
-                fs.rmSync(databaseFile, { force: true });
-            }
-        } catch (error) {
-            console.warn("Aviso ao restaurar banco de teste:", error.message);
-        }
         fs.rmSync(tempRoot, { recursive: true, force: true });
     }
 }
