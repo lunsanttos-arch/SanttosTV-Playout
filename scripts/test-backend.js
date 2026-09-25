@@ -57,6 +57,7 @@ async function main() {
             inPoint: 5,
             outPoint: 20,
             blockLabel: "Bloco A",
+            exhibitionType: "REPRISE",
             duration: 30
         }]);
         assert.strictEqual(timeline.length, 1);
@@ -64,6 +65,8 @@ async function main() {
         assert.strictEqual(timeline[0].inPoint, 5);
         assert.strictEqual(timeline[0].outPoint, 20);
         assert.strictEqual(timeline[0].watermark, true);
+        assert.strictEqual(timeline[0].exhibitionType, "REPRISE");
+        assert.strictEqual(db.getTimeline()[0].exhibitionType, "REPRISE");
 
         const rundown = db.saveDailyRundown({
             date: "2026-09-21",
@@ -73,6 +76,7 @@ async function main() {
                 sourceMediaId: source.id,
                 blockLabel: "Break 1",
                 notes: "teste",
+                exhibitionType: "INEDITO",
                 watermark: false,
                 hashtag: "#QA",
                 inPoint: 0,
@@ -80,8 +84,15 @@ async function main() {
             }]
         });
         assert.strictEqual(rundown.items.length, 1);
+        assert.strictEqual(rundown.items[0].exhibitionType, "INEDITO");
         assert.strictEqual(rundown.startTime, "06:30");
         assert.strictEqual(db.getDailyRundown("2026-09-21").title, "Roteiro QA");
+        assert.strictEqual(db.getDailyRundown("2026-09-21").items[0].exhibitionType, "INEDITO");
+        const badAiring = db.saveDailyRundown({
+            date: "2026-09-22",
+            items: [{ sourceMediaId: source.id, exhibitionType: "QUALQUER" }]
+        });
+        assert.strictEqual(badAiring.items[0].exhibitionType, "NORMAL");
 
         const normalizedOutput = db.updateOutputSettings({
             resolution: "1920x1080",
