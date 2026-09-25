@@ -30,6 +30,8 @@ jobs:
           node -e "const cp=require('node:child_process'); for(const pkg of ['ffmpeg-static','@derhuerst/ffprobe-static']) {const m=require(pkg);const p=typeof m==='string'?m:m.path??m.default;const v=cp.spawnSync(p,['-version'],{encoding:'utf8'});console.log(pkg, p, v.stdout.split(/\r?\n/)[0]);if(v.error) console.error(v.error.message)}"
       - name: Backend and frontend QA
         run: npm test
+      - name: Native NDI protocol and watchdog (simulated SDK)
+        run: npm run test:native
       - name: Smoke stress
         run: npm run stress:smoke
       - uses: actions/upload-artifact@v4
