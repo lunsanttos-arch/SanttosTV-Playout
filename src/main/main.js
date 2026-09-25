@@ -5,7 +5,8 @@ const {
     dialog,
     nativeImage,
     protocol,
-    session
+    session,
+    shell
 } = require("electron");
 
 const path = require("path");
@@ -958,6 +959,11 @@ function createWatermarkPreviewDataUrl(filePath) {
 }
 
 function registerIpcHandlers() {
+    secureIpcHandle("ndi:website", async () => {
+        await shell.openExternal("https://ndi.video/");
+        return { ok: true };
+    });
+
     secureIpcHandle(
         "ndi:status",
         async () => ({
