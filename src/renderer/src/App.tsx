@@ -1611,6 +1611,7 @@ function PlayoutPanel({
         if (
             isPlaying &&
             !video.paused &&
+            outPoint > getClipIn(selectedMedia) + 0.04 &&
             video.currentTime >= outPoint - 0.035 &&
             !clipAdvanceGuardRef.current
         ) {
