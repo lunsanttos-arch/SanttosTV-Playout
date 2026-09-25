@@ -5,14 +5,14 @@ const {
     dialog,
     nativeImage,
     protocol,
-    net,
     session
 } = require("electron");
 
 const path = require("path");
 const fs = require("fs");
-const { pathToFileURL, fileURLToPath } = require("url");
-const { MEDIA_SCHEME, resolveMediaRequest } = require("../core/media/media-protocol");
+const { fileURLToPath } = require("url");
+const { MEDIA_SCHEME, serveImportedVideo } = require("../core/media/media-protocol");
+const { preparePreviewProxy, cancelActivePreviews } = require("../core/media/preview-proxy");
 const { spawn } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
@@ -173,6 +173,7 @@ function onPlayoutFault(message) {
 }
 
 const analysesInProgress = new Map();
+const approvedPreviewPaths = new Set();
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -1408,6 +1409,42 @@ function registerIpcHandlers() {
     );
 
     registerTrustedHandle(
+        "media:prepare-preview",
+        async (_event, requestedPath) => {
+            try {
+                if (nativePlaybackActive) {
+                    throw new Error("Pare o PROGRAM antes de preparar uma previa pesada.");
+                }
+                if (typeof requestedPath !== "string") {
+                    throw new Error("Caminho da midia invalido.");
+                }
+                const realPath = fs.realpathSync(requestedPath);
+                const imported = getMedia().some((item) => {
+                    try { return fs.realpathSync(item.path) === realPath; }
+                    catch { return false; }
+                });
+                if (!imported) {
+                    throw new Error("A midia precisa estar cadastrada na biblioteca.");
+                }
+                const proxy = await preparePreviewProxy(
+                    realPath,
+                    path.join(app.getPath("userData"), "preview-cache"),
+                    { ffmpegPath: resolveFfmpegPath() }
+                );
+                approvedPreviewPaths.add(fs.realpathSync(proxy));
+                return { ok: true, filePath: proxy };
+            } catch (error) {
+                console.error("Falha ao preparar previa:", error);
+                return {
+                    ok: false,
+                    error: error instanceof Error
+                        ? error.message : "Nao foi possivel preparar a previa."
+                };
+            }
+        }
+    );
+
+    registerTrustedHandle(
         "media:list",
         async () => {
             const media = getMedia();
@@ -1597,13 +1634,9 @@ app.whenReady().then(() => {
     if (!hasSingleInstanceLock) return;
     try {
         startSystem();
-        protocol.handle(MEDIA_SCHEME, (request) => {
-            const allowedPath = resolveMediaRequest(request.url, getMedia());
-            if (!allowedPath) {
-                return new Response("Midia nao autorizada ou indisponivel", { status: 404 });
-            }
-            return net.fetch(pathToFileURL(allowedPath).toString());
-        });
+        protocol.handle(MEDIA_SCHEME, (request) =>
+            serveImportedVideo(request, getMedia(), approvedPreviewPaths)
+        );
         session.defaultSession.setPermissionRequestHandler(
             (_webContents, _permission, callback) => callback(false)
         );
@@ -1633,6 +1666,7 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
+    cancelActivePreviews();
     closeOpenEntriesAsSkipped();
     stopNativePlayback();
     stopNdiSender();

@@ -7,6 +7,8 @@ import {
 import type { CSSProperties } from "react";
 import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
+import { EXHIBITION_OPTIONS, exhibitionLabel, normalizeExhibitionType } from "./exhibition";
+import type { ExhibitionType } from "./exhibition";
 
 type Panel =
     | "playout"
@@ -24,6 +26,7 @@ export interface MediaItem {
     inPoint?: number;
     outPoint?: number | null;
     blockLabel?: string;
+    exhibitionType?: ExhibitionType;
     name: string;
     path: string;
     extension: string;
@@ -155,6 +158,11 @@ declare global {
             importMedia: (
                 filePaths: string[]
             ) => Promise<ImportResult>;
+            prepareMediaPreview: (filePath: string) => Promise<{
+                ok: boolean;
+                filePath?: string;
+                error?: string;
+            }>;
             getDroppedFilePath: (file: File) => string;
             removeMedia: (
                 mediaId: string
@@ -743,6 +751,12 @@ function PlayoutPanel({
 
     const [currentTime, setCurrentTime] =
         useState(0);
+    const [timelineClock, setTimelineClock] = useState(() => Date.now());
+
+    useEffect(() => {
+        const interval = window.setInterval(() => setTimelineClock(Date.now()), 1000);
+        return () => window.clearInterval(interval);
+    }, []);
     const [duration, setDuration] =
         useState(0);
     const [isPlaying, setIsPlaying] =
@@ -760,6 +774,10 @@ function PlayoutPanel({
         );
     const [watermarkPreviewUrl, setWatermarkPreviewUrl] =
         useState("");
+    const [previewProxyBySource, setPreviewProxyBySource] =
+        useState<Record<string, string>>({});
+    const [previewError, setPreviewError] = useState("");
+    const [previewPreparing, setPreviewPreparing] = useState(false);
     const [editingFilm, setEditingFilm] =
         useState<MediaItem | null>(null);
     const clipAdvanceGuardRef = useRef(false);
@@ -938,7 +956,8 @@ function PlayoutPanel({
                             entry.outPoint,
                             source.duration
                         ),
-                        blockLabel: entry.blockLabel ?? ""
+                        blockLabel: entry.blockLabel ?? "",
+                        exhibitionType: normalizeExhibitionType(entry.exhibitionType)
                     };
                 })
                 .filter(
@@ -1081,7 +1100,9 @@ function PlayoutPanel({
 
     const selectedMediaUrl =
         selectedMedia
-            ? window.santtosAPI.getMediaFileUrl(selectedMedia.path)
+            ? window.santtosAPI.getMediaFileUrl(
+                previewProxyBySource[selectedMedia.path] || selectedMedia.path
+              )
             : null;
 
     const progressPercent =
@@ -1095,48 +1116,76 @@ function PlayoutPanel({
               )
             : 0;
 
-    const timelineStartTimes = (() => {
-        const startTimes =
-            new Map<string, string>();
-        let cursor = new Date(
-            selectedMediaIndex >= 0
-                ? Date.now() - currentTime * 1000
-                : Date.now()
-        );
-
-        timelineMedia.forEach(
-            (item, index) => {
-                startTimes.set(
-                    item.id,
-                    cursor.toLocaleTimeString(
-                        "pt-BR",
-                        {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit"
-                        }
-                    )
-                );
-
-                const itemDuration =
-                    index === 0 &&
-                    selectedMediaIndex >= 0
-                        ? Math.max(
-                              0,
-                              getClipDuration(item) -
-                                  selectedClipCurrent
-                          )
-                        : getClipDuration(item);
-
-                cursor = new Date(
-                    cursor.getTime() +
-                        itemDuration * 1000
-                );
+    // Horario de entrada calculado a partir do tempo restante, nao do
+    // timecode absoluto do arquivo (que pode comecar no meio do filme).
+    // Se houver loop anterior, os horarios seguintes sao indefinidos.
+    const timelineForecast = (() => {
+        const forecast = new Map<string, {
+            delaySeconds: number;
+            entryClock: string;
+        } | null>();
+        let delay = 0;
+        let blockedByLoop = false;
+        for (let index = 0; index < timelineMedia.length; index++) {
+            const item = timelineMedia[index];
+            if (blockedByLoop) {
+                forecast.set(item.id, null);
+                continue;
             }
-        );
-
-        return startTimes;
+            forecast.set(item.id, {
+                delaySeconds: delay,
+                entryClock: new Date(timelineClock + delay * 1000)
+                    .toLocaleTimeString("pt-BR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit"
+                    })
+            });
+            const current = index === 0 && selectedMediaIndex >= 0;
+            delay += current
+                ? Math.max(0, getClipDuration(item) - selectedClipCurrent)
+                : getClipDuration(item);
+            if (item.loop) blockedByLoop = true;
+        }
+        return forecast;
     })();
+
+    function describeForecast(item: MediaItem | null): string {
+        if (!item) return "Nenhum próximo vídeo";
+        const entry = timelineForecast.get(item.id);
+        if (!entry) return "ENTRA: sem previsão (loop anterior)";
+        return `FALTA ${formatDuration(Math.ceil(entry.delaySeconds))}  •  ENTRA ${entry.entryClock}`;
+    }
+
+    useEffect(() => {
+        setPreviewError("");
+    }, [selectedMedia?.path]);
+
+    async function prepareBrowserPreview() {
+        if (!selectedMedia || previewPreparing) return;
+        if (isPlaying && !testBench) {
+            setPreviewError("Pare o PROGRAM antes de preparar uma prévia compatível.");
+            return;
+        }
+        const sourcePath = selectedMedia.path;
+        setPreviewPreparing(true);
+        setPreviewError("");
+        try {
+            const result = await window.santtosAPI.prepareMediaPreview(sourcePath);
+            if (!result.ok || !result.filePath) {
+                throw new Error(result.error || "Falha ao gerar prévia MP4.");
+            }
+            setPreviewProxyBySource((current) => ({
+                ...current,
+                [sourcePath]: result.filePath!
+            }));
+        } catch (error) {
+            console.error("Falha ao preparar prévia MP4:", error);
+            setPreviewError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setPreviewPreparing(false);
+        }
+    }
 
     useEffect(() => {
         const video = videoRef.current;
@@ -1421,18 +1470,39 @@ function PlayoutPanel({
             ) {
                 video.currentTime = clipIn;
             }
-            await startNativeNdi(
-                mediaToPlay,
-                video.currentTime || clipIn
-            );
+            // Verificar primeiro se o Chromium consegue reproduzir a fonte.
+            // Nunca deixar o NDI disparado se a previa falhar.
             await video.play();
+            try {
+                await startNativeNdi(
+                    mediaToPlay,
+                    video.currentTime || clipIn
+                );
+            } catch (error) {
+                video.pause();
+                throw error;
+            }
+            setPreviewError("");
             setIsPlaying(true);
             await startExecutionReport(mediaToPlay);
         } catch (error) {
-            console.error(error);
-            window.alert(
-                `Não foi possível reproduzir o vídeo.\n\n${String(error)}`
-            );
+            console.error("Falha ao iniciar vídeo:", error);
+            video.pause();
+            setIsPlaying(false);
+            if (!testBench) {
+                try { await window.santtosAPI.stopNdiFile(); }
+                catch (stopError) { console.error(stopError); }
+            }
+            if (video.error) {
+                setPreviewError(
+                    "O Chromium não conseguiu reproduzir a mídia. " +
+                    "Use Prévia MP4 compatível; o arquivo original não será alterado."
+                );
+            } else {
+                window.alert(
+                    `Não foi possível reproduzir o vídeo.\n\n${String(error)}`
+                );
+            }
         }
     }
 
@@ -1588,7 +1658,8 @@ function PlayoutPanel({
             hashtag: "",
             inPoint: 0,
             outPoint: mediaItem.duration ?? null,
-            blockLabel: ""
+            blockLabel: "",
+            exhibitionType: "NORMAL"
         };
 
         setTimelineQueue((current) => {
@@ -1735,6 +1806,17 @@ function PlayoutPanel({
         }
     }
 
+    function changeExhibitionType(mediaId: string, value: ExhibitionType) {
+        setTimelineQueue((current) =>
+            current.map((entry) =>
+                entry.id === mediaId ? { ...entry, exhibitionType: value } : entry
+            )
+        );
+        if (selectedMedia?.id === mediaId) {
+            onSelectMedia({ ...selectedMedia, exhibitionType: value });
+        }
+    }
+
     function applyFilmEdit(
         mediaId: string,
         inPoint: number,
@@ -1781,56 +1863,45 @@ function PlayoutPanel({
 
     function splitFilmIntoBlocks(
         mediaId: string,
-        inPoint: number,
-        cut1: number,
-        cut2: number,
-        outPoint: number
+        ranges: Array<{ inPoint: number; outPoint: number }>
     ) {
-        const sourceIndex = timelineQueue.findIndex(
-            (item) => item.id === mediaId
-        );
-        const source = timelineQueue[sourceIndex];
-        if (!source || sourceIndex < 0) return;
-
-        const points = [inPoint, cut1, cut2, outPoint];
-        if (
-            points.some((value) => !Number.isFinite(value)) ||
-            !(points[0] >= 0 &&
-              points[0] < points[1] &&
-              points[1] < points[2] &&
-              points[2] < points[3])
-        ) {
-            window.alert(
-                "Os cortes precisam estar em ordem: IN < Corte 1 < Corte 2 < OUT."
-            );
+        const source = timelineQueue.find((entry) => entry.id === mediaId);
+        if (!source) return;
+        if (isPlaying && selectedMedia?.id === mediaId) {
+            window.alert("Pause ou pare o vídeo antes de editar o item em exibição.");
             return;
         }
 
-        const sourceDuration = source.duration ?? outPoint;
-        if (outPoint > sourceDuration + 0.01) {
-            window.alert(
-                "O ponto OUT não pode ultrapassar a duração do arquivo."
+        const duration = Math.max(0, source.duration ?? 0);
+        const valid = ranges.length >= 1 && ranges.length <= 6 &&
+            ranges.every((range, index) =>
+                Number.isFinite(range.inPoint) &&
+                Number.isFinite(range.outPoint) &&
+                range.inPoint >= 0 &&
+                range.outPoint > range.inPoint &&
+                range.outPoint <= duration + 0.01 &&
+                (index === 0 || range.inPoint >= ranges[index - 1].outPoint)
             );
+
+        if (!valid) {
+            window.alert("Defina de 1 a 6 blocos válidos, em ordem, sem sobreposição.");
             return;
         }
 
-        const sourceMediaId =
-            source.sourceMediaId ?? source.id;
+        const sourceMediaId = source.sourceMediaId ?? source.id;
         const stamp = Date.now();
-        const blocks = [0, 1, 2].map((index) => ({
+        const blocks: MediaItem[] = ranges.map((range, index) => ({
             ...source,
             id: `${sourceMediaId}-block-${stamp}-${index + 1}`,
             sourceMediaId,
-            inPoint: points[index],
-            outPoint: points[index + 1],
+            inPoint: range.inPoint,
+            outPoint: range.outPoint,
             blockLabel: `Bloco ${index + 1}`,
             loop: false
         }));
 
         setTimelineQueue((current) => {
-            const index = current.findIndex(
-                (item) => item.id === mediaId
-            );
+            const index = current.findIndex((item) => item.id === mediaId);
             if (index < 0) return current;
             const updated = [...current];
             updated.splice(index, 1, ...blocks);
@@ -1841,7 +1912,6 @@ function PlayoutPanel({
             onSelectMedia(blocks[0]);
             setCurrentTime(blocks[0].inPoint ?? 0);
         }
-
         setEditingFilm(null);
     }
 
@@ -2057,6 +2127,18 @@ function PlayoutPanel({
                                         setDuration(
                                             getClipDuration(selectedMedia)
                                         );
+                                        setPreviewError("");
+                                    }}
+                                    onError={(event) => {
+                                        const code = event.currentTarget.error?.code;
+                                        const problem = code === 4
+                                            ? "Formato ou codec não suportado pelo monitor Chromium."
+                                            : code === 3
+                                              ? "O monitor não conseguiu decodificar este vídeo."
+                                              : "Falha ao ler a mídia. Confirme que o arquivo está disponível localmente (inclusive no OneDrive).";
+                                        setPreviewError(
+                                            `${problem} Se o arquivo toca no FFmpeg, prepare uma prévia MP4 compatível.`
+                                        );
                                     }}
                                     onDurationChange={() =>
                                         setDuration(
@@ -2070,6 +2152,24 @@ function PlayoutPanel({
                                     }
                                     onEnded={() => playNextMedia("completed")}
                                 />
+
+                                {previewError && (
+                                    <div className="program-preview-error" role="alert">
+                                        <strong>PRÉVIA NÃO DISPONÍVEL</strong>
+                                        <span>{previewError}</span>
+                                        <button
+                                            type="button"
+                                            disabled={previewPreparing || (isPlaying && !testBench)}
+                                            onClick={() => void prepareBrowserPreview()}
+                                        >
+                                            {previewPreparing ? "Preparando prévia com FFmpeg…" : "Preparar prévia MP4 compatível"}
+                                        </button>
+                                        <small>
+                                            A conversão pode demorar conforme o filme.
+                                            A saída NDI continua usando o arquivo original.
+                                        </small>
+                                    </div>
+                                )}
 
                                 {watermarkPreviewUrl && (
                                     <img
@@ -2126,6 +2226,20 @@ function PlayoutPanel({
                             disabled={!nextMedia}
                         >⏭</button>
 
+                        {selectedMedia && !previewProxyBySource[selectedMedia.path] && !previewError && (
+                            <button
+                                className="program-proxy-action"
+                                title="Gerar prévia MP4 leve para formatos não suportados pelo Chromium"
+                                disabled={previewPreparing || (isPlaying && !testBench)}
+                                onClick={() => void prepareBrowserPreview()}
+                            >
+                                {previewPreparing ? "Preparando…" : "Prévia MP4"}
+                            </button>
+                        )}
+                        {selectedMedia && previewProxyBySource[selectedMedia.path] && (
+                            <span className="program-proxy-ready">Prévia compatível</span>
+                        )}
+
                         <div className="program-time">
                             {formatDuration(selectedClipCurrent)}
                             {" / "}
@@ -2153,6 +2267,9 @@ function PlayoutPanel({
                                 : "Nenhum conteúdo"}
                         </strong>
                         <span>
+                            {selectedMedia ? `IDENTIFICAÇÃO: ${exhibitionLabel(selectedMedia.exhibitionType)}` : ""}
+                        </span>
+                        <span>
                             {selectedMedia?.hashtag
                                 ? `GC: ${selectedMedia.hashtag}`
                                 : "Sem hashtag nesta entrada"}
@@ -2169,12 +2286,18 @@ function PlayoutPanel({
                                 : "Nenhum conteúdo"}
                         </strong>
                         <span>
+                            {nextMedia ? `IDENTIFICAÇÃO: ${exhibitionLabel(nextMedia.exhibitionType)}` : ""}
+                        </span>
+                        <span>
                             {nextMedia?.hashtag
                                 ? `GC: ${nextMedia.hashtag}`
                                 : nextMedia
                                   ? "Sem hashtag nesta entrada"
                                   : "Fim da timeline"}
                         </span>
+                        {nextMedia && (
+                            <span className="next-entry-forecast">{describeForecast(nextMedia)}</span>
+                        )}
                     </section>
                 </div>
 
@@ -2334,6 +2457,11 @@ function PlayoutPanel({
                                                         ? `${item.name} — ${item.blockLabel}`
                                                         : item.name}
                                                 </strong>
+                                                {normalizeExhibitionType(item.exhibitionType) !== "NORMAL" && (
+                                                    <span className={`exhibition-badge badge-${normalizeExhibitionType(item.exhibitionType).toLowerCase()}`}>
+                                                        {exhibitionLabel(item.exhibitionType)}
+                                                    </span>
+                                                )}
                                                 <span>
                                                     {isCurrent
                                                         ? `${formatDuration(
@@ -2355,11 +2483,17 @@ function PlayoutPanel({
 
                                                 <span className="timeline-air-time">
                                                     {isCurrent
-                                                        ? "ENTROU "
-                                                        : "ENTRA "}
-                                                    {timelineStartTimes.get(
-                                                        item.id
-                                                    ) ?? "--:--:--"}
+                                                        ? `RESTA ${formatDuration(
+                                                              Math.max(0, selectedClipDuration - selectedClipCurrent)
+                                                          )} • FIM ESTIMADO ${new Date(
+                                                              timelineClock +
+                                                              Math.max(0, selectedClipDuration - selectedClipCurrent) * 1000
+                                                          ).toLocaleTimeString("pt-BR", {
+                                                              hour: "2-digit",
+                                                              minute: "2-digit",
+                                                              second: "2-digit"
+                                                          })}`
+                                                        : describeForecast(item)}
                                                 </span>
                                             </div>
 
@@ -2372,6 +2506,25 @@ function PlayoutPanel({
                                                     event.stopPropagation()
                                                 }
                                             >
+                                                <div className="timeline-exhibition">
+                                                    <label htmlFor={`exhibition-${item.id}`}>Exibição</label>
+                                                    <select
+                                                        id={`exhibition-${item.id}`}
+                                                        value={normalizeExhibitionType(item.exhibitionType)}
+                                                        onChange={(event) =>
+                                                            changeExhibitionType(
+                                                                item.id,
+                                                                event.currentTarget.value as ExhibitionType
+                                                            )
+                                                        }
+                                                    >
+                                                        {EXHIBITION_OPTIONS.map((option) => (
+                                                            <option key={option.value} value={option.value}>
+                                                                {option.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                                 <div className="timeline-gc-controls">
                                                     <label
                                                         className="timeline-watermark-toggle"
@@ -2497,18 +2650,21 @@ function PlayoutPanel({
 interface FilmBlockEditorProps {
     item: MediaItem;
     onClose: () => void;
-    onSaveEdit: (
-        mediaId: string,
-        inPoint: number,
-        outPoint: number
-    ) => void;
+    onSaveEdit: (mediaId: string, inPoint: number, outPoint: number) => void;
     onSplit: (
         mediaId: string,
-        inPoint: number,
-        cut1: number,
-        cut2: number,
-        outPoint: number
+        ranges: Array<{ inPoint: number; outPoint: number }>
     ) => void;
+}
+
+type BlockRangeText = { inText: string; outText: string };
+
+function distributeParts(inPoint: number, outPoint: number, partCount: number): BlockRangeText[] {
+    const duration = Math.max(0, outPoint - inPoint);
+    return Array.from({ length: partCount }, (_, index) => ({
+        inText: formatEditorTime(inPoint + (duration * index) / partCount),
+        outText: formatEditorTime(inPoint + (duration * (index + 1)) / partCount)
+    }));
 }
 
 function FilmBlockEditor({
@@ -2520,48 +2676,51 @@ function FilmBlockEditor({
     const duration = Math.max(0, item.duration ?? 0);
     const initialIn = getClipIn(item);
     const initialOut = getClipOut(item);
-    const span = Math.max(0.3, initialOut - initialIn);
-
-    const [inText, setInText] = useState(
-        formatEditorTime(initialIn)
-    );
-    const [outText, setOutText] = useState(
-        formatEditorTime(initialOut)
-    );
-    const [cut1Text, setCut1Text] = useState(
-        formatEditorTime(initialIn + span / 3)
-    );
-    const [cut2Text, setCut2Text] = useState(
-        formatEditorTime(initialIn + (span * 2) / 3)
+    const [inText, setInText] = useState(formatEditorTime(initialIn));
+    const [outText, setOutText] = useState(formatEditorTime(initialOut));
+    const [partCount, setPartCount] = useState(3);
+    const [parts, setParts] = useState<BlockRangeText[]>(() =>
+        distributeParts(initialIn, initialOut, 3)
     );
 
     const parsedIn = parseEditorTime(inText);
     const parsedOut = parseEditorTime(outText);
-    const parsedCut1 = parseEditorTime(cut1Text);
-    const parsedCut2 = parseEditorTime(cut2Text);
-
     const validEdit =
-        parsedIn !== null &&
-        parsedOut !== null &&
-        parsedIn >= 0 &&
-        parsedOut > parsedIn &&
+        parsedIn !== null && parsedOut !== null &&
+        parsedIn >= 0 && parsedOut > parsedIn &&
         parsedOut <= duration + 0.01;
 
-    const validSplit =
-        validEdit &&
-        parsedCut1 !== null &&
-        parsedCut2 !== null &&
-        parsedIn! < parsedCut1 &&
-        parsedCut1 < parsedCut2 &&
-        parsedCut2 < parsedOut!;
+    const ranges = parts.map((part) => ({
+        inPoint: parseEditorTime(part.inText),
+        outPoint: parseEditorTime(part.outText)
+    }));
+    const validSplit = validEdit &&
+        ranges.length === partCount &&
+        ranges.every((range, index) =>
+            range.inPoint !== null && range.outPoint !== null &&
+            range.inPoint >= parsedIn! && range.outPoint <= parsedOut! &&
+            range.outPoint > range.inPoint &&
+            (index === 0 || (
+                ranges[index - 1].outPoint !== null &&
+                range.inPoint >= ranges[index - 1].outPoint!
+            ))
+        );
+
+    function redistribute(count = partCount) {
+        setParts(distributeParts(parsedIn ?? initialIn, parsedOut ?? initialOut, count));
+    }
+
+    function updatePart(index: number, field: keyof BlockRangeText, value: string) {
+        setParts((current) => current.map((part, position) =>
+            position === index ? { ...part, [field]: value } : part
+        ));
+    }
 
     return (
         <div
             className="film-editor-backdrop"
             onMouseDown={(event) => {
-                if (event.target === event.currentTarget) {
-                    onClose();
-                }
+                if (event.target === event.currentTarget) onClose();
             }}
         >
             <section className="film-editor-window">
@@ -2577,52 +2736,65 @@ function FilmBlockEditor({
                 <div className="film-editor-summary">
                     <span>Duração original</span>
                     <strong>{formatDuration(duration)}</strong>
-                    <small>
-                        O arquivo original não será alterado. Os blocos apenas guardam pontos IN/OUT.
-                    </small>
+                    <small>O arquivo original não será alterado. Cada bloco guarda apenas IN e OUT.</small>
                 </div>
 
                 <div className="film-editor-grid">
-                    <TimecodeField
-                        label="INÍCIO / IN"
-                        value={inText}
-                        onChange={setInText}
-                    />
-                    <TimecodeField
-                        label="CORTE 1"
-                        value={cut1Text}
-                        onChange={setCut1Text}
-                    />
-                    <TimecodeField
-                        label="CORTE 2"
-                        value={cut2Text}
-                        onChange={setCut2Text}
-                    />
-                    <TimecodeField
-                        label="FINAL / OUT"
-                        value={outText}
-                        onChange={setOutText}
-                    />
+                    <TimecodeField label="INÍCIO GERAL" value={inText} onChange={setInText} />
+                    <TimecodeField label="FINAL GERAL" value={outText} onChange={setOutText} />
                 </div>
 
-                <div className="film-editor-block-preview">
-                    <div>
-                        <strong>Bloco 1</strong>
-                        <span>{formatRange(parsedIn, parsedCut1)}</span>
-                    </div>
-                    <div>
-                        <strong>Bloco 2</strong>
-                        <span>{formatRange(parsedCut1, parsedCut2)}</span>
-                    </div>
-                    <div>
-                        <strong>Bloco 3</strong>
-                        <span>{formatRange(parsedCut2, parsedOut)}</span>
-                    </div>
+                <div className="film-editor-count">
+                    <label htmlFor="block-count">Quantidade de blocos
+                        <select
+                            id="block-count"
+                            value={partCount}
+                            onChange={(event) => {
+                                const count = Number(event.currentTarget.value);
+                                setPartCount(count);
+                                redistribute(count);
+                            }}
+                        >
+                            {[1, 2, 3, 4, 5, 6].map((count) => (
+                                <option value={count} key={count}>
+                                    {count} {count === 1 ? "bloco" : "blocos"}{count === 3 ? " (padrão)" : ""}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <button type="button" onClick={() => redistribute()}>
+                        Distribuir igualmente
+                    </button>
+                    <span>Edite o IN/OUT de cada parte. Pode deixar trechos de fora entre blocos.</span>
+                </div>
+
+                <div className="film-editor-block-list">
+                    {parts.map((part, index) => (
+                        <div className="film-editor-block-row" key={index}>
+                            <strong>Bloco {index + 1}</strong>
+                            <TimecodeField
+                                label="IN"
+                                value={part.inText}
+                                onChange={(value) => updatePart(index, "inText", value)}
+                            />
+                            <TimecodeField
+                                label="OUT"
+                                value={part.outText}
+                                onChange={(value) => updatePart(index, "outText", value)}
+                            />
+                            <small>{formatRange(ranges[index].inPoint, ranges[index].outPoint)}</small>
+                        </div>
+                    ))}
                 </div>
 
                 {!validEdit && (
                     <div className="film-editor-error">
-                        IN/OUT inválidos. Use mm:ss ou hh:mm:ss e não ultrapasse a duração do filme.
+                        IN/OUT gerais inválidos. Use mm:ss ou hh:mm:ss, dentro da duração do filme.
+                    </div>
+                )}
+                {validEdit && !validSplit && (
+                    <div className="film-editor-error">
+                        Revise os blocos: cada IN deve ser menor que OUT, sem sobreposição e dentro do intervalo geral.
                     </div>
                 )}
 
@@ -2630,32 +2802,22 @@ function FilmBlockEditor({
                     <button onClick={onClose}>Cancelar</button>
                     <button
                         disabled={!validEdit}
-                        onClick={() =>
-                            validEdit &&
-                            onSaveEdit(
-                                item.id,
-                                parsedIn!,
-                                parsedOut!
-                            )
-                        }
+                        onClick={() => validEdit && onSaveEdit(item.id, parsedIn!, parsedOut!)}
                     >
                         Salvar somente edição
                     </button>
                     <button
                         className="primary-button"
                         disabled={!validSplit}
-                        onClick={() =>
-                            validSplit &&
-                            onSplit(
-                                item.id,
-                                parsedIn!,
-                                parsedCut1!,
-                                parsedCut2!,
-                                parsedOut!
-                            )
-                        }
+                        onClick={() => validSplit && onSplit(
+                            item.id,
+                            ranges.map((range) => ({
+                                inPoint: range.inPoint!,
+                                outPoint: range.outPoint!
+                            }))
+                        )}
                     >
-                        Separar em 3 blocos
+                        Criar {partCount} {partCount === 1 ? "bloco" : "blocos"}
                     </button>
                 </footer>
             </section>

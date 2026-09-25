@@ -82,6 +82,7 @@
 .opec-meta-row input,
 .opec-search,
 .opec-item-fields input,
+.opec-item-fields select,
 .opec-hashtag {
     min-width: 0;
     color: #eeeeee;
@@ -218,11 +219,12 @@
 
 .opec-item-fields {
     display: grid;
-    grid-template-columns: 150px minmax(120px, 1fr);
+    grid-template-columns: 150px 125px minmax(120px, 1fr);
     gap: 6px;
 }
 
 .opec-item-fields input,
+.opec-item-fields select,
 .opec-hashtag {
     height: 25px;
     padding: 0 7px;
@@ -330,4 +332,8 @@
     .opec-layout {
         grid-template-columns: 1fr;
     }
+}
+
+@media (max-width: 680px) {
+  .opec-item-fields { grid-template-columns: 1fr; }
 }

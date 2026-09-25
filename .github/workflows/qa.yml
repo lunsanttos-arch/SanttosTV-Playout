@@ -8,6 +8,8 @@ on:
       - "package-lock.json"
       - "scripts/test-backend.js"
       - "scripts/test-frontend.js"
+      - "scripts/test-media-stream.js"
+      - "scripts/test-preview-proxy.js"
       - "scripts/test-testbench.js"
       - "scripts/start-testbench.js"
       - "src/**"
@@ -18,6 +20,8 @@ on:
       - "package-lock.json"
       - "scripts/test-backend.js"
       - "scripts/test-frontend.js"
+      - "scripts/test-media-stream.js"
+      - "scripts/test-preview-proxy.js"
       - "scripts/test-testbench.js"
       - "scripts/start-testbench.js"
       - "src/**"
@@ -55,6 +59,12 @@ jobs:
 
       - name: Isolated testbench regression tests
         run: npm run test:testbench
+
+      - name: Local media streaming and seeking
+        run: npm run test:media-stream
+
+      - name: FFmpeg browser proxy
+        run: npm run test:proxy
 
       - name: Backend regression tests
         run: npm run test:backend

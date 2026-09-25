@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { MediaItem, RundownItem } from "./App";
+import { EXHIBITION_OPTIONS, exhibitionLabel, normalizeExhibitionType } from "./exhibition";
+import type { ExhibitionType } from "./exhibition";
 import "./opec-scheduler.css";
 
 interface DailyRundown {
@@ -127,6 +129,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                 rundownItemId: `${sourceMediaId}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
                 sourceMediaId,
                 blockLabel: mediaItem.blockLabel ?? "",
+                exhibitionType: normalizeExhibitionType(mediaItem.exhibitionType),
                 watermark: Boolean(mediaItem.watermark),
                 hashtag: mediaItem.hashtag ?? "",
                 notes: "",
@@ -246,13 +249,26 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                                 <div className="opec-entry-time">{scheduleTimes.times.get(item.rundownItemId)}</div>
                                 <div className="opec-item-main">
                                     <strong>{item.name}</strong>
-                                    <span>{formatDuration(clipDuration(item))}</span>
+                                    <span>{formatDuration(clipDuration(item))} · {exhibitionLabel(item.exhibitionType)}</span>
                                     <div className="opec-item-fields">
                                         <input
                                             placeholder="Bloco / identificação"
                                             value={item.blockLabel ?? ""}
                                             onChange={(e) => patchItem(item.rundownItemId, { blockLabel: e.currentTarget.value })}
                                         />
+                                        <select
+                                            aria-label={`Exibição de ${item.name}`}
+                                            value={normalizeExhibitionType(item.exhibitionType)}
+                                            onChange={(e) => patchItem(item.rundownItemId, {
+                                                exhibitionType: e.currentTarget.value as ExhibitionType
+                                            })}
+                                        >
+                                            {EXHIBITION_OPTIONS.map((option) => (
+                                                <option key={option.value} value={option.value}>
+                                                    {option.label}
+                                                </option>
+                                            ))}
+                                        </select>
                                         <input
                                             placeholder="Observação da OPEC"
                                             value={item.notes}

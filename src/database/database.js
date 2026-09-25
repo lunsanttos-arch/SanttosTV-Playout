@@ -185,6 +185,14 @@ function normalizeText(
         .slice(0, maxLength);
 }
 
+const EXHIBITION_TYPES = new Set([
+    "NORMAL", "INEDITO", "REPRISE", "ESTREIA", "ESPECIAL", "AO_VIVO"
+]);
+
+function normalizeExhibitionType(value) {
+    return EXHIBITION_TYPES.has(value) ? value : "NORMAL";
+}
+
 function normalizeHexColor(value, fallback) {
     if (
         typeof value === "string" &&
@@ -699,6 +707,7 @@ function getTimeline() {
                     "",
                     80
                 ),
+                exhibitionType: normalizeExhibitionType(entry.exhibitionType),
                 hashtag:
                     normalizeHashtag(
                         entry.hashtag ?? ""
@@ -757,6 +766,7 @@ function saveTimeline(timelineItems) {
                     "",
                     80
                 ),
+                exhibitionType: normalizeExhibitionType(item.exhibitionType),
                 hashtag:
                     normalizeHashtag(
                         item.hashtag ?? ""
@@ -811,6 +821,7 @@ function getDailyRundown(dateValue) {
                   sourceMediaId: entry.sourceMediaId,
                   blockLabel: normalizeText(entry.blockLabel, "", 80),
                   notes: normalizeText(entry.notes, "", 500),
+                  exhibitionType: normalizeExhibitionType(entry.exhibitionType),
                   watermark: Boolean(entry.watermark),
                   hashtag: normalizeHashtag(entry.hashtag ?? ""),
                   inPoint: normalizeClipNumber(entry.inPoint, 0),
@@ -853,6 +864,7 @@ function saveDailyRundown(rundown) {
             sourceMediaId,
             blockLabel: normalizeText(item.blockLabel, "", 80),
             notes: normalizeText(item.notes, "", 500),
+            exhibitionType: normalizeExhibitionType(item.exhibitionType),
             watermark: Boolean(item.watermark),
             hashtag: normalizeHashtag(item.hashtag ?? ""),
             inPoint: normalizeClipNumber(item.inPoint, 0),
