@@ -15,6 +15,7 @@ const { pathToFileURL, fileURLToPath } = require("url");
 const { MEDIA_SCHEME, resolveMediaRequest } = require("../core/media/media-protocol");
 const { spawn } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
+const { configureTestBench } = require("./testbench");
 
 const {
     initializeDatabase,
@@ -66,6 +67,8 @@ const {
     "../core/library/library-categories"
 );
 
+const testBenchConfig = configureTestBench(app);
+const isTestBench = testBenchConfig.enabled;
 const isDevelopment = !app.isPackaged;
 
 // Um protocolo exclusivo permite reproduzir midias com webSecurity habilitado.
@@ -178,7 +181,7 @@ function createWindow() {
         minWidth: 1100,
         minHeight: 700,
         backgroundColor: "#0b0b0b",
-        title: "Santtos TV Automation",
+        title: isTestBench ? "Santtos TV Automation — BANCADA" : "Santtos TV Automation",
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -964,7 +967,8 @@ function registerIpcHandlers() {
             nativePlaybackActive,
             playoutError: playoutLastError || null,
             error: ndiLastError || null,
-            restarting: Boolean(ndiRestartTimer)
+            restarting: Boolean(ndiRestartTimer),
+            testBench: isTestBench
         })
     );
 
@@ -977,6 +981,7 @@ function registerIpcHandlers() {
             hashtag = "",
             overlayState = {}
         ) => {
+            if (isTestBench) return { ok: true, previewOnly: true };
             try {
                 return startNativePlayback(
                     filePath,
@@ -1316,6 +1321,7 @@ function registerIpcHandlers() {
     registerTrustedOn(
         "ndi:frame",
         (_event, frameData) => {
+            if (isTestBench) return;
             if (
                 nativePlaybackActive ||
                 !ndiProcess ||
@@ -1559,11 +1565,16 @@ function startSystem() {
         "Inicializando Santtos TV Automation..."
     );
 
-    initializeDatabase({ userDataPath: app.getPath("userData") });
+    initializeDatabase({
+        userDataPath: app.getPath("userData"),
+        migrateLegacy: !isTestBench
+    });
     initializeLibraryCategories(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
-        documentsPath: app.getPath("documents")
+        documentsPath: isTestBench
+            ? path.join(testBenchConfig.userDataPath, "documents")
+            : app.getPath("documents")
     });
     addLog("Sistema iniciado");
 
@@ -1596,7 +1607,8 @@ app.whenReady().then(() => {
         session.defaultSession.setPermissionRequestHandler(
             (_webContents, _permission, callback) => callback(false)
         );
-        startNdiSender();
+        if (!isTestBench) startNdiSender();
+        else ndiLastError = "Bancada: NDI propositalmente desativado para proteger a emissora.";
         registerIpcHandlers();
         createWindow();
     } catch (error) {

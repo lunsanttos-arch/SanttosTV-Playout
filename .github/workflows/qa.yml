@@ -8,6 +8,8 @@ on:
       - "package-lock.json"
       - "scripts/test-backend.js"
       - "scripts/test-frontend.js"
+      - "scripts/test-testbench.js"
+      - "scripts/start-testbench.js"
       - "src/**"
   pull_request:
     paths:
@@ -16,6 +18,8 @@ on:
       - "package-lock.json"
       - "scripts/test-backend.js"
       - "scripts/test-frontend.js"
+      - "scripts/test-testbench.js"
+      - "scripts/start-testbench.js"
       - "src/**"
       - ".qa-trigger"
 
@@ -38,6 +42,7 @@ jobs:
         run: |
           node --check src/main/main.js
           node --check src/main/preload.js
+          node --check src/main/testbench.js
           node --check src/database/database.js
           node --check src/core/library/library-categories.js
           node --check src/core/reporting/playout-report.js
@@ -47,6 +52,9 @@ jobs:
 
       - name: Security regression tests
         run: npm run test:security
+
+      - name: Isolated testbench regression tests
+        run: npm run test:testbench
 
       - name: Backend regression tests
         run: npm run test:backend

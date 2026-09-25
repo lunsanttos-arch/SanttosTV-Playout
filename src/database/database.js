@@ -591,7 +591,8 @@ function initializeDatabase(options = {}) {
         databaseFile = path.join(databaseFolder, "santtos-tv.json");
         ensureDatabaseFolder();
         const legacyFile = path.join(legacyDatabaseFolder, "santtos-tv.json");
-        if (!fs.existsSync(databaseFile) && fs.existsSync(legacyFile) &&
+        if (options.migrateLegacy !== false &&
+            !fs.existsSync(databaseFile) && fs.existsSync(legacyFile) &&
             path.resolve(legacyFile) !== path.resolve(databaseFile)) {
             // Migra sem apagar nem alterar o arquivo antigo.
             fs.copyFileSync(legacyFile, databaseFile, fs.constants.COPYFILE_EXCL);
