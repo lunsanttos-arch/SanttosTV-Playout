@@ -143,7 +143,7 @@ export function exhibitionPreviewStyle(
             ? rgba(style.backgroundColor, style.backgroundOpacity)
             : "transparent",
         padding: style.backgroundEnabled
-            ? "0.15cqw " + (style.backgroundPadding / 19.2) + "cqw"
+            ? String(style.backgroundPadding / 19.2) + "cqw"
             : "0",
         textAlign: "right" as const
     };
