@@ -140,6 +140,7 @@ let nativeSession = null;
 let ndiQueuedFrames = 0;
 let ndiAcknowledgedFrames = 0;
 let ndiLastHeartbeatAt = 0;
+let ndiStartedAt = 0;
 let ndiRestartTimer = null;
 let ndiWatchdogTimer = null;
 let ndiRestartAttempts = 0;
@@ -1586,149 +1587,122 @@ function registerIpcHandlers() {
     );
 }
 
-function startNdiSender() {
-    if (ndiProcess) {
-        return;
-    }
+function scheduleNdiRestart() {
+    if (ndiShuttingDown || ndiRestartTimer) return;
+    const delay = Math.min(30000, 1000 * Math.pow(2, Math.min(ndiRestartAttempts, 5)));
+    ndiRestartAttempts++;
+    console.warn(`Sender NDI será reiniciado em ${delay} ms.`);
+    ndiRestartTimer = setTimeout(() => {
+        ndiRestartTimer = null;
+        startNdiSender();
+    }, delay);
+}
 
+function handleNdiFailure(processRef, reason) {
+    if (ndiProcess !== processRef) return;
+    const session = nativeSession;
+    if (session && !session.finished) {
+        if (ffmpegProcess?.exitCode === null && !ffmpegProcess.killed) {
+            ffmpegProcess.kill();
+        }
+        finishNativeSession(session, false, reason);
+        session.cancelled = true;
+    }
+    ndiProcess = null;
     ndiReady = false;
     ndiFrameBusy = false;
+    ndiQueuedFrames = 0;
+    ndiAcknowledgedFrames = 0;
+    emitNdiEvent({type:"engine-offline", error:reason});
+    if (!ndiShuttingDown) scheduleNdiRestart();
+}
 
-    const ndiExecutable = app.isPackaged
+function startNdiSender() {
+    if (ndiProcess || ndiShuttingDown) return;
+    ndiReady = false;
+    ndiFrameBusy = false;
+    ndiQueuedFrames = 0;
+    ndiAcknowledgedFrames = 0;
+    ndiLastHeartbeatAt = Date.now();
+    ndiStartedAt = ndiLastHeartbeatAt;
+
+    const executable = app.isPackaged
         ? path.join(process.resourcesPath, "ndi", "ndi_test.exe")
         : path.join(__dirname, "../core/ndi/ndi_test.exe");
 
-    console.log(
-        "Iniciando sender NDI..."
-    );
-
+    console.log("Iniciando sender NDI:", executable);
+    let processRef;
     try {
-        ndiProcess = spawn(
-            ndiExecutable,
-            [],
-            {
-                cwd: path.dirname(
-                    ndiExecutable
-                ),
-                windowsHide: true,
-                stdio: [
-                    "pipe",
-                    "pipe",
-                    "pipe"
-                ]
-            }
-        );
-
-        ndiProcess.stdin.on(
-            "error",
-            (error) => {
-                ndiFrameBusy = false;
-                console.error(
-                    "Erro no stdin do engine NDI:",
-                    error
-                );
-            }
-        );
-
-        ndiProcess.stdout.on(
-            "data",
-            (data) => {
-                const message =
-                    data.toString().trim();
-
-                if (
-                    message.includes(
-                        "NDI ONLINE:"
-                    )
-                ) {
+        processRef = spawn(executable, [], {
+            cwd: path.dirname(executable),
+            windowsHide: true,
+            stdio: ["pipe", "pipe", "pipe"]
+        });
+        ndiProcess = processRef;
+        let textBuffer = "";
+        processRef.stdout.on("data", (data) => {
+            textBuffer += data.toString();
+            if (textBuffer.length > 8192) textBuffer = textBuffer.slice(-2048);
+            let lineBreak;
+            while ((lineBreak = textBuffer.indexOf("\n")) >= 0) {
+                const line = textBuffer.slice(0,lineBreak).trim();
+                textBuffer = textBuffer.slice(lineBreak + 1);
+                if (line === "NDI HEARTBEAT") {
+                    ndiLastHeartbeatAt = Date.now();
+                    if (ndiRestartAttempts && Date.now() - ndiStartedAt > 60000) {
+                        ndiRestartAttempts = 0;
+                    }
+                } else if (line.startsWith("FRAME_ACK ")) {
+                    onNdiFrameAck(Number(line.slice(10)));
+                } else if (line.includes("NDI ONLINE:")) {
                     ndiReady = true;
-                    console.log(
-                        "Santtos NDI confirmado ONLINE"
-                    );
-                }
-
-                if (message) {
-                    console.log(
-                        `[NDI] ${message}`
-                    );
+                    ndiLastHeartbeatAt = Date.now();
+                    emitNdiEvent({type:"engine-online"});
+                    console.log("Santtos NDI confirmado ONLINE");
+                } else if (line) {
+                    console.log("[NDI]", line);
                 }
             }
-        );
-
-        ndiProcess.stderr.on(
-            "data",
-            (data) => {
-                const message =
-                    data.toString().trim();
-
-                if (message) {
-                    console.error(
-                        `[NDI] ${message}`
-                    );
-                }
-            }
-        );
-
-        ndiProcess.on(
-            "error",
-            (error) => {
-                console.error(
-                    "Falha ao iniciar NDI:",
-                    error
-                );
-
-                stopNativePlayback();
-                ndiReady = false;
-                ndiFrameBusy = false;
-                ndiProcess = null;
-            }
-        );
-
-        ndiProcess.on(
-            "exit",
-            (code, signal) => {
-                console.log(
-                    `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
-                );
-
-                stopNativePlayback();
-                ndiReady = false;
-                ndiFrameBusy = false;
-                ndiProcess = null;
-            }
-        );
+        });
+        processRef.stderr.on("data", data => {
+            const message = data.toString().trim();
+            if (message) console.error("[NDI]", message);
+        });
+        processRef.stdin.on("error", error => {
+            console.error("Erro no stdin do engine NDI:", error.message);
+        });
+        processRef.on("error", error => {
+            console.error("Falha ao iniciar NDI:", error);
+            handleNdiFailure(processRef, error.message);
+        });
+        processRef.on("exit", (code, signal) => {
+            console.warn(`Sender NDI encerrado: ${code ?? "?"}, sinal: ${signal ?? "?"}`);
+            handleNdiFailure(processRef, "Sender NDI parou inesperadamente.");
+        });
     } catch (error) {
-        console.error(
-            "Erro ao iniciar sender NDI:",
-            error
-        );
-
-        stopNativePlayback();
-        ndiReady = false;
-        ndiFrameBusy = false;
-        ndiProcess = null;
+        console.error("Falha ao criar sender NDI:", error);
+        if (processRef && ndiProcess === processRef) {
+            handleNdiFailure(processRef, error.message);
+        } else {
+            scheduleNdiRestart();
+        }
     }
 }
 
 function stopNdiSender() {
+    ndiShuttingDown = true;
+    if (ndiRestartTimer) clearTimeout(ndiRestartTimer);
+    if (ndiWatchdogTimer) clearInterval(ndiWatchdogTimer);
+    ndiRestartTimer = null;
+    ndiWatchdogTimer = null;
     stopNativePlayback();
-
-    if (
-        !ndiProcess ||
-        ndiProcess.killed
-    ) {
-        return;
-    }
-
-    console.log(
-        "Encerrando sender NDI..."
-    );
-
-    ndiFrameBusy = false;
-    ndiReady = false;
-
-    ndiProcess.kill();
+    const processRef = ndiProcess;
     ndiProcess = null;
+    ndiReady = false;
+    ndiFrameBusy = false;
+    if (processRef && processRef.exitCode === null && !processRef.killed) {
+        processRef.kill();
+    }
 }
 
 function startSystem() {
@@ -1775,6 +1749,14 @@ app.whenReady().then(() => {
     protocol.handle(MEDIA_SCHEME, createMediaProtocolHandler(getMedia));
 
     startNdiSender();
+    ndiWatchdogTimer = setInterval(() => {
+        if (ndiShuttingDown || !ndiProcess) return;
+        const timeout = ndiReady ? 6000 : 15000;
+        if (Date.now() - ndiLastHeartbeatAt > timeout) {
+            console.error("Timeout de heartbeat NDI: reiniciando o sender.");
+            ndiProcess.kill();
+        }
+    }, 1000);
     registerIpcHandlers();
     createWindow();
 
