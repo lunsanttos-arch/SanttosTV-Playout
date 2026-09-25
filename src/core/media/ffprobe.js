@@ -7,11 +7,14 @@ const ffprobeModule = require(
     "@derhuerst/ffprobe-static"
 );
 
-const ffprobePath =
+const reportedFfprobePath =
     typeof ffprobeModule === "string"
         ? ffprobeModule
         : ffprobeModule.path ??
           ffprobeModule.default;
+const ffprobePath = typeof reportedFfprobePath === "string"
+    ? reportedFfprobePath.replace("app.asar", "app.asar.unpacked")
+    : reportedFfprobePath;
 
 if (!ffprobePath) {
     throw new Error(
