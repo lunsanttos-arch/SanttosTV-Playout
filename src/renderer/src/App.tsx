@@ -1470,18 +1470,39 @@ function PlayoutPanel({
             ) {
                 video.currentTime = clipIn;
             }
-            await startNativeNdi(
-                mediaToPlay,
-                video.currentTime || clipIn
-            );
+            // Verificar primeiro se o Chromium consegue reproduzir a fonte.
+            // Nunca deixar o NDI disparado se a previa falhar.
             await video.play();
+            try {
+                await startNativeNdi(
+                    mediaToPlay,
+                    video.currentTime || clipIn
+                );
+            } catch (error) {
+                video.pause();
+                throw error;
+            }
+            setPreviewError("");
             setIsPlaying(true);
             await startExecutionReport(mediaToPlay);
         } catch (error) {
-            console.error(error);
-            window.alert(
-                `Não foi possível reproduzir o vídeo.\n\n${String(error)}`
-            );
+            console.error("Falha ao iniciar vídeo:", error);
+            video.pause();
+            setIsPlaying(false);
+            if (!testBench) {
+                try { await window.santtosAPI.stopNdiFile(); }
+                catch (stopError) { console.error(stopError); }
+            }
+            if (video.error) {
+                setPreviewError(
+                    "O Chromium não conseguiu reproduzir a mídia. " +
+                    "Use Prévia MP4 compatível; o arquivo original não será alterado."
+                );
+            } else {
+                window.alert(
+                    `Não foi possível reproduzir o vídeo.\n\n${String(error)}`
+                );
+            }
         }
     }
 
@@ -2106,6 +2127,18 @@ function PlayoutPanel({
                                         setDuration(
                                             getClipDuration(selectedMedia)
                                         );
+                                        setPreviewError("");
+                                    }}
+                                    onError={(event) => {
+                                        const code = event.currentTarget.error?.code;
+                                        const problem = code === 4
+                                            ? "Formato ou codec não suportado pelo monitor Chromium."
+                                            : code === 3
+                                              ? "O monitor não conseguiu decodificar este vídeo."
+                                              : "Falha ao ler a mídia. Confirme que o arquivo está disponível localmente (inclusive no OneDrive).";
+                                        setPreviewError(
+                                            `${problem} Se o arquivo toca no FFmpeg, prepare uma prévia MP4 compatível.`
+                                        );
                                     }}
                                     onDurationChange={() =>
                                         setDuration(
@@ -2119,6 +2152,24 @@ function PlayoutPanel({
                                     }
                                     onEnded={() => playNextMedia("completed")}
                                 />
+
+                                {previewError && (
+                                    <div className="program-preview-error" role="alert">
+                                        <strong>PRÉVIA NÃO DISPONÍVEL</strong>
+                                        <span>{previewError}</span>
+                                        <button
+                                            type="button"
+                                            disabled={previewPreparing || (isPlaying && !testBench)}
+                                            onClick={() => void prepareBrowserPreview()}
+                                        >
+                                            {previewPreparing ? "Preparando prévia com FFmpeg…" : "Preparar prévia MP4 compatível"}
+                                        </button>
+                                        <small>
+                                            A conversão pode demorar conforme o filme.
+                                            A saída NDI continua usando o arquivo original.
+                                        </small>
+                                    </div>
+                                )}
 
                                 {watermarkPreviewUrl && (
                                     <img
@@ -2174,6 +2225,20 @@ function PlayoutPanel({
                             onClick={() => playNextMedia("skipped")}
                             disabled={!nextMedia}
                         >⏭</button>
+
+                        {selectedMedia && !previewProxyBySource[selectedMedia.path] && !previewError && (
+                            <button
+                                className="program-proxy-action"
+                                title="Gerar prévia MP4 leve para formatos não suportados pelo Chromium"
+                                disabled={previewPreparing || (isPlaying && !testBench)}
+                                onClick={() => void prepareBrowserPreview()}
+                            >
+                                {previewPreparing ? "Preparando…" : "Prévia MP4"}
+                            </button>
+                        )}
+                        {selectedMedia && previewProxyBySource[selectedMedia.path] && (
+                            <span className="program-proxy-ready">Prévia compatível</span>
+                        )}
 
                         <div className="program-time">
                             {formatDuration(selectedClipCurrent)}
