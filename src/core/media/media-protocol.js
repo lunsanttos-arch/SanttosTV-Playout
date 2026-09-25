@@ -18,7 +18,7 @@ function buildMediaUrl(filePath) {
     return `${MEDIA_SCHEME}://local/video?path=${encodeURIComponent(filePath)}`;
 }
 
-function resolveMediaRequest(requestUrl, mediaItems) {
+function resolveMediaRequest(requestUrl, mediaItems, authorizedProxies = new Set()) {
     let requestedUrl;
     try {
         requestedUrl = new URL(requestUrl);
@@ -53,7 +53,7 @@ function resolveMediaRequest(requestUrl, mediaItems) {
                 return false;
             }
         });
-        return permitted ? realRequestedPath : null;
+        return permitted || authorizedProxies.has(realRequestedPath) ? realRequestedPath : null;
     } catch {
         return null;
     }
@@ -98,8 +98,8 @@ function parseByteRange(rangeHeader, size) {
     return { start, end, partial: true };
 }
 
-function serveImportedVideo(request, mediaItems) {
-    const allowedPath = resolveMediaRequest(request.url, mediaItems);
+function serveImportedVideo(request, mediaItems, authorizedProxies = new Set()) {
+    const allowedPath = resolveMediaRequest(request.url, mediaItems, authorizedProxies);
     if (!allowedPath) return new Response("Midia nao autorizada ou ausente", { status: 404 });
     let stat;
     try { stat = fs.statSync(allowedPath); } catch { return new Response("Arquivo indisponivel", { status: 404 }); }
