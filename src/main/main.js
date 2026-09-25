@@ -6,13 +6,15 @@ const {
     nativeImage,
     protocol,
     session,
-    shell
+    shell,
+    safeStorage
 } = require("electron");
 
 const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("node:url");
 const { MEDIA_SCHEME, createMediaProtocolHandler } = require("./media-protocol");
+const { createSecretStore } = require("./secret-store");
 
 protocol.registerSchemesAsPrivileged([
     {
@@ -131,6 +133,7 @@ let ndiFrameBusy = false;
 let nativePlaybackActive = false;
 
 const analysesInProgress = new Map();
+let secretStore = null;
 
 // Somente o documento principal do Playout pode executar comandos com
 // privilegios do processo principal. Iframes e janelas externas sao bloqueados.
@@ -1079,16 +1082,56 @@ function registerIpcHandlers() {
 
     secureIpcHandle(
         "settings:get",
-        async () => getSettings()
+        async () => {
+            const settings = getSettings();
+            if (secretStore && secretStore.isAvailable()) {
+                try {
+                    settings.output.srt.passphrase = secretStore.read();
+                } catch (error) {
+                    console.error("Não foi possível ler a senha protegida SRT:", error.message);
+                    settings.output.srt.passphrase = "";
+                }
+            } else {
+                settings.output.srt.passphrase = "";
+            }
+            return settings;
+        }
     );
 
     secureIpcHandle(
         "settings:set-output",
-        async (_event, output) => ({
-            ok: true,
-            output:
-                updateOutputSettings(output)
-        })
+        async (_event, output) => {
+            try {
+                const passphrase = output?.srt?.passphrase ?? "";
+                if (typeof passphrase !== "string") {
+                    throw new Error("Senha SRT inválida.");
+                }
+                if (passphrase) {
+                    secretStore.write(passphrase);
+                } else {
+                    secretStore.clear();
+                }
+                const settings = {
+                    ...output,
+                    srt: { ...output.srt, passphrase: "" }
+                };
+                const saved = updateOutputSettings(settings);
+                return {
+                    ok: true,
+                    output: {
+                        ...saved,
+                        srt: { ...saved.srt, passphrase }
+                    }
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+                    error: error instanceof Error
+                        ? error.message
+                        : "Não foi possível salvar configurações."
+                };
+            }
+        }
     );
 
     secureIpcHandle(
@@ -1619,6 +1662,21 @@ function startSystem() {
     );
 
     initializeDatabase(app.getPath("userData"));
+    secretStore = createSecretStore(app.getPath("userData"), safeStorage);
+    // Remove any legacy plaintext SRT password on first startup after upgrade.
+    const oldSettings = getSettings();
+    const legacyPassphrase = oldSettings?.output?.srt?.passphrase;
+    if (legacyPassphrase) {
+        if (!secretStore.isAvailable()) {
+            console.error("Senha SRT antiga ainda sem migrar: proteção do Windows indisponível.");
+        } else {
+            secretStore.write(legacyPassphrase);
+            updateOutputSettings({
+                ...oldSettings.output,
+                srt: { ...oldSettings.output.srt, passphrase: "" }
+            });
+        }
+    }
     initializeLibraryCategories(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
