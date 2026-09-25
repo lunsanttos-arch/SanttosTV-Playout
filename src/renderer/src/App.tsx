@@ -1801,56 +1801,45 @@ function PlayoutPanel({
 
     function splitFilmIntoBlocks(
         mediaId: string,
-        inPoint: number,
-        cut1: number,
-        cut2: number,
-        outPoint: number
+        ranges: Array<{ inPoint: number; outPoint: number }>
     ) {
-        const sourceIndex = timelineQueue.findIndex(
-            (item) => item.id === mediaId
-        );
-        const source = timelineQueue[sourceIndex];
-        if (!source || sourceIndex < 0) return;
-
-        const points = [inPoint, cut1, cut2, outPoint];
-        if (
-            points.some((value) => !Number.isFinite(value)) ||
-            !(points[0] >= 0 &&
-              points[0] < points[1] &&
-              points[1] < points[2] &&
-              points[2] < points[3])
-        ) {
-            window.alert(
-                "Os cortes precisam estar em ordem: IN < Corte 1 < Corte 2 < OUT."
-            );
+        const source = timelineQueue.find((entry) => entry.id === mediaId);
+        if (!source) return;
+        if (isPlaying && selectedMedia?.id === mediaId) {
+            window.alert("Pause ou pare o vídeo antes de editar o item em exibição.");
             return;
         }
 
-        const sourceDuration = source.duration ?? outPoint;
-        if (outPoint > sourceDuration + 0.01) {
-            window.alert(
-                "O ponto OUT não pode ultrapassar a duração do arquivo."
+        const duration = Math.max(0, source.duration ?? 0);
+        const valid = ranges.length >= 1 && ranges.length <= 6 &&
+            ranges.every((range, index) =>
+                Number.isFinite(range.inPoint) &&
+                Number.isFinite(range.outPoint) &&
+                range.inPoint >= 0 &&
+                range.outPoint > range.inPoint &&
+                range.outPoint <= duration + 0.01 &&
+                (index === 0 || range.inPoint >= ranges[index - 1].outPoint)
             );
+
+        if (!valid) {
+            window.alert("Defina de 1 a 6 blocos válidos, em ordem, sem sobreposição.");
             return;
         }
 
-        const sourceMediaId =
-            source.sourceMediaId ?? source.id;
+        const sourceMediaId = source.sourceMediaId ?? source.id;
         const stamp = Date.now();
-        const blocks = [0, 1, 2].map((index) => ({
+        const blocks: MediaItem[] = ranges.map((range, index) => ({
             ...source,
             id: `${sourceMediaId}-block-${stamp}-${index + 1}`,
             sourceMediaId,
-            inPoint: points[index],
-            outPoint: points[index + 1],
+            inPoint: range.inPoint,
+            outPoint: range.outPoint,
             blockLabel: `Bloco ${index + 1}`,
             loop: false
         }));
 
         setTimelineQueue((current) => {
-            const index = current.findIndex(
-                (item) => item.id === mediaId
-            );
+            const index = current.findIndex((item) => item.id === mediaId);
             if (index < 0) return current;
             const updated = [...current];
             updated.splice(index, 1, ...blocks);
@@ -1861,7 +1850,6 @@ function PlayoutPanel({
             onSelectMedia(blocks[0]);
             setCurrentTime(blocks[0].inPoint ?? 0);
         }
-
         setEditingFilm(null);
     }
 
@@ -2556,18 +2544,21 @@ function PlayoutPanel({
 interface FilmBlockEditorProps {
     item: MediaItem;
     onClose: () => void;
-    onSaveEdit: (
-        mediaId: string,
-        inPoint: number,
-        outPoint: number
-    ) => void;
+    onSaveEdit: (mediaId: string, inPoint: number, outPoint: number) => void;
     onSplit: (
         mediaId: string,
-        inPoint: number,
-        cut1: number,
-        cut2: number,
-        outPoint: number
+        ranges: Array<{ inPoint: number; outPoint: number }>
     ) => void;
+}
+
+type BlockRangeText = { inText: string; outText: string };
+
+function distributeParts(inPoint: number, outPoint: number, partCount: number): BlockRangeText[] {
+    const duration = Math.max(0, outPoint - inPoint);
+    return Array.from({ length: partCount }, (_, index) => ({
+        inText: formatEditorTime(inPoint + (duration * index) / partCount),
+        outText: formatEditorTime(inPoint + (duration * (index + 1)) / partCount)
+    }));
 }
 
 function FilmBlockEditor({
@@ -2579,48 +2570,51 @@ function FilmBlockEditor({
     const duration = Math.max(0, item.duration ?? 0);
     const initialIn = getClipIn(item);
     const initialOut = getClipOut(item);
-    const span = Math.max(0.3, initialOut - initialIn);
-
-    const [inText, setInText] = useState(
-        formatEditorTime(initialIn)
-    );
-    const [outText, setOutText] = useState(
-        formatEditorTime(initialOut)
-    );
-    const [cut1Text, setCut1Text] = useState(
-        formatEditorTime(initialIn + span / 3)
-    );
-    const [cut2Text, setCut2Text] = useState(
-        formatEditorTime(initialIn + (span * 2) / 3)
+    const [inText, setInText] = useState(formatEditorTime(initialIn));
+    const [outText, setOutText] = useState(formatEditorTime(initialOut));
+    const [partCount, setPartCount] = useState(3);
+    const [parts, setParts] = useState<BlockRangeText[]>(() =>
+        distributeParts(initialIn, initialOut, 3)
     );
 
     const parsedIn = parseEditorTime(inText);
     const parsedOut = parseEditorTime(outText);
-    const parsedCut1 = parseEditorTime(cut1Text);
-    const parsedCut2 = parseEditorTime(cut2Text);
-
     const validEdit =
-        parsedIn !== null &&
-        parsedOut !== null &&
-        parsedIn >= 0 &&
-        parsedOut > parsedIn &&
+        parsedIn !== null && parsedOut !== null &&
+        parsedIn >= 0 && parsedOut > parsedIn &&
         parsedOut <= duration + 0.01;
 
-    const validSplit =
-        validEdit &&
-        parsedCut1 !== null &&
-        parsedCut2 !== null &&
-        parsedIn! < parsedCut1 &&
-        parsedCut1 < parsedCut2 &&
-        parsedCut2 < parsedOut!;
+    const ranges = parts.map((part) => ({
+        inPoint: parseEditorTime(part.inText),
+        outPoint: parseEditorTime(part.outText)
+    }));
+    const validSplit = validEdit &&
+        ranges.length === partCount &&
+        ranges.every((range, index) =>
+            range.inPoint !== null && range.outPoint !== null &&
+            range.inPoint >= parsedIn! && range.outPoint <= parsedOut! &&
+            range.outPoint > range.inPoint &&
+            (index === 0 || (
+                ranges[index - 1].outPoint !== null &&
+                range.inPoint >= ranges[index - 1].outPoint!
+            ))
+        );
+
+    function redistribute(count = partCount) {
+        setParts(distributeParts(parsedIn ?? initialIn, parsedOut ?? initialOut, count));
+    }
+
+    function updatePart(index: number, field: keyof BlockRangeText, value: string) {
+        setParts((current) => current.map((part, position) =>
+            position === index ? { ...part, [field]: value } : part
+        ));
+    }
 
     return (
         <div
             className="film-editor-backdrop"
             onMouseDown={(event) => {
-                if (event.target === event.currentTarget) {
-                    onClose();
-                }
+                if (event.target === event.currentTarget) onClose();
             }}
         >
             <section className="film-editor-window">
@@ -2636,52 +2630,65 @@ function FilmBlockEditor({
                 <div className="film-editor-summary">
                     <span>Duração original</span>
                     <strong>{formatDuration(duration)}</strong>
-                    <small>
-                        O arquivo original não será alterado. Os blocos apenas guardam pontos IN/OUT.
-                    </small>
+                    <small>O arquivo original não será alterado. Cada bloco guarda apenas IN e OUT.</small>
                 </div>
 
                 <div className="film-editor-grid">
-                    <TimecodeField
-                        label="INÍCIO / IN"
-                        value={inText}
-                        onChange={setInText}
-                    />
-                    <TimecodeField
-                        label="CORTE 1"
-                        value={cut1Text}
-                        onChange={setCut1Text}
-                    />
-                    <TimecodeField
-                        label="CORTE 2"
-                        value={cut2Text}
-                        onChange={setCut2Text}
-                    />
-                    <TimecodeField
-                        label="FINAL / OUT"
-                        value={outText}
-                        onChange={setOutText}
-                    />
+                    <TimecodeField label="INÍCIO GERAL" value={inText} onChange={setInText} />
+                    <TimecodeField label="FINAL GERAL" value={outText} onChange={setOutText} />
                 </div>
 
-                <div className="film-editor-block-preview">
-                    <div>
-                        <strong>Bloco 1</strong>
-                        <span>{formatRange(parsedIn, parsedCut1)}</span>
-                    </div>
-                    <div>
-                        <strong>Bloco 2</strong>
-                        <span>{formatRange(parsedCut1, parsedCut2)}</span>
-                    </div>
-                    <div>
-                        <strong>Bloco 3</strong>
-                        <span>{formatRange(parsedCut2, parsedOut)}</span>
-                    </div>
+                <div className="film-editor-count">
+                    <label htmlFor="block-count">Quantidade de blocos
+                        <select
+                            id="block-count"
+                            value={partCount}
+                            onChange={(event) => {
+                                const count = Number(event.currentTarget.value);
+                                setPartCount(count);
+                                redistribute(count);
+                            }}
+                        >
+                            {[1, 2, 3, 4, 5, 6].map((count) => (
+                                <option value={count} key={count}>
+                                    {count} {count === 1 ? "bloco" : "blocos"}{count === 3 ? " (padrão)" : ""}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                    <button type="button" onClick={() => redistribute()}>
+                        Distribuir igualmente
+                    </button>
+                    <span>Edite o IN/OUT de cada parte. Pode deixar trechos de fora entre blocos.</span>
+                </div>
+
+                <div className="film-editor-block-list">
+                    {parts.map((part, index) => (
+                        <div className="film-editor-block-row" key={index}>
+                            <strong>Bloco {index + 1}</strong>
+                            <TimecodeField
+                                label="IN"
+                                value={part.inText}
+                                onChange={(value) => updatePart(index, "inText", value)}
+                            />
+                            <TimecodeField
+                                label="OUT"
+                                value={part.outText}
+                                onChange={(value) => updatePart(index, "outText", value)}
+                            />
+                            <small>{formatRange(ranges[index].inPoint, ranges[index].outPoint)}</small>
+                        </div>
+                    ))}
                 </div>
 
                 {!validEdit && (
                     <div className="film-editor-error">
-                        IN/OUT inválidos. Use mm:ss ou hh:mm:ss e não ultrapasse a duração do filme.
+                        IN/OUT gerais inválidos. Use mm:ss ou hh:mm:ss, dentro da duração do filme.
+                    </div>
+                )}
+                {validEdit && !validSplit && (
+                    <div className="film-editor-error">
+                        Revise os blocos: cada IN deve ser menor que OUT, sem sobreposição e dentro do intervalo geral.
                     </div>
                 )}
 
@@ -2689,32 +2696,22 @@ function FilmBlockEditor({
                     <button onClick={onClose}>Cancelar</button>
                     <button
                         disabled={!validEdit}
-                        onClick={() =>
-                            validEdit &&
-                            onSaveEdit(
-                                item.id,
-                                parsedIn!,
-                                parsedOut!
-                            )
-                        }
+                        onClick={() => validEdit && onSaveEdit(item.id, parsedIn!, parsedOut!)}
                     >
                         Salvar somente edição
                     </button>
                     <button
                         className="primary-button"
                         disabled={!validSplit}
-                        onClick={() =>
-                            validSplit &&
-                            onSplit(
-                                item.id,
-                                parsedIn!,
-                                parsedCut1!,
-                                parsedCut2!,
-                                parsedOut!
-                            )
-                        }
+                        onClick={() => validSplit && onSplit(
+                            item.id,
+                            ranges.map((range) => ({
+                                inPoint: range.inPoint!,
+                                outPoint: range.outPoint!
+                            }))
+                        )}
                     >
-                        Separar em 3 blocos
+                        Criar {partCount} {partCount === 1 ? "bloco" : "blocos"}
                     </button>
                 </footer>
             </section>
