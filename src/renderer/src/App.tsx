@@ -748,6 +748,7 @@ function PlayoutPanel({
     const nativeProgressRef = useRef(0);
     const reportStartTimeRef = useRef(0);
     const recoveryRef = useRef<{ media: MediaItem; position: number } | null>(null);
+    const consecutiveFailureRef = useRef(0);
     const ndiEventRef = useRef<(event: NdiPlaybackEvent) => void>(() => {});
 
     useEffect(() =>
@@ -1958,6 +1959,119 @@ function PlayoutPanel({
 
         setDraggedMediaId(null);
     }
+
+    ndiEventRef.current = (event) => {
+        const currentId = activeNativePlaybackIdRef.current;
+
+        if (
+            event.type === "playback-progress" &&
+            currentId &&
+            event.playbackId === currentId &&
+            typeof event.currentSeconds === "number"
+        ) {
+            nativeProgressRef.current = event.currentSeconds;
+            setCurrentTime(event.currentSeconds);
+            return;
+        }
+
+        if (
+            event.type === "playback-finished" &&
+            currentId &&
+            event.playbackId === currentId
+        ) {
+            activeNativePlaybackIdRef.current = null;
+            consecutiveFailureRef.current = 0;
+            if (!clipAdvanceGuardRef.current) {
+                clipAdvanceGuardRef.current = true;
+                void playNextMedia("completed").catch((error) =>
+                    console.error("Erro ao avançar após confirmação NDI:", error)
+                );
+            }
+            return;
+        }
+
+        if (
+            event.type === "playback-failed" &&
+            currentId &&
+            event.playbackId === currentId
+        ) {
+            activeNativePlaybackIdRef.current = null;
+            consecutiveFailureRef.current++;
+            const reason = event.error || "O engine não confirmou esta exibição.";
+            console.error("Falha real do PROGRAM:", reason);
+
+            if (reason.includes("Sender NDI") && selectedMedia) {
+                recoveryRef.current = {
+                    media: selectedMedia,
+                    position: Math.max(
+                        getClipIn(selectedMedia),
+                        nativeProgressRef.current
+                    )
+                };
+                videoRef.current?.pause();
+                setIsPlaying(false);
+                void finishExecutionReport("PULADO");
+                return;
+            }
+            if (consecutiveFailureRef.current >= 5) {
+                videoRef.current?.pause();
+                setIsPlaying(false);
+                void finishExecutionReport("PULADO");
+                console.error("Cinco falhas consecutivas: avanço automático suspenso.");
+                return;
+            }
+            void playNextMedia("skipped").catch((error) =>
+                console.error("Erro ao pular item falho:", error)
+            );
+            return;
+        }
+
+        if (event.type === "engine-offline") {
+            if (isPlaying && selectedMedia && !recoveryRef.current) {
+                recoveryRef.current = {
+                    media: selectedMedia,
+                    position: Math.max(
+                        getClipIn(selectedMedia),
+                        nativeProgressRef.current
+                    )
+                };
+                activeNativePlaybackIdRef.current = null;
+                videoRef.current?.pause();
+                setIsPlaying(false);
+                void finishExecutionReport("PULADO");
+            }
+            return;
+        }
+
+        if (event.type === "engine-online" && recoveryRef.current) {
+            const pending = recoveryRef.current;
+            recoveryRef.current = null;
+            void (async () => {
+                const mediaItem = pending.media;
+                const startAt = Math.min(
+                    Math.max(getClipIn(mediaItem), pending.position),
+                    getClipOut(mediaItem)
+                );
+                if (startAt >= getClipOut(mediaItem) - 0.05) {
+                    await playNextMedia("skipped");
+                    return;
+                }
+                await startExecutionReport(mediaItem, startAt);
+                await startNativeNdi(mediaItem, startAt);
+                const video = videoRef.current;
+                if (video) {
+                    video.currentTime = startAt;
+                    await video.play().catch(() => {});
+                }
+                setIsPlaying(true);
+                console.log("PROGRAM retomado automaticamente após reconexão NDI.");
+            })().catch((error) => {
+                recoveryRef.current = pending;
+                setIsPlaying(false);
+                console.error("Falha ao recuperar a saída NDI:", error);
+            });
+        }
+    };
 
     return (
         <div className="playout-operation-layout">
