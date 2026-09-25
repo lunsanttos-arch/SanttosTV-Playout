@@ -7,7 +7,7 @@ import {
 import type { CSSProperties } from "react";
 import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
-import { EXHIBITION_OPTIONS, exhibitionLabel, normalizeExhibitionType } from "./exhibition";
+import { EXHIBITION_OPTIONS, exhibitionLabel, exhibitionPreviewAnchor, normalizeExhibitionType } from "./exhibition";
 import type { ExhibitionType } from "./exhibition";
 
 type Panel =
@@ -232,6 +232,7 @@ declare global {
                 overlayState?: {
                     durationSeconds?: number;
                     watermarkEnabled?: boolean;
+                    exhibitionType?: ExhibitionType;
                     watermarkFadeIn?: boolean;
                     watermarkFadeOut?: boolean;
                     hashtagFadeIn?: boolean;
@@ -1239,6 +1240,8 @@ function PlayoutPanel({
                 getClipOut(mediaItem),
             watermarkEnabled:
                 Boolean(mediaItem.watermark),
+            exhibitionType:
+                normalizeExhibitionType(mediaItem.exhibitionType),
             watermarkFadeIn:
                 Boolean(mediaItem.watermark) &&
                 !resuming &&
@@ -2185,6 +2188,16 @@ function PlayoutPanel({
                                                 watermarkStyle.opacity
                                         }}
                                     />
+                                )}
+
+                                {selectedMedia && normalizeExhibitionType(selectedMedia.exhibitionType) !== "NORMAL" && (
+                                    <div
+                                        className="program-exhibition-overlay"
+                                        aria-label="Identificação editorial no vídeo"
+                                        style={exhibitionPreviewAnchor(watermarkStyle)}
+                                    >
+                                        {exhibitionLabel(selectedMedia.exhibitionType).toLocaleUpperCase("pt-BR")}
+                                    </div>
                                 )}
 
                                 {selectedMedia?.hashtag && (

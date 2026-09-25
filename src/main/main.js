@@ -13,6 +13,7 @@ const fs = require("fs");
 const { fileURLToPath } = require("url");
 const { MEDIA_SCHEME, serveImportedVideo } = require("../core/media/media-protocol");
 const { preparePreviewProxy, cancelActivePreviews } = require("../core/media/preview-proxy");
+const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
@@ -593,17 +594,27 @@ function buildProgramFilterGraph(
         }
 
         chains.push(
-            `[${current}]drawtext=${options.join(":")}[program]`
+            `[${current}]drawtext=${options.join(":")}[withHashtag]`
         );
-        current = "program";
+        current = "withHashtag";
     }
 
-    if (current != "program") {
-        chains.push(
-            `[${current}]null[program]`
+    // Editorial identification belongs to the encoded PROGRAM picture.
+    // Draw it after both the watermark and hashtag so it remains legible.
+    if (state.exhibitionType && state.exhibitionType !== "NORMAL") {
+        const identification = buildExhibitionDrawtext(
+            current,
+            state.exhibitionType,
+            getSettings().watermarkStyle,
+            resolveHashtagFont({ fontFamily: "Arial", bold: true })
         );
+        if (identification) {
+            chains.push(identification);
+            current = "exhibition";
+        }
     }
 
+    chains.push(`[${current}]null[program]`);
     return chains.join(";");
 }
 
@@ -720,6 +731,7 @@ function startNativePlayback(
             ` | fadeIn=${Boolean(programState.watermarkFadeIn)}` +
             ` | fadeOut=${Boolean(programState.watermarkFadeOut)}` +
             ` | hashtag=${hashtag ? "ON" : "OFF"}` +
+            ` | exhibition=${programState.exhibitionType ?? "NORMAL"}` +
             ` | vstream=${programState.videoStreamIndex ?? "auto"}` +
             ` | astream=${programState.audioStreamIndex ?? "01"}` +
             ` | timing=${programState.timingMode ?? "unknown"}` +

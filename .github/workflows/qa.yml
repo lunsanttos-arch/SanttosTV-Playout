@@ -10,6 +10,7 @@ on:
       - "scripts/test-frontend.js"
       - "scripts/test-media-stream.js"
       - "scripts/test-preview-proxy.js"
+      - "scripts/test-exhibition-output.js"
       - "scripts/test-testbench.js"
       - "scripts/start-testbench.js"
       - "src/**"
@@ -22,6 +23,7 @@ on:
       - "scripts/test-frontend.js"
       - "scripts/test-media-stream.js"
       - "scripts/test-preview-proxy.js"
+      - "scripts/test-exhibition-output.js"
       - "scripts/test-testbench.js"
       - "scripts/start-testbench.js"
       - "src/**"
@@ -50,6 +52,7 @@ jobs:
           node --check src/database/database.js
           node --check src/core/library/library-categories.js
           node --check src/core/reporting/playout-report.js
+          node --check src/core/graphics/exhibition-overlay.js
 
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
@@ -65,6 +68,9 @@ jobs:
 
       - name: FFmpeg browser proxy
         run: npm run test:proxy
+
+      - name: NDI editorial overlay render regression
+        run: npm run test:exhibition-output
 
       - name: Backend regression tests
         run: npm run test:backend
