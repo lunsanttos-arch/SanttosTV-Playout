@@ -4,9 +4,7 @@ const {
     webUtils
 } = require("electron");
 
-const {
-    pathToFileURL
-} = require("url");
+const { buildMediaUrl } = require("../core/media/media-protocol");
 
 contextBridge.exposeInMainWorld(
     "santtosAPI",
@@ -226,8 +224,6 @@ contextBridge.exposeInMainWorld(
         getMediaFileUrl: (
             filePath
         ) =>
-            pathToFileURL(
-                filePath
-            ).toString()
+            buildMediaUrl(filePath)
     }
 );
