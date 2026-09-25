@@ -52,6 +52,12 @@ for (const status of ["INEDITO", "REPRISE", "AO_VIVO"]) {
         defaultLogo,
         fontForFilter
     );
+    assert(!captionFilter.includes("box=1"),
+        `${status}: editorial caption must not have a background box.`);
+    assert(!captionFilter.includes("boxcolor="),
+        `${status}: editorial caption must not have a box color.`);
+    assert(captionFilter.includes("borderw=1"),
+        `${status}: editorial caption should retain a subtle outline.`);
     const filterGraph = `[0:v]drawbox=x=1680:y=40:w=180:h=120:color=gray:t=fill[base];${captionFilter};[exhibition]null[program]`;
     const rawFrame = execFileSync(ffmpegStatic, [
         "-hide_banner", "-loglevel", "error",
