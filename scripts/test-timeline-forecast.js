@@ -67,6 +67,17 @@ assert.equal(tenSecondsLater.entries.get("ad").startsAtMs, now + 90000,
     "O horario de entrada deve ficar ESTAVEL enquanto o video avanca normalmente.");
 assert.equal(tenSecondsLater.entries.get("ad").remainingSeconds, 80);
 
+// A renderização do relógio pode ocorrer antes do próximo timeupdate.
+// A previsão absoluta deve permanecer ancorada na última amostra real.
+const clockTickWithoutVideoEvent = plan(queue, queue[0].id, {
+    nowMs: now + 1000, currentTime: 40, sampledAtMs: now
+});
+assert.equal(clockTickWithoutVideoEvent.entries.get("ad").startsAtMs,
+    now + 90000,
+    "O relógio do computador não pode deslocar sozinho a entrada do próximo vídeo.");
+assert.equal(clockTickWithoutVideoEvent.entries.get("ad").remainingSeconds, 89);
+
+
 const paused = plan(queue, queue[0].id, {
     nowMs: now + 10000, isRunning: false, currentTime: 50
 });
