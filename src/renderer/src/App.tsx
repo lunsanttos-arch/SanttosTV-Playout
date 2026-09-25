@@ -2191,7 +2191,7 @@ function PlayoutPanel({
                         </span>
                         {nextMedia && (
                             <span className="next-entry-forecast">{describeForecast(nextMedia)}</span>
-                        )
+                        )}
                     </section>
                 </div>
 
@@ -2355,7 +2355,7 @@ function PlayoutPanel({
                                                     <span className={`exhibition-badge badge-${normalizeExhibitionType(item.exhibitionType).toLowerCase()}`}>
                                                         {exhibitionLabel(item.exhibitionType)}
                                                     </span>
-                                                )
+                                                )}
                                                 <span>
                                                     {isCurrent
                                                         ? `${formatDuration(
