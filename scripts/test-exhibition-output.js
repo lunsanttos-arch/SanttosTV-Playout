@@ -7,7 +7,8 @@ const { execFileSync } = require("node:child_process");
 const ffmpegStatic = require("ffmpeg-static");
 const {
     getExhibitionOverlay,
-    buildExhibitionDrawtext
+    buildExhibitionDrawtext,
+    normalizeExhibitionStyle
 } = require("../src/core/graphics/exhibition-overlay");
 
 const defaultLogo = { x: 1680, y: 40, widthPx: 180 };
@@ -28,6 +29,37 @@ assert.throws(
     /input label/
 );
 assert.equal(buildExhibitionDrawtext("base", "NORMAL", defaultLogo, "arial.ttf"), null);
+
+const custom = normalizeExhibitionStyle({
+    fontFamily: "Tahoma",
+    fontSize: 38,
+    color: "#f0c020",
+    outlineWidth: 3,
+    shadowEnabled: true,
+    shadowX: 3,
+    backgroundEnabled: true,
+    backgroundColor: "#225588",
+    backgroundPadding: 8,
+    gapPx: 14,
+    rightOffsetPx: -35,
+    yOffsetPx: 5,
+    labels: { REPRISE: "OUTRA EXIBIÇÃO" }
+});
+assert.equal(getExhibitionOverlay("REPRISE", { x: 1650, y: 160, widthPx: 200 }, custom).text,
+    "OUTRA EXIBIÇÃO");
+assert.equal(getExhibitionOverlay("REPRISE", { x: 1650, y: 160, widthPx: 200 }, custom).right, 1815);
+assert.equal(getExhibitionOverlay("REPRISE", defaultLogo, { enabled: false }), null);
+const customFilter = buildExhibitionDrawtext("base", "REPRISE", defaultLogo,
+    "arial.ttf", custom);
+assert(customFilter.includes("fontsize=38"));
+assert(customFilter.includes("fontcolor=0xf0c020@1.000"));
+assert(customFilter.includes("borderw=3"));
+assert(customFilter.includes("box=1"));
+assert(customFilter.includes("shadowx=3"));
+assert(!buildExhibitionDrawtext("base", "REPRISE", defaultLogo, "arial.ttf",
+    { labels: { REPRISE: "expr=%{metadata}" } }).includes("expr="),
+    "Textos não autorizados devem voltar ao padrão.");
+
 
 // Render a full-HD frame with the exact filter used by the PROGRAM pipeline.
 // Parsing tests alone would miss an invalid FFmpeg expression on Windows.
