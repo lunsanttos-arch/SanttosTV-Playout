@@ -113,7 +113,7 @@ test("SRT secrets are encrypted and stored outside the JSON database",()=>{
         store.clear();
         assert.equal(store.read(),"");
         const unavailable=createSecretStore(temp,{isEncryptionAvailable:()=>false});
-        assert.throws(()=>unavailable.write("another-password"),/indisponível/);
+        assert.throws(()=>unavailable.write("another-password"),/não disponibilizou|indisponível/);
     } finally {
         fs.rmSync(temp,{recursive:true,force:true});
     }
