@@ -1,6 +1,7 @@
 import {
     useEffect,
     useMemo,
+    useCallback,
     useRef,
     useState
 } from "react";
@@ -328,6 +329,18 @@ export default function App() {
         items: MediaItem[];
     } | null>(null);
 
+    // Stable callback: updating the top-bar clock must not retrigger the
+    // playout forecast effect or move the predicted entry times.
+    const handleScheduleSummary = useCallback((
+        remainingSeconds: number | null,
+        indefinite: boolean,
+        endsAtMs: number | null
+    ) => {
+        setProgrammedRemainingSeconds(remainingSeconds ?? 0);
+        setProgrammedIndefinite(indefinite);
+        setProgrammedEndAtMs(endsAtMs);
+    }, []);
+
     useEffect(() => {
         const updateClock = () =>
             setClock(
@@ -617,11 +630,7 @@ export default function App() {
                             onImportDroppedFiles={importDroppedFiles}
                             onRemoveMedia={handleRemoveMedia}
                             rundownApplyRequest={rundownApplyRequest}
-                            onScheduleSummary={(remainingSeconds, indefinite, endsAtMs) => {
-                                setProgrammedRemainingSeconds(remainingSeconds ?? 0);
-                                setProgrammedIndefinite(indefinite);
-                                setProgrammedEndAtMs(endsAtMs);
-                            }}
+                            onScheduleSummary={handleScheduleSummary}
                         />
                     </div>
 
@@ -803,6 +812,10 @@ function PlayoutPanel({
         useState<MediaItem | null>(null);
     const clipAdvanceGuardRef = useRef(false);
     const activeReportIdRef = useRef<string | null>(null);
+    const lastProgressRef = useRef({
+        position: Number.NaN,
+        atMs: Date.now()
+    });
 
     useEffect(() => {
         let cancelled = false;
@@ -1103,6 +1116,7 @@ function PlayoutPanel({
         !programVideo.paused &&
         !programVideo.seeking &&
         programVideo.readyState >= 2 &&
+        timelineClock - lastProgressRef.current.atMs <= 4000 &&
         (testBench || (ndiOnline && nativePlaybackActive))
     );
     const timelineForecast = buildTimelineForecast(
@@ -1111,7 +1125,7 @@ function PlayoutPanel({
         {
             nowMs: timelineClock,
             isRunning: forecastRunning,
-            currentTime: programVideo?.currentTime ?? currentTime
+            currentTime
         }
     );
 
@@ -1183,6 +1197,7 @@ function PlayoutPanel({
             // loadedmetadata will apply IN again.
         }
         setCurrentTime(inPoint);
+        lastProgressRef.current = { position: inPoint, atMs: Date.now() };
         clipAdvanceGuardRef.current = false;
         setIsPlaying(false);
     }, [selectedMediaUrl]);
@@ -1567,7 +1582,17 @@ function PlayoutPanel({
     async function handleProgramTimeUpdate(
         video: HTMLVideoElement
     ) {
-        setCurrentTime(video.currentTime);
+        const position = video.currentTime;
+        // Detect a stalled preview or sender: stale cursors cannot be used
+        // to present a supposedly precise future wall-clock time.
+        if (Number.isFinite(position) && (
+            !Number.isFinite(lastProgressRef.current.position) ||
+            position > lastProgressRef.current.position + 0.015 ||
+            position < lastProgressRef.current.position - 0.1
+        )) {
+            lastProgressRef.current = { position, atMs: Date.now() };
+        }
+        setCurrentTime(position);
 
         if (!selectedMedia) {
             return;
@@ -1575,6 +1600,8 @@ function PlayoutPanel({
 
         const outPoint = getClipOut(selectedMedia);
         if (
+            isPlaying &&
+            !video.paused &&
             video.currentTime >= outPoint - 0.035 &&
             !clipAdvanceGuardRef.current
         ) {
@@ -1603,6 +1630,7 @@ function PlayoutPanel({
         }
 
         setCurrentTime(video.currentTime);
+        lastProgressRef.current = { position: video.currentTime, atMs: Date.now() };
 
         if (!isPlaying || !selectedMedia) {
             return;
