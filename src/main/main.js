@@ -149,6 +149,10 @@ let ffmpegProcess = null;
 
 let ndiReady = false;
 let ndiFrameBusy = false;
+let ndiLastError = "";
+let ndiRestartTimer = null;
+let ndiRestartFailures = 0;
+let ndiStopping = false;
 let nativePlaybackActive = false;
 
 const analysesInProgress = new Map();
@@ -940,7 +944,9 @@ function registerIpcHandlers() {
                 !ndiProcess.killed,
             source:
                 "Santtos TV - PROGRAM",
-            nativePlaybackActive
+            nativePlaybackActive,
+            error: ndiLastError || null,
+            restarting: Boolean(ndiRestartTimer)
         })
     );
 
@@ -1424,150 +1430,110 @@ function registerIpcHandlers() {
     );
 }
 
+function scheduleNdiRestart() {
+    if (ndiStopping || ndiRestartTimer) return;
+    const delay = Math.min(30000, 1000 * 2 ** Math.min(ndiRestartFailures++, 5));
+    console.warn(`NDI indisponivel; nova tentativa em ${delay} ms.`);
+    ndiRestartTimer = setTimeout(() => {
+        ndiRestartTimer = null;
+        startNdiSender();
+    }, delay);
+}
+
 function startNdiSender() {
-    if (ndiProcess) {
-        return;
-    }
+    if (ndiProcess || ndiStopping) return;
 
     ndiReady = false;
     ndiFrameBusy = false;
 
-    const ndiExecutable = path.join(
-        __dirname,
-        "../core/ndi/ndi_test.exe"
-    );
+    const ndiExecutable = app.isPackaged
+        ? path.join(process.resourcesPath, "ndi", "ndi_test.exe")
+        : path.join(__dirname, "../core/ndi/ndi_test.exe");
 
-    console.log(
-        "Iniciando sender NDI..."
-    );
+    if (!fs.existsSync(ndiExecutable)) {
+        ndiLastError = "Executavel NDI ausente: " + ndiExecutable;
+        console.error(ndiLastError);
+        scheduleNdiRestart();
+        return;
+    }
 
     try {
-        ndiProcess = spawn(
-            ndiExecutable,
-            [],
-            {
-                cwd: path.dirname(
-                    ndiExecutable
-                ),
-                windowsHide: true,
-                stdio: [
-                    "pipe",
-                    "pipe",
-                    "pipe"
-                ]
-            }
-        );
+        const processRef = spawn(ndiExecutable, [], {
+            cwd: path.dirname(ndiExecutable),
+            windowsHide: true,
+            stdio: ["pipe", "pipe", "pipe"]
+        });
+        ndiProcess = processRef;
+        let pendingOutput = "";
 
-        ndiProcess.stdin.on(
-            "error",
-            (error) => {
-                ndiFrameBusy = false;
-                console.error(
-                    "Erro no stdin do engine NDI:",
-                    error
-                );
-            }
-        );
+        function onNdiStopped(reason) {
+            if (ndiProcess !== processRef) return;
+            ndiLastError = reason;
+            console.error("Sender NDI interrompido:", reason);
+            stopNativePlayback();
+            ndiReady = false;
+            ndiFrameBusy = false;
+            ndiProcess = null;
+            scheduleNdiRestart();
+        }
 
-        ndiProcess.stdout.on(
-            "data",
-            (data) => {
-                const message =
-                    data.toString().trim();
+        processRef.stdin.on("error", (error) => {
+            ndiFrameBusy = false;
+            console.error("Erro no canal de frames NDI:", error);
+            onNdiStopped("Erro ao transmitir frames NDI: " + error.message);
+        });
 
-                if (
-                    message.includes(
-                        "NDI ONLINE:"
-                    )
-                ) {
+        processRef.stdout.on("data", (data) => {
+            pendingOutput += data.toString();
+            let newline;
+            while ((newline = pendingOutput.indexOf("\n")) >= 0) {
+                const line = pendingOutput.slice(0, newline).trim();
+                pendingOutput = pendingOutput.slice(newline + 1);
+                if (line.includes("NDI ONLINE:")) {
                     ndiReady = true;
-                    console.log(
-                        "Santtos NDI confirmado ONLINE"
-                    );
+                    ndiLastError = "";
+                    ndiRestartFailures = 0;
                 }
-
-                if (message) {
-                    console.log(
-                        `[NDI] ${message}`
-                    );
-                }
+                if (line) console.log("[NDI] " + line.slice(0, 1024));
             }
+            if (pendingOutput.length > 2048) pendingOutput = pendingOutput.slice(-2048);
+        });
+
+        processRef.stderr.on("data", (data) => {
+            const message = data.toString().trim();
+            if (message) console.error("[NDI] " + message.slice(0, 2048));
+        });
+
+        processRef.on("error", (error) =>
+            onNdiStopped("Nao foi possivel iniciar NDI: " + error.message)
         );
-
-        ndiProcess.stderr.on(
-            "data",
-            (data) => {
-                const message =
-                    data.toString().trim();
-
-                if (message) {
-                    console.error(
-                        `[NDI] ${message}`
-                    );
-                }
-            }
-        );
-
-        ndiProcess.on(
-            "error",
-            (error) => {
-                console.error(
-                    "Falha ao iniciar NDI:",
-                    error
-                );
-
-                stopNativePlayback();
-                ndiReady = false;
-                ndiFrameBusy = false;
-                ndiProcess = null;
-            }
-        );
-
-        ndiProcess.on(
-            "exit",
-            (code, signal) => {
-                console.log(
-                    `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
-                );
-
-                stopNativePlayback();
-                ndiReady = false;
-                ndiFrameBusy = false;
-                ndiProcess = null;
-            }
+        processRef.on("exit", (code, signal) =>
+            onNdiStopped(`Processo NDI encerrou (codigo ${code}; sinal ${signal}).`)
         );
     } catch (error) {
-        console.error(
-            "Erro ao iniciar sender NDI:",
-            error
-        );
-
+        ndiLastError = String(error?.message || error);
+        console.error("Erro ao iniciar sender NDI:", error);
         stopNativePlayback();
         ndiReady = false;
-        ndiFrameBusy = false;
         ndiProcess = null;
+        scheduleNdiRestart();
     }
 }
 
 function stopNdiSender() {
-    stopNativePlayback();
-
-    if (
-        !ndiProcess ||
-        ndiProcess.killed
-    ) {
-        return;
+    ndiStopping = true;
+    if (ndiRestartTimer) {
+        clearTimeout(ndiRestartTimer);
+        ndiRestartTimer = null;
     }
-
-    console.log(
-        "Encerrando sender NDI..."
-    );
-
+    stopNativePlayback();
     ndiFrameBusy = false;
     ndiReady = false;
-
-    ndiProcess.kill();
+    const processRef = ndiProcess;
     ndiProcess = null;
+    if (processRef && !processRef.killed) {
+        processRef.kill();
+    }
 }
 
 function startSystem() {
