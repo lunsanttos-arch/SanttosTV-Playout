@@ -61,13 +61,30 @@ function initializePlayoutReports({ userDataPath, documentsPath }) {
         recovered = true;
     }
     if (recovered) saveState();
-    const reportDates = new Set(
-        state.entries
-            .filter((entry) => entry.status === "EXECUTADO" || entry.status === "PULADO")
-            .map((entry) => entry.reportDate)
-            .filter((value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value))
-    );
-    for (const dateKey of reportDates) queueExport(dateKey);
+    // Reconstroi apenas planilhas ausentes ou desatualizadas; evita
+    // reescrever anos de relatorios em cada inicializacao.
+    const reportDates = new Map();
+    for (const entry of state.entries) {
+        if ((entry.status !== "EXECUTADO" && entry.status !== "PULADO") ||
+            typeof entry.reportDate !== "string" ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(entry.reportDate)) continue;
+        const lastChange = Date.parse(entry.endedAt || entry.startedAt) || 0;
+        reportDates.set(entry.reportDate, Math.max(
+            reportDates.get(entry.reportDate) || 0,
+            lastChange
+        ));
+    }
+    for (const [dateKey, lastChange] of reportDates) {
+        const outputFile = path.join(reportFolder, `Relatorio_Exibicao_${dateKey}.xlsx`);
+        let needsExport = true;
+        try {
+            needsExport = !fs.existsSync(outputFile) ||
+                fs.statSync(outputFile).mtimeMs + 1000 < lastChange;
+        } catch (error) {
+            console.warn("Nao foi possivel verificar o relatorio:", error);
+        }
+        if (needsExport) queueExport(dateKey);
+    }
 
     return { reportFolder, stateFile };
 }
