@@ -165,6 +165,12 @@ contextBridge.exposeInMainWorld(
                 style
             ),
 
+        saveExhibitionStyle: (style) =>
+            ipcRenderer.invoke(
+                "settings:set-exhibition-style",
+                style
+            ),
+
         selectWatermark: () =>
             ipcRenderer.invoke(
                 "watermark:select"
