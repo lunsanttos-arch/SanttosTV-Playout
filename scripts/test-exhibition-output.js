@@ -130,4 +130,35 @@ for (const status of ["INEDITO", "REPRISE", "AO_VIVO"]) {
     assert(rawFrame[logoPixel] > 60 && rawFrame[logoPixel] < 190,
         `${status}: synthetic logo was overwritten or disappeared.`);
 }
-console.log("EXHIBITION OUTPUT QA: APROVADO — legenda visível acima do logo em três frames Full HD reais.");
+
+const customGraph = "[0:v]null[base];" +
+    buildExhibitionDrawtext("base", "REPRISE", { x: 1660, y: 165, widthPx: 190 },
+        fontForFilter, custom) +
+    ";[exhibition]null[program]";
+const customFrame = execFileSync(ffmpegStatic, [
+    "-hide_banner", "-loglevel", "error",
+    "-f", "lavfi", "-i", "color=c=black:s=1920x1080:r=1:d=0.1",
+    "-filter_complex", customGraph, "-map", "[program]",
+    "-frames:v", "1", "-pix_fmt", "rgb24", "-f", "rawvideo", "-"
+], {
+    windowsHide: true,
+    timeout: 25000,
+    maxBuffer: 10 * 1024 * 1024,
+    stdio: ["ignore", "pipe", "pipe"]
+});
+assert.equal(customFrame.length, 1920 * 1080 * 3,
+    "Configuração personalizada precisa gerar um quadro de vídeo válido.");
+// Verify a nonblack caption rectangle in its personalized location, not
+// merely that FFmpeg accepted arguments.
+let customPixels = 0;
+for (let y = 95; y < 140; y++) {
+    for (let x = 1420; x < 1830; x++) {
+        const offset = (y * 1920 + x) * 3;
+        if (customFrame[offset] + customFrame[offset + 1] + customFrame[offset + 2] > 120) {
+            customPixels++;
+        }
+    }
+}
+assert(customPixels > 1000, "A tarja opcional e o texto personalizado precisam ser desenhados.");
+console.log("EXHIBITION OUTPUT QA: APROVADO — padrões sem tarja e estilo personalizado com tarja renderizados no FFmpeg.");
+
