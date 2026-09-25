@@ -1175,6 +1175,18 @@ button {
     border-color: #9e4556;
 }
 
+.timeline-time-legend {
+    display: block;
+    margin: 5px 0 9px;
+    padding: 6px 9px;
+    color: #b9c5d2;
+    font-size: 10px;
+    line-height: 1.5;
+    background: #20252c;
+    border-left: 3px solid #5c90b1;
+    border-radius: 3px;
+}
+
 .timeline-air-time {
     color: #d77486 !important;
     font-size: 10px !important;
