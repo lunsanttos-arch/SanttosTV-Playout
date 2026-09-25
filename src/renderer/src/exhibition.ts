@@ -77,7 +77,7 @@ export const DEFAULT_EXHIBITION_STYLE: ExhibitionStyle = {
 };
 
 export function exhibitionText(type: unknown, style: ExhibitionStyle): string {
-    if (!style.enabled || !type || type === "NORMAL") return "";
+    if (!style.enabled || typeof type !== "string" || type === "NORMAL") return "";
     if (!Object.prototype.hasOwnProperty.call(DEFAULT_EXHIBITION_STYLE.labels, type)) return "";
     const key = type as Exclude<ExhibitionType, "NORMAL">;
     return style.labels[key] || DEFAULT_EXHIBITION_STYLE.labels[key];
