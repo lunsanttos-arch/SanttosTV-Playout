@@ -1555,7 +1555,17 @@ function startSystem() {
     );
 }
 
+// Impede duas instancias de gravarem a mesma grade e disputarem o mesmo sender.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+});
+
 app.whenReady().then(() => {
+    if (!hasSingleInstanceLock) return;
     try {
         startSystem();
         protocol.handle(MEDIA_SCHEME, (request) => {
