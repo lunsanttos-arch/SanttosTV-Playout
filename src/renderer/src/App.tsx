@@ -1116,7 +1116,7 @@ function PlayoutPanel({
         !programVideo.paused &&
         !programVideo.seeking &&
         programVideo.readyState >= 2 &&
-        timelineClock - lastProgressRef.current.atMs <= 4000 &&
+        Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000 &&
         (testBench || (ndiOnline && nativePlaybackActive))
     );
     const timelineForecast = buildTimelineForecast(
@@ -1125,7 +1125,8 @@ function PlayoutPanel({
         {
             nowMs: timelineClock,
             isRunning: forecastRunning,
-            currentTime
+            currentTime,
+            sampledAtMs: lastProgressRef.current.atMs
         }
     );
 
