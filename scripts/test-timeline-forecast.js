@@ -23,7 +23,7 @@ vm.runInNewContext(compiled.outputText, {
     module: cjs, exports: cjs.exports, Date, Math, Map, Number
 }, { filename: "timeline-forecast.js", timeout: 1000 });
 const {
-    buildTimelineForecast, knownClipRange, formatEstimatedClock,
+    buildTimelineForecast, buildPlannedSchedule, knownClipRange, formatEstimatedClock,
     formatRemaining, describeForecastEntry
 } = cjs.exports;
 
@@ -145,6 +145,34 @@ const long = plan([{ id: "feature", duration: 100000 }, { id: "next", duration: 
     "feature", { currentTime: 0 });
 assert.equal(long.entries.get("next").remainingSeconds, 100000);
 assert(long.entries.get("next").startsAtMs > now + 86400000);
+// OPEC: programmed hours must not be confused with a live PROGRAM ETA.
+const planned = buildPlannedSchedule([
+    { id: "opening", duration: 60 },
+    { id: "part-1", duration: 110, inPoint: 10, outPoint: 70 },
+    { id: "ad-break", duration: 30 }
+], "23:59");
+assert.equal(planned.times.get("opening"), "23:59:00");
+assert.equal(planned.times.get("part-1"), "00:00:00 (+1 dia)");
+assert.equal(planned.times.get("ad-break"), "00:01:00 (+1 dia)");
+assert.equal(planned.end, "00:01:30 (+1 dia)");
+assert.equal(planned.totalSeconds, 150);
+const missingPlanned = buildPlannedSchedule([
+    { id: "known", duration: 60 },
+    { id: "unknown", duration: null },
+    { id: "after", duration: 80 }
+], "06:00");
+assert.equal(missingPlanned.times.get("unknown"), "06:01:00");
+assert.match(missingPlanned.times.get("after"), /SEM PREVISÃO/);
+assert.equal(missingPlanned.end, "SEM PREVISÃO");
+assert.equal(missingPlanned.totalSeconds, null);
+const plannedLoop = buildPlannedSchedule([
+    { id: "repeat", duration: 20, loop: true },
+    { id: "next", duration: 20 }
+], "08:00");
+assert.match(plannedLoop.times.get("next"), /LOOP ANTERIOR/);
+const badStart = buildPlannedSchedule([{ id: "clip", duration: 20 }], "29:75");
+assert.equal(badStart.times.get("clip"), "SEM PREVISÃO — INÍCIO INVÁLIDO");
+
 console.log(
     "TIMELINE ETA QA: APROVADO — cortes, countdown estável, pausa/retomada, seek, reordenação, loop, mídia sem duração e meia-noite."
 );
