@@ -122,6 +122,10 @@ async function main() {
         assert(scan.filePaths.some((p) => p.endsWith("A.mp4")));
         assert(scan.filePaths.some((p) => p.endsWith("B.MKV")));
 
+        // Salvar segunda geracao: o backup mantem a versao anterior, agora
+        // ja contendo a categoria personalizada.
+        library.saveLibraryCategories(library.getLibraryCategories());
+
         // Configuracao danificada nunca pode apagar as abas da biblioteca.
         const categoriesFile = path.join(userData, "library-categories.json");
         assert(fs.existsSync(`${categoriesFile}.bak`));
