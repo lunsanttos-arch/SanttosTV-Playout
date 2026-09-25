@@ -545,7 +545,7 @@ export default function App() {
                         className={ndiOnline ? "status-online" : ""}
                     >
                         {ndiOnline
-                            ? "● NDI ONLINE"
+                            ? "● NDI ENGINE ONLINE (VÍDEO; ÁUDIO PENDENTE)"
                             : ndiError
                               ? `● NDI OFFLINE: ${ndiError}`
                               : "● NDI OFFLINE"}
