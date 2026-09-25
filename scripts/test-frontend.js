@@ -22,6 +22,16 @@ assert(app.includes("distributeParts"), "Editor de filmes deve oferecer número 
 assert(app.includes("partCount"), "Editor de filmes deve permitir seleção de 1 a 6 blocos.");
 assert(app.includes("describeForecast"), "Timeline deve exibir tempo restante e horário previsto.");
 assert(app.includes("EXHIBITION_OPTIONS"), "Timeline deve sinalizar inédito/reprise/estreia.");
+assert(app.includes('className="program-exhibition-overlay"'),
+    "O identificador editorial deve aparecer sobre a imagem do PROGRAM.");
+assert(app.includes("exhibitionType:") && app.includes("normalizeExhibitionType(mediaItem.exhibitionType)"),
+    "O tipo de exibicao deve seguir para o engine FFmpeg nativo.");
+const exhibition = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "exhibition.ts"), "utf8"
+);
+assert(exhibition.includes("exhibitionPreviewAnchor"),
+    "A legenda no monitor precisa acompanhar a posicao configurada do logo.");
+
 const opecPath = path.join(root, "src", "renderer", "src", "OpecSchedulerPanel.tsx");
 const opec = fs.readFileSync(opecPath, "utf8");
 assert(opec.includes("exhibitionType"), "Roteiro diário deve permitir marcação editorial.");
