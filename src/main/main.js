@@ -3,11 +3,16 @@ const {
     BrowserWindow,
     ipcMain,
     dialog,
-    nativeImage
+    nativeImage,
+    protocol,
+    net,
+    session
 } = require("electron");
 
 const path = require("path");
 const fs = require("fs");
+const { pathToFileURL, fileURLToPath } = require("url");
+const { MEDIA_SCHEME, resolveMediaRequest } = require("../core/media/media-protocol");
 const { spawn } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
 
@@ -63,6 +68,50 @@ const {
 
 const isDevelopment = !app.isPackaged;
 
+// Um protocolo exclusivo permite reproduzir midias com webSecurity habilitado.
+protocol.registerSchemesAsPrivileged([{
+    scheme: MEDIA_SCHEME,
+    privileges: { standard: true, secure: true, stream: true }
+}]);
+
+function isTrustedRendererUrl(rawUrl) {
+    try {
+        const parsed = new URL(rawUrl);
+        if (isDevelopment) {
+            return parsed.origin === "http://localhost:5173" &&
+                parsed.pathname === "/";
+        }
+        if (parsed.protocol !== "file:") return false;
+        return path.resolve(fileURLToPath(parsed)) ===
+            path.resolve(__dirname, "../../dist/index.html");
+    } catch {
+        return false;
+    }
+}
+
+function isTrustedIpcSender(event) {
+    return Boolean(
+        mainWindow && !mainWindow.isDestroyed() &&
+        event?.sender === mainWindow.webContents &&
+        event?.senderFrame === mainWindow.webContents.mainFrame &&
+        isTrustedRendererUrl(event.senderFrame.url)
+    );
+}
+
+function registerTrustedHandle(channel, listener) {
+    ipcMain.handle(channel, (event, ...args) => {
+        if (!isTrustedIpcSender(event)) throw new Error("Origem IPC nao autorizada.");
+        return listener(event, ...args);
+    });
+}
+
+function registerTrustedOn(channel, listener) {
+    ipcMain.on(channel, (event, ...args) => {
+        if (!isTrustedIpcSender(event)) return;
+        return listener(event, ...args);
+    });
+}
+
 const NDI_FRAME_WIDTH = 1920;
 const NDI_FRAME_HEIGHT = 1080;
 const NDI_BYTES_PER_PIXEL = 4;
@@ -115,7 +164,8 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            webSecurity: false,
+            webSecurity: true,
+            sandbox: true,
             preload: path.join(
                 __dirname,
                 "preload.js"
@@ -123,6 +173,11 @@ function createWindow() {
         }
     });
 
+    mainWindow.webContents.on("will-navigate", (event, targetUrl) => {
+        if (!isTrustedRendererUrl(targetUrl)) event.preventDefault();
+    });
+    mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    mainWindow.webContents.on("will-attach-webview", (event) => event.preventDefault());
     mainWindow.maximize();
 
     if (isDevelopment) {
@@ -255,10 +310,15 @@ async function analyzeMediaItem(mediaItem) {
 }
 
 async function analyzeMediaItems(mediaItems) {
-    await Promise.all(
-        mediaItems.map(analyzeMediaItem)
-    );
-
+    // Evita abrir centenas de decoders simultaneos durante importacoes grandes.
+    const poolSize = Math.min(2, mediaItems.length);
+    let nextIndex = 0;
+    await Promise.all(Array.from({ length: poolSize }, async () => {
+        while (nextIndex < mediaItems.length) {
+            const item = mediaItems[nextIndex++];
+            await analyzeMediaItem(item);
+        }
+    }));
     return getMedia();
 }
 
@@ -570,10 +630,12 @@ function startNativePlayback(
         );
     }
 
-    if (!fs.existsSync(filePath)) {
-        throw new Error(
-            `Arquivo não encontrado: ${filePath}`
-        );
+    const imported = getMedia().some((item) =>
+        typeof item.path === "string" &&
+        path.resolve(item.path) === path.resolve(filePath)
+    );
+    if (!imported || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        throw new Error("O arquivo deve estar cadastrado na biblioteca.");
     }
 
     const normalizedStartSeconds =
@@ -869,7 +931,7 @@ function createWatermarkPreviewDataUrl(filePath) {
 }
 
 function registerIpcHandlers() {
-    ipcMain.handle(
+    registerTrustedHandle(
         "ndi:status",
         async () => ({
             online:
@@ -882,7 +944,7 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "ndi:play-file",
         async (
             _event,
@@ -912,7 +974,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "ndi:stop-file",
         async () => {
             stopNativePlayback();
@@ -920,12 +982,12 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "library-categories:get",
         async () => getLibraryCategories()
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "library-categories:save",
         async (_event, categories) => {
             try {
@@ -944,7 +1006,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "library-categories:select-folder",
         async () => {
             const result = await dialog.showOpenDialog(
@@ -963,7 +1025,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "library-categories:scan",
         async (_event, categoryId) => {
             try {
@@ -982,12 +1044,12 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "settings:get",
         async () => getSettings()
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "settings:set-output",
         async (_event, output) => ({
             ok: true,
@@ -996,7 +1058,7 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "settings:set-hashtag-style",
         async (_event, style) => ({
             ok: true,
@@ -1005,7 +1067,7 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "watermark:preview",
         async (_event, filePath) => {
             try {
@@ -1035,7 +1097,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "watermark:select",
         async () => {
             try {
@@ -1104,7 +1166,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "settings:set-watermark-style",
         async (_event, style) => {
             try {
@@ -1136,7 +1198,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "report:playout-start",
         async (_event, mediaItem) => {
             try {
@@ -1159,7 +1221,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "report:playout-finish",
         async (_event, entryId, status, playedSeconds) => {
             try {
@@ -1183,7 +1245,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "report:folder",
         async () => ({
             ok: true,
@@ -1191,12 +1253,12 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "rundown:get",
         async (_event, date) => getDailyRundown(date)
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "rundown:save",
         async (_event, rundown) => {
             try {
@@ -1216,18 +1278,18 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "timeline:list",
         async () => getTimeline()
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "timeline:save",
         async (_event, timelineItems) =>
             saveTimeline(timelineItems)
     );
 
-    ipcMain.on(
+    registerTrustedOn(
         "ndi:frame",
         (_event, frameData) => {
             if (
@@ -1241,8 +1303,9 @@ function registerIpcHandlers() {
                 return;
             }
 
-            const frameBuffer =
-                Buffer.from(frameData);
+            if (!(frameData instanceof Uint8Array) ||
+                frameData.byteLength !== NDI_FRAME_SIZE) return;
+            const frameBuffer = Buffer.from(frameData);
 
             if (
                 frameBuffer.length !==
@@ -1272,7 +1335,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "media:select",
         async () => {
             const result =
@@ -1314,7 +1377,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "media:list",
         async () => {
             const media = getMedia();
@@ -1336,7 +1399,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "media:import",
         async (_event, filePaths) => {
             const importResult =
@@ -1354,7 +1417,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "media:remove",
         async (_event, mediaId) =>
             removeMedia(mediaId)
@@ -1512,7 +1575,7 @@ function startSystem() {
         "Inicializando Santtos TV Automation..."
     );
 
-    initializeDatabase();
+    initializeDatabase({ userDataPath: app.getPath("userData") });
     initializeLibraryCategories(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
@@ -1527,10 +1590,30 @@ function startSystem() {
 }
 
 app.whenReady().then(() => {
-    startSystem();
-    startNdiSender();
-    registerIpcHandlers();
-    createWindow();
+    try {
+        startSystem();
+        protocol.handle(MEDIA_SCHEME, (request) => {
+            const allowedPath = resolveMediaRequest(request.url, getMedia());
+            if (!allowedPath) {
+                return new Response("Midia nao autorizada ou indisponivel", { status: 404 });
+            }
+            return net.fetch(pathToFileURL(allowedPath).toString());
+        });
+        session.defaultSession.setPermissionRequestHandler(
+            (_webContents, _permission, callback) => callback(false)
+        );
+        startNdiSender();
+        registerIpcHandlers();
+        createWindow();
+    } catch (error) {
+        console.error("Falha fatal ao iniciar o playout:", error);
+        dialog.showErrorBox(
+            "Santtos TV - inicializacao bloqueada",
+            String(error?.message || error)
+        );
+        app.exit(1);
+        return;
+    }
 
     app.on("activate", () => {
         if (
