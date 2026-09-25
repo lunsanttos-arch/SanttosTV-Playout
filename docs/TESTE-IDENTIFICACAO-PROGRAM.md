@@ -3,8 +3,7 @@
 O campo **Exibição** na Timeline e no OPEC/Scheduler é por ocorrência.
 A marcação **Inédito**, **Reprise**, **Estreia**, **Especial** ou **Ao vivo**
 é agora desenhada no vídeo de saída do FFmpeg, acima da posição configurada
-para o logo. **Normal** não desenha legenda. O texto é branco em uma tarja
-preta translúcida, alinhada à borda direita da marca d'água.
+para o logo. **Normal** não desenha legenda. O texto é branco, **sem tarja de fundo**, com contorno escuro discreto e alinhamento à borda direita da marca d'água.
 
 A legenda é desenhada *depois* do logo e do GC/hashtag no mesmo filtro do
 PROGRAM: acompanha o frame NDI quando o sender nativo estiver disponível.
@@ -26,9 +25,9 @@ npm run dev:test
 ```
 
 Na bancada, marque **Logo** em um item da timeline e escolha **Reprise**.
-Selecione-o: a tarja **REPRISE** deve aparecer na imagem do monitor,
+Selecione-o: o texto **REPRISE**, sem fundo, deve aparecer na imagem do monitor,
 acima do logo. Troque para **Inédito** e confira **INÉDITO**.
-Troque para **Normal** e confira que a tarja desaparece. Salve no roteiro
+Troque para **Normal** e confira que o texto desaparece. Salve no roteiro
 OPEC, aplique-o e reabra o programa; a marcação deve persistir.
 
 O script `test:exhibition-output` usa FFmpeg para renderizar **três
