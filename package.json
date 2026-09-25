@@ -10,7 +10,7 @@
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "start": "npm run dev",
     "build:renderer": "vite build",
-    "build": "npm run build:renderer && electron-builder",
+    "build": "npm run build:renderer && node scripts/check-native-runtime.js && electron-builder",
     "test:backend": "node scripts/test-backend.js",
     "test:security": "node scripts/test-security.js",
     "test:frontend": "npm exec tsc -- --noEmit && npm run build:renderer && node scripts/test-frontend.js",
@@ -42,6 +42,13 @@
   "build": {
     "appId": "com.santtos.tvautomation",
     "productName": "Santtos TV Automation",
+    "extraResources": [
+      {
+        "from": "src/core/ndi",
+        "to": "ndi",
+        "filter": ["ndi_test.exe", "Processing.NDI.Lib.x64.dll"]
+      }
+    ],
     "asarUnpack": [
       "node_modules/@derhuerst/ffprobe-static/**/*",
       "node_modules/ffmpeg-static/**/*",
