@@ -6,11 +6,15 @@ import {
 import "./broadcast-settings.css";
 import WatermarkSettingsTab from "./WatermarkSettingsTab";
 import LibraryFolderSettingsTab from "./LibraryFolderSettingsTab";
+import ExhibitionSettingsTab from "./ExhibitionSettingsTab";
+import { DEFAULT_EXHIBITION_STYLE } from "./exhibition";
+import type { ExhibitionStyle } from "./exhibition";
 
 type SettingsTab =
     | "output"
     | "library"
     | "watermark"
+    | "exhibition"
     | "hashtag";
 
 interface HashtagStyle {
@@ -70,6 +74,8 @@ interface Props {
     onSaveHashtag: (
         style: HashtagStyle
     ) => Promise<void>;
+    exhibitionStyle: ExhibitionStyle;
+    onSaveExhibition: (style: ExhibitionStyle) => Promise<void>;
 }
 
 const DEFAULT_OUTPUT: OutputSettings = {
@@ -108,7 +114,9 @@ const DEFAULT_OUTPUT: OutputSettings = {
 
 export default function BroadcastSettingsPanel({
     hashtagStyle,
-    onSaveHashtag
+    onSaveHashtag,
+    exhibitionStyle,
+    onSaveExhibition
 }: Props) {
     const [tab, setTab] =
         useState<SettingsTab>("output");
@@ -116,6 +124,10 @@ export default function BroadcastSettingsPanel({
         useState<OutputSettings>(DEFAULT_OUTPUT);
     const [hashtag, setHashtag] =
         useState<HashtagStyle>(hashtagStyle);
+    const [exhibition, setExhibition] = useState<ExhibitionStyle>(exhibitionStyle);
+    const [watermarkPosition, setWatermarkPosition] = useState({
+        filePath: "", x: 1680, y: 40, widthPx: 180, opacity: 0.82
+    });
     const [status, setStatus] =
         useState("");
     const [isSaving, setIsSaving] =
@@ -124,6 +136,9 @@ export default function BroadcastSettingsPanel({
     useEffect(() => {
         setHashtag(hashtagStyle);
     }, [hashtagStyle]);
+    useEffect(() => {
+        setExhibition(exhibitionStyle);
+    }, [exhibitionStyle]);
 
     useEffect(() => {
         const api = (window as any).santtosAPI;
@@ -134,6 +149,10 @@ export default function BroadcastSettingsPanel({
                     settings.output ??
                         DEFAULT_OUTPUT
                 );
+                setWatermarkPosition(settings.watermarkStyle ?? {
+                    filePath: "", x: 1680, y: 40, widthPx: 180, opacity: 0.82
+                });
+                setExhibition(settings.exhibitionStyle ?? DEFAULT_EXHIBITION_STYLE);
             })
             .catch((error: unknown) => {
                 console.error(error);
@@ -200,6 +219,24 @@ export default function BroadcastSettingsPanel({
             ...values
         }));
         setStatus("");
+    }
+
+    function patchExhibition(values: Partial<ExhibitionStyle>) {
+        setExhibition(current => ({ ...current, ...values }));
+        setStatus("");
+    }
+
+    async function saveExhibition() {
+        setIsSaving(true);
+        try {
+            await onSaveExhibition(exhibition);
+            setStatus("Identificação salva. A saída NDI usa o novo estilo ao iniciar o próximo vídeo; a prévia foi atualizada.");
+        } catch (error) {
+            console.error("Falha ao salvar identificação:", error);
+            setStatus("Não foi possível salvar a identificação no vídeo.");
+        } finally {
+            setIsSaving(false);
+        }
     }
 
     async function saveOutput() {
@@ -305,6 +342,13 @@ export default function BroadcastSettingsPanel({
                     </button>
                     <button
                         type="button"
+                        className={tab === "exhibition" ? "active" : ""}
+                        onClick={() => setTab("exhibition")}
+                    >
+                        Identificação no vídeo
+                    </button>
+                    <button
+                        type="button"
                         className={
                             tab === "hashtag"
                                 ? "active"
@@ -331,6 +375,12 @@ export default function BroadcastSettingsPanel({
                 <LibraryFolderSettingsTab />
             ) : tab === "watermark" ? (
                 <WatermarkSettingsTab />
+            ) : tab === "exhibition" ? (
+                <ExhibitionSettingsTab
+                    style={exhibition}
+                    watermark={watermarkPosition}
+                    patch={patchExhibition}
+                />
             ) : (
                 <HashtagTab
                     style={hashtag}
@@ -352,7 +402,9 @@ export default function BroadcastSettingsPanel({
                             ? saveOutput
                             : tab === "hashtag"
                               ? saveHashtag
-                              : undefined
+                              : tab === "exhibition"
+                                ? saveExhibition
+                                : undefined
                     }
                     style={
                         (tab === "watermark" || tab === "library")
