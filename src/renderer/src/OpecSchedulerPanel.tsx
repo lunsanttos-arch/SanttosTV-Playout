@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { MediaItem, RundownItem } from "./App";
 import { EXHIBITION_OPTIONS, exhibitionLabel, normalizeExhibitionType } from "./exhibition";
 import type { ExhibitionType } from "./exhibition";
+import { buildPlannedSchedule, knownClipRange } from "./timeline-forecast";
 import "./opec-scheduler.css";
 
 interface DailyRundown {
@@ -49,20 +50,6 @@ function formatDuration(seconds: number) {
     return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
 }
 
-function timeToSeconds(value: string) {
-    const match = /^(\d{2}):(\d{2})$/.exec(value);
-    if (!match) return 0;
-    return Number(match[1]) * 3600 + Number(match[2]) * 60;
-}
-
-function secondsToClock(value: number) {
-    const day = 24 * 3600;
-    const safe = ((Math.floor(value) % day) + day) % day;
-    const h = Math.floor(safe / 3600);
-    const m = Math.floor((safe % 3600) / 60);
-    const s = safe % 60;
-    return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
-}
 
 export default function OpecSchedulerPanel({ media, onApply }: Props) {
     const [date, setDate] = useState(todayKey());
@@ -105,20 +92,15 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
         return media.filter((item) => item.name.toLowerCase().includes(q));
     }, [media, search]);
 
-    const scheduleTimes = useMemo(() => {
-        const result = new Map<string, string>();
-        let cursor = timeToSeconds(startTime);
-        items.forEach((item) => {
-            result.set(item.rundownItemId, secondsToClock(cursor));
-            cursor += clipDuration(item);
-        });
-        return { times: result, end: secondsToClock(cursor) };
-    }, [items, startTime]);
-
-    const totalDuration = useMemo(
-        () => items.reduce((sum, item) => sum + clipDuration(item), 0),
-        [items]
+    // Roteiro = hora PROGRAMADA. A timeline calcula a entrada ESTIMADA
+    // de acordo com a reprodução real, pausa e sinal NDI.
+    const scheduleTimes = useMemo(() =>
+        buildPlannedSchedule(
+            items.map(item => ({ ...item, id: item.rundownItemId })),
+            startTime
+        ), [items, startTime]
     );
+    const totalDuration = scheduleTimes.totalSeconds;
 
     function addItem(mediaItem: MediaItem) {
         const sourceMediaId = mediaItem.sourceMediaId ?? mediaItem.id;
@@ -203,7 +185,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                 <div>
                     <div className="panel-title">OPEC / SCHEDULER</div>
                     <h1>Roteiro diário</h1>
-                    <p>Monte a ordem do dia e envie para o Playout sem alterar o arquivo original.</p>
+                    <p>Monte a ordem do dia e envie para o Playout sem alterar o arquivo original. Os horários aqui são programados; a previsão ao vivo aparece na Timeline.</p>
                 </div>
                 <div className="opec-header-actions">
                     <button onClick={() => void saveRundown()} disabled={loading}>Salvar roteiro</button>
@@ -216,8 +198,8 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
             <div className="opec-meta-row">
                 <label><span>Data</span><input type="date" value={date} onChange={(e) => setDate(e.currentTarget.value)} /></label>
                 <label className="opec-title-field"><span>Nome do roteiro</span><input value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={120} /></label>
-                <label><span>Início previsto</span><input type="time" value={startTime} onChange={(e) => setStartTime(e.currentTarget.value)} /></label>
-                <div className="opec-summary"><span>PROGRAMADO</span><strong>{formatDuration(totalDuration)}</strong><small>até {scheduleTimes.end}</small></div>
+                <label><span>Início programado</span><input type="time" value={startTime} onChange={(e) => setStartTime(e.currentTarget.value)} /></label>
+                <div className="opec-summary"><span>PROGRAMADO</span><strong>{totalDuration === null ? "--:--:--" : formatDuration(totalDuration)}</strong><small>até {scheduleTimes.end}</small></div>
             </div>
 
             {status && <div className="opec-status">{status}</div>}
@@ -249,7 +231,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                                 <div className="opec-entry-time">{scheduleTimes.times.get(item.rundownItemId)}</div>
                                 <div className="opec-item-main">
                                     <strong>{item.name}</strong>
-                                    <span>{formatDuration(clipDuration(item))} · {exhibitionLabel(item.exhibitionType)}</span>
+                                    <span>{knownClipRange(item) ? formatDuration(clipDuration(item)) : "DURAÇÃO NÃO ANALISADA"} · {exhibitionLabel(item.exhibitionType)}</span>
                                     <div className="opec-item-fields">
                                         <input
                                             placeholder="Bloco / identificação"

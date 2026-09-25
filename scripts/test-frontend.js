@@ -21,6 +21,28 @@ assert(app.includes("onError={(event) =>"), "Falha de reprodução precisa ser v
 assert(app.includes("distributeParts"), "Editor de filmes deve oferecer número variável de blocos.");
 assert(app.includes("partCount"), "Editor de filmes deve permitir seleção de 1 a 6 blocos.");
 assert(app.includes("describeForecast"), "Timeline deve exibir tempo restante e horário previsto.");
+assert(app.includes("buildTimelineForecast") && app.includes("forecastRunning"),
+    "A previsão deve depender do PROGRAM em execução.");
+assert(app.includes("sampledAtMs: lastProgressRef.current.atMs"),
+    "O horário absoluto não pode oscilar entre amostras do vídeo.");
+assert(app.includes("programmedEndAtMs") &&
+    !app.includes("timelineClock + delay * 1000"),
+    "Relógio de entrada deve reutilizar ETA real e não o cálculo antigo.");
+assert(app.includes("timelineForecast.isLive") &&
+    app.includes("Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000"),
+    "Parada do PLAYER e dados obsoletos precisam invalidar previsão.");
+const etaCode = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "timeline-forecast.ts"), "utf8"
+);
+assert(etaCode.includes("buildPlannedSchedule") &&
+    etaCode.includes("blocked-duration") && etaCode.includes("blocked-loop"),
+    "Agenda prevista precisa tratar cortes, mídia sem duração e loop.");
+const opecEta = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "OpecSchedulerPanel.tsx"), "utf8"
+);
+assert(opecEta.includes("buildPlannedSchedule") && opecEta.includes("Início programado"),
+    "OPEC deve distinguir horário programado de previsão real.");
+
 assert(app.includes("EXHIBITION_OPTIONS"), "Timeline deve sinalizar inédito/reprise/estreia.");
 assert(app.includes('className="program-exhibition-overlay"'),
     "O identificador editorial deve aparecer sobre a imagem do PROGRAM.");
