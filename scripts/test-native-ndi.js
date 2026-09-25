@@ -30,12 +30,18 @@ async function main() {
         const obj=path.join(temp,"ndi-test-stub.obj");
         const source=path.join(root,"src","core","ndi","ndi_test.cpp");
         const include=path.join(root,"tests","native","stub");
+        assert(fs.existsSync(vcvars),"vcvars64.bat ausente: "+vcvars);
         const command=[
+            "@echo off",
             `call "${vcvars}" >nul`,
+            "if errorlevel 1 exit /b 1",
             `cl /nologo /EHsc /std:c++17 /I"${include}" /c "${source}" /Fo:"${obj}"`,
+            "if errorlevel 1 exit /b 1",
             `link /nologo "${obj}" /OUT:"${exe}"`
-        ].join(" && ");
-        const build=spawnSync("cmd.exe",["/d","/s","/c",command],{
+        ].join("\\r\\n");
+        const script=path.join(temp,"compile-ndi-qa.cmd");
+        fs.writeFileSync(script,command+"\\r\\n","utf8");
+        const build=spawnSync("cmd.exe",["/d","/c",script],{
             cwd:root,windowsHide:true,encoding:"utf8",timeout:120000
         });
         if(build.status!==0) {
