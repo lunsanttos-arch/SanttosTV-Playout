@@ -5,14 +5,13 @@ const {
     dialog,
     nativeImage,
     protocol,
-    net,
     session
 } = require("electron");
 
 const path = require("path");
 const fs = require("fs");
-const { pathToFileURL, fileURLToPath } = require("url");
-const { MEDIA_SCHEME, resolveMediaRequest } = require("../core/media/media-protocol");
+const { fileURLToPath } = require("url");
+const { MEDIA_SCHEME, serveImportedVideo } = require("../core/media/media-protocol");
 const { spawn } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
@@ -1597,13 +1596,9 @@ app.whenReady().then(() => {
     if (!hasSingleInstanceLock) return;
     try {
         startSystem();
-        protocol.handle(MEDIA_SCHEME, (request) => {
-            const allowedPath = resolveMediaRequest(request.url, getMedia());
-            if (!allowedPath) {
-                return new Response("Midia nao autorizada ou indisponivel", { status: 404 });
-            }
-            return net.fetch(pathToFileURL(allowedPath).toString());
-        });
+        protocol.handle(MEDIA_SCHEME, (request) =>
+            serveImportedVideo(request, getMedia())
+        );
         session.defaultSession.setPermissionRequestHandler(
             (_webContents, _permission, callback) => callback(false)
         );
