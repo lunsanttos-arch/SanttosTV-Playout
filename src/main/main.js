@@ -3,11 +3,16 @@ const {
     BrowserWindow,
     ipcMain,
     dialog,
-    nativeImage
+    nativeImage,
+    protocol,
+    net,
+    session
 } = require("electron");
 
 const path = require("path");
 const fs = require("fs");
+const { pathToFileURL, fileURLToPath } = require("url");
+const { MEDIA_SCHEME, resolveMediaRequest } = require("../core/media/media-protocol");
 const { spawn } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
 
@@ -63,6 +68,50 @@ const {
 
 const isDevelopment = !app.isPackaged;
 
+// Um protocolo exclusivo permite reproduzir midias com webSecurity habilitado.
+protocol.registerSchemesAsPrivileged([{
+    scheme: MEDIA_SCHEME,
+    privileges: { standard: true, secure: true, stream: true }
+}]);
+
+function isTrustedRendererUrl(rawUrl) {
+    try {
+        const parsed = new URL(rawUrl);
+        if (isDevelopment) {
+            return parsed.origin === "http://localhost:5173" &&
+                parsed.pathname === "/";
+        }
+        if (parsed.protocol !== "file:") return false;
+        return path.resolve(fileURLToPath(parsed)) ===
+            path.resolve(__dirname, "../../dist/index.html");
+    } catch {
+        return false;
+    }
+}
+
+function isTrustedIpcSender(event) {
+    return Boolean(
+        mainWindow && !mainWindow.isDestroyed() &&
+        event?.sender === mainWindow.webContents &&
+        event?.senderFrame === mainWindow.webContents.mainFrame &&
+        isTrustedRendererUrl(event.senderFrame.url)
+    );
+}
+
+function registerTrustedHandle(channel, listener) {
+    ipcMain.handle(channel, (event, ...args) => {
+        if (!isTrustedIpcSender(event)) throw new Error("Origem IPC nao autorizada.");
+        return listener(event, ...args);
+    });
+}
+
+function registerTrustedOn(channel, listener) {
+    ipcMain.on(channel, (event, ...args) => {
+        if (!isTrustedIpcSender(event)) return;
+        return listener(event, ...args);
+    });
+}
+
 const NDI_FRAME_WIDTH = 1920;
 const NDI_FRAME_HEIGHT = 1080;
 const NDI_BYTES_PER_PIXEL = 4;
@@ -100,7 +149,25 @@ let ffmpegProcess = null;
 
 let ndiReady = false;
 let ndiFrameBusy = false;
+let ndiLastError = "";
+let ndiRestartTimer = null;
+let ndiRestartFailures = 0;
+let ndiStopping = false;
 let nativePlaybackActive = false;
+let playoutLastError = "";
+
+function onPlayoutFault(message) {
+    playoutLastError = message;
+    nativePlaybackActive = false;
+
+    // Em falha inesperada, enviar um frame preto valido ao sender:
+    // evita que o ultimo frame do comercial congele sem aviso.
+    if (ndiReady && ndiProcess?.stdin && !ndiProcess.stdin.destroyed) {
+        ndiProcess.stdin.write(Buffer.alloc(NDI_FRAME_SIZE), (error) => {
+            if (error) console.error("Nao foi possivel limpar o PROGRAM NDI:", error);
+        });
+    }
+}
 
 const analysesInProgress = new Map();
 
@@ -115,7 +182,8 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            webSecurity: false,
+            webSecurity: true,
+            sandbox: true,
             preload: path.join(
                 __dirname,
                 "preload.js"
@@ -123,6 +191,11 @@ function createWindow() {
         }
     });
 
+    mainWindow.webContents.on("will-navigate", (event, targetUrl) => {
+        if (!isTrustedRendererUrl(targetUrl)) event.preventDefault();
+    });
+    mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    mainWindow.webContents.on("will-attach-webview", (event) => event.preventDefault());
     mainWindow.maximize();
 
     if (isDevelopment) {
@@ -255,10 +328,15 @@ async function analyzeMediaItem(mediaItem) {
 }
 
 async function analyzeMediaItems(mediaItems) {
-    await Promise.all(
-        mediaItems.map(analyzeMediaItem)
-    );
-
+    // Evita abrir centenas de decoders simultaneos durante importacoes grandes.
+    const poolSize = Math.min(2, mediaItems.length);
+    let nextIndex = 0;
+    await Promise.all(Array.from({ length: poolSize }, async () => {
+        while (nextIndex < mediaItems.length) {
+            const item = mediaItems[nextIndex++];
+            await analyzeMediaItem(item);
+        }
+    }));
     return getMedia();
 }
 
@@ -570,10 +648,12 @@ function startNativePlayback(
         );
     }
 
-    if (!fs.existsSync(filePath)) {
-        throw new Error(
-            `Arquivo não encontrado: ${filePath}`
-        );
+    const imported = getMedia().some((item) =>
+        typeof item.path === "string" &&
+        path.resolve(item.path) === path.resolve(filePath)
+    );
+    if (!imported || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+        throw new Error("O arquivo deve estar cadastrado na biblioteca.");
     }
 
     const normalizedStartSeconds =
@@ -596,6 +676,7 @@ function startNativePlayback(
     }
 
     stopNativePlayback();
+    playoutLastError = "";
 
     const ffmpegPath = resolveFfmpegPath();
     const watermarkStyle =
@@ -756,7 +837,7 @@ function startNativePlayback(
 
             if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
-                nativePlaybackActive = false;
+                onPlayoutFault("Erro no decodificador FFmpeg: " + error.message);
             }
         }
     );
@@ -780,7 +861,9 @@ function startNativePlayback(
 
             if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
-                nativePlaybackActive = false;
+                onPlayoutFault(
+                    `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`
+                );
             }
         }
     );
@@ -869,7 +952,7 @@ function createWatermarkPreviewDataUrl(filePath) {
 }
 
 function registerIpcHandlers() {
-    ipcMain.handle(
+    registerTrustedHandle(
         "ndi:status",
         async () => ({
             online:
@@ -878,11 +961,14 @@ function registerIpcHandlers() {
                 !ndiProcess.killed,
             source:
                 "Santtos TV - PROGRAM",
-            nativePlaybackActive
+            nativePlaybackActive,
+            playoutError: playoutLastError || null,
+            error: ndiLastError || null,
+            restarting: Boolean(ndiRestartTimer)
         })
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "ndi:play-file",
         async (
             _event,
@@ -912,7 +998,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "ndi:stop-file",
         async () => {
             stopNativePlayback();
@@ -920,12 +1006,12 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "library-categories:get",
         async () => getLibraryCategories()
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "library-categories:save",
         async (_event, categories) => {
             try {
@@ -944,7 +1030,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "library-categories:select-folder",
         async () => {
             const result = await dialog.showOpenDialog(
@@ -963,7 +1049,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "library-categories:scan",
         async (_event, categoryId) => {
             try {
@@ -982,12 +1068,12 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "settings:get",
         async () => getSettings()
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "settings:set-output",
         async (_event, output) => ({
             ok: true,
@@ -996,7 +1082,7 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "settings:set-hashtag-style",
         async (_event, style) => ({
             ok: true,
@@ -1005,7 +1091,7 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "watermark:preview",
         async (_event, filePath) => {
             try {
@@ -1035,7 +1121,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "watermark:select",
         async () => {
             try {
@@ -1104,7 +1190,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "settings:set-watermark-style",
         async (_event, style) => {
             try {
@@ -1136,7 +1222,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "report:playout-start",
         async (_event, mediaItem) => {
             try {
@@ -1159,7 +1245,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "report:playout-finish",
         async (_event, entryId, status, playedSeconds) => {
             try {
@@ -1183,7 +1269,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "report:folder",
         async () => ({
             ok: true,
@@ -1191,12 +1277,12 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "rundown:get",
         async (_event, date) => getDailyRundown(date)
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "rundown:save",
         async (_event, rundown) => {
             try {
@@ -1216,18 +1302,18 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "timeline:list",
         async () => getTimeline()
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "timeline:save",
         async (_event, timelineItems) =>
             saveTimeline(timelineItems)
     );
 
-    ipcMain.on(
+    registerTrustedOn(
         "ndi:frame",
         (_event, frameData) => {
             if (
@@ -1241,8 +1327,9 @@ function registerIpcHandlers() {
                 return;
             }
 
-            const frameBuffer =
-                Buffer.from(frameData);
+            if (!(frameData instanceof Uint8Array) ||
+                frameData.byteLength !== NDI_FRAME_SIZE) return;
+            const frameBuffer = Buffer.from(frameData);
 
             if (
                 frameBuffer.length !==
@@ -1272,7 +1359,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "media:select",
         async () => {
             const result =
@@ -1314,7 +1401,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "media:list",
         async () => {
             const media = getMedia();
@@ -1336,7 +1423,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "media:import",
         async (_event, filePaths) => {
             const importResult =
@@ -1354,157 +1441,117 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    registerTrustedHandle(
         "media:remove",
         async (_event, mediaId) =>
             removeMedia(mediaId)
     );
 }
 
+function scheduleNdiRestart() {
+    if (ndiStopping || ndiRestartTimer) return;
+    const delay = Math.min(30000, 1000 * 2 ** Math.min(ndiRestartFailures++, 5));
+    console.warn(`NDI indisponivel; nova tentativa em ${delay} ms.`);
+    ndiRestartTimer = setTimeout(() => {
+        ndiRestartTimer = null;
+        startNdiSender();
+    }, delay);
+}
+
 function startNdiSender() {
-    if (ndiProcess) {
-        return;
-    }
+    if (ndiProcess || ndiStopping) return;
 
     ndiReady = false;
     ndiFrameBusy = false;
 
-    const ndiExecutable = path.join(
-        __dirname,
-        "../core/ndi/ndi_test.exe"
-    );
+    const ndiExecutable = app.isPackaged
+        ? path.join(process.resourcesPath, "ndi", "ndi_test.exe")
+        : path.join(__dirname, "../core/ndi/ndi_test.exe");
 
-    console.log(
-        "Iniciando sender NDI..."
-    );
+    if (!fs.existsSync(ndiExecutable)) {
+        ndiLastError = "Executavel NDI ausente: " + ndiExecutable;
+        console.error(ndiLastError);
+        scheduleNdiRestart();
+        return;
+    }
 
     try {
-        ndiProcess = spawn(
-            ndiExecutable,
-            [],
-            {
-                cwd: path.dirname(
-                    ndiExecutable
-                ),
-                windowsHide: true,
-                stdio: [
-                    "pipe",
-                    "pipe",
-                    "pipe"
-                ]
-            }
-        );
+        const processRef = spawn(ndiExecutable, [], {
+            cwd: path.dirname(ndiExecutable),
+            windowsHide: true,
+            stdio: ["pipe", "pipe", "pipe"]
+        });
+        ndiProcess = processRef;
+        let pendingOutput = "";
 
-        ndiProcess.stdin.on(
-            "error",
-            (error) => {
-                ndiFrameBusy = false;
-                console.error(
-                    "Erro no stdin do engine NDI:",
-                    error
-                );
-            }
-        );
+        function onNdiStopped(reason) {
+            if (ndiProcess !== processRef) return;
+            ndiLastError = reason;
+            console.error("Sender NDI interrompido:", reason);
+            stopNativePlayback();
+            ndiReady = false;
+            ndiFrameBusy = false;
+            ndiProcess = null;
+            scheduleNdiRestart();
+        }
 
-        ndiProcess.stdout.on(
-            "data",
-            (data) => {
-                const message =
-                    data.toString().trim();
+        processRef.stdin.on("error", (error) => {
+            ndiFrameBusy = false;
+            console.error("Erro no canal de frames NDI:", error);
+            onNdiStopped("Erro ao transmitir frames NDI: " + error.message);
+        });
 
-                if (
-                    message.includes(
-                        "NDI ONLINE:"
-                    )
-                ) {
+        processRef.stdout.on("data", (data) => {
+            pendingOutput += data.toString();
+            let newline;
+            while ((newline = pendingOutput.indexOf("\n")) >= 0) {
+                const line = pendingOutput.slice(0, newline).trim();
+                pendingOutput = pendingOutput.slice(newline + 1);
+                if (line.includes("NDI ONLINE:")) {
                     ndiReady = true;
-                    console.log(
-                        "Santtos NDI confirmado ONLINE"
-                    );
+                    ndiLastError = "";
+                    ndiRestartFailures = 0;
                 }
-
-                if (message) {
-                    console.log(
-                        `[NDI] ${message}`
-                    );
-                }
+                if (line) console.log("[NDI] " + line.slice(0, 1024));
             }
+            if (pendingOutput.length > 2048) pendingOutput = pendingOutput.slice(-2048);
+        });
+
+        processRef.stderr.on("data", (data) => {
+            const message = data.toString().trim();
+            if (message) console.error("[NDI] " + message.slice(0, 2048));
+        });
+
+        processRef.on("error", (error) =>
+            onNdiStopped("Nao foi possivel iniciar NDI: " + error.message)
         );
-
-        ndiProcess.stderr.on(
-            "data",
-            (data) => {
-                const message =
-                    data.toString().trim();
-
-                if (message) {
-                    console.error(
-                        `[NDI] ${message}`
-                    );
-                }
-            }
-        );
-
-        ndiProcess.on(
-            "error",
-            (error) => {
-                console.error(
-                    "Falha ao iniciar NDI:",
-                    error
-                );
-
-                stopNativePlayback();
-                ndiReady = false;
-                ndiFrameBusy = false;
-                ndiProcess = null;
-            }
-        );
-
-        ndiProcess.on(
-            "exit",
-            (code, signal) => {
-                console.log(
-                    `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
-                );
-
-                stopNativePlayback();
-                ndiReady = false;
-                ndiFrameBusy = false;
-                ndiProcess = null;
-            }
+        processRef.on("exit", (code, signal) =>
+            onNdiStopped(`Processo NDI encerrou (codigo ${code}; sinal ${signal}).`)
         );
     } catch (error) {
-        console.error(
-            "Erro ao iniciar sender NDI:",
-            error
-        );
-
+        ndiLastError = String(error?.message || error);
+        console.error("Erro ao iniciar sender NDI:", error);
         stopNativePlayback();
         ndiReady = false;
-        ndiFrameBusy = false;
         ndiProcess = null;
+        scheduleNdiRestart();
     }
 }
 
 function stopNdiSender() {
-    stopNativePlayback();
-
-    if (
-        !ndiProcess ||
-        ndiProcess.killed
-    ) {
-        return;
+    ndiStopping = true;
+    if (ndiRestartTimer) {
+        clearTimeout(ndiRestartTimer);
+        ndiRestartTimer = null;
     }
-
-    console.log(
-        "Encerrando sender NDI..."
-    );
-
+    stopNativePlayback();
     ndiFrameBusy = false;
     ndiReady = false;
-
-    ndiProcess.kill();
+    const processRef = ndiProcess;
     ndiProcess = null;
+    if (processRef && !processRef.killed) {
+        processRef.kill();
+    }
 }
 
 function startSystem() {
@@ -1512,7 +1559,7 @@ function startSystem() {
         "Inicializando Santtos TV Automation..."
     );
 
-    initializeDatabase();
+    initializeDatabase({ userDataPath: app.getPath("userData") });
     initializeLibraryCategories(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
@@ -1526,11 +1573,41 @@ function startSystem() {
     );
 }
 
+// Impede duas instancias de gravarem a mesma grade e disputarem o mesmo sender.
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) app.quit();
+app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
+});
+
 app.whenReady().then(() => {
-    startSystem();
-    startNdiSender();
-    registerIpcHandlers();
-    createWindow();
+    if (!hasSingleInstanceLock) return;
+    try {
+        startSystem();
+        protocol.handle(MEDIA_SCHEME, (request) => {
+            const allowedPath = resolveMediaRequest(request.url, getMedia());
+            if (!allowedPath) {
+                return new Response("Midia nao autorizada ou indisponivel", { status: 404 });
+            }
+            return net.fetch(pathToFileURL(allowedPath).toString());
+        });
+        session.defaultSession.setPermissionRequestHandler(
+            (_webContents, _permission, callback) => callback(false)
+        );
+        startNdiSender();
+        registerIpcHandlers();
+        createWindow();
+    } catch (error) {
+        console.error("Falha fatal ao iniciar o playout:", error);
+        dialog.showErrorBox(
+            "Santtos TV - inicializacao bloqueada",
+            String(error?.message || error)
+        );
+        app.exit(1);
+        return;
+    }
 
     app.on("activate", () => {
         if (

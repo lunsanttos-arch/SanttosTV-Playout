@@ -29,7 +29,7 @@ function normalizeCategory(value, index = 0) {
     return {
         id: id.slice(0, 120),
         name,
-        folderPath: typeof value?.folderPath === "string" ? value.folderPath.trim() : "",
+        folderPath: typeof value?.folderPath === "string" ? value.folderPath.trim().slice(0, 4096) : "",
         builtIn: Boolean(value?.builtIn)
     };
 }
@@ -43,9 +43,10 @@ function loadCategories() {
 
     try {
         const parsed = JSON.parse(fs.readFileSync(configFile, "utf8"));
-        const loaded = Array.isArray(parsed?.categories)
-            ? parsed.categories.map(normalizeCategory)
-            : [];
+        if (!Array.isArray(parsed?.categories)) {
+            throw new Error("Estrutura das abas da biblioteca invalida.");
+        }
+        const loaded = parsed.categories.map(normalizeCategory);
 
         const byId = new Map(loaded.map((item) => [item.id, item]));
         const mergedDefaults = DEFAULT_CATEGORIES.map((fallback) => ({
@@ -59,18 +60,33 @@ function loadCategories() {
         categories = [...mergedDefaults, ...custom];
     } catch (error) {
         console.error("Falha ao carregar categorias da biblioteca:", error);
-        categories = DEFAULT_CATEGORIES.map((item) => ({ ...item }));
+        try {
+            fs.copyFileSync(configFile, `${configFile}.corrompido-${Date.now()}`);
+        } catch (copyError) {
+            console.error("Nao foi possivel salvar copia do arquivo de categorias:", copyError);
+        }
+        throw new Error("Abas da biblioteca danificadas. Original preservado em " +
+            configFile + ". Confira o backup .bak antes de restaurar.");
     }
 }
 
 function saveConfig() {
     if (!configFile) return;
     fs.mkdirSync(path.dirname(configFile), { recursive: true });
-    fs.writeFileSync(
-        configFile,
-        JSON.stringify({ categories }, null, 2),
-        "utf8"
-    );
+    const temporaryFile = `${configFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    let handle;
+    try {
+        handle = fs.openSync(temporaryFile, "wx");
+        fs.writeFileSync(handle, JSON.stringify({ categories }, null, 2), "utf8");
+        fs.fsyncSync(handle);
+        fs.closeSync(handle);
+        handle = undefined;
+        if (fs.existsSync(configFile)) fs.copyFileSync(configFile, `${configFile}.bak`);
+        fs.renameSync(temporaryFile, configFile);
+    } finally {
+        if (handle !== undefined) fs.closeSync(handle);
+        if (fs.existsSync(temporaryFile)) fs.rmSync(temporaryFile, { force: true });
+    }
 }
 
 function getLibraryCategories() {
@@ -82,6 +98,9 @@ function saveLibraryCategories(nextCategories) {
         throw new TypeError("Categorias da biblioteca inválidas.");
     }
 
+    if (nextCategories.length > 60) {
+        throw new RangeError("Limite de 60 abas da biblioteca.");
+    }
     const normalized = nextCategories
         .map(normalizeCategory)
         .filter((item, index, list) => list.findIndex((other) => other.id === item.id) === index);
@@ -95,8 +114,14 @@ function saveLibraryCategories(nextCategories) {
         builtIn: true
     }));
     const custom = normalized.filter((item) => !DEFAULT_CATEGORIES.some((d) => d.id === item.id));
+    const previous = categories;
     categories = [...fixed, ...custom];
-    saveConfig();
+    try {
+        saveConfig();
+    } catch (error) {
+        categories = previous;
+        throw error;
+    }
     return getLibraryCategories();
 }
 

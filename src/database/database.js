@@ -2,15 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const databaseFolder = path.join(
-    __dirname,
-    "../../database"
-);
-
-const databaseFile = path.join(
-    databaseFolder,
-    "santtos-tv.json"
-);
+const legacyDatabaseFolder = path.join(__dirname, "../../database");
+let databaseFolder = legacyDatabaseFolder;
+let databaseFile = path.join(databaseFolder, "santtos-tv.json");
 
 const DEFAULT_HASHTAG_STYLE = {
     fontFamily: "Arial",
@@ -111,11 +105,26 @@ function ensureDatabaseFolder() {
 function saveDatabase() {
     ensureDatabaseFolder();
 
-    fs.writeFileSync(
-        databaseFile,
-        JSON.stringify(data, null, 2),
-        "utf8"
-    );
+    // Nunca sobrescrever o banco principal diretamente: uma queda de energia
+    // durante a escrita nao pode transformar a grade inteira em JSON parcial.
+    const temporaryFile = `${databaseFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    let descriptor;
+    try {
+        descriptor = fs.openSync(temporaryFile, "wx");
+        fs.writeFileSync(descriptor, JSON.stringify(data, null, 2), "utf8");
+        fs.fsyncSync(descriptor);
+        fs.closeSync(descriptor);
+        descriptor = undefined;
+
+        // Manter a geracao anterior para restauracao manual se necessario.
+        if (fs.existsSync(databaseFile)) {
+            fs.copyFileSync(databaseFile, `${databaseFile}.bak`);
+        }
+        fs.renameSync(temporaryFile, databaseFile);
+    } finally {
+        if (descriptor !== undefined) fs.closeSync(descriptor);
+        if (fs.existsSync(temporaryFile)) fs.rmSync(temporaryFile, { force: true });
+    }
 }
 
 function normalizeNumber(
@@ -188,6 +197,7 @@ function normalizeHexColor(value, fallback) {
 }
 
 function normalizeHashtagStyle(value = {}) {
+    value = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const allowedFonts = new Set([
         "Arial",
         "Segoe UI",
@@ -293,6 +303,7 @@ function normalizeHashtagStyle(value = {}) {
 }
 
 function normalizeWatermarkStyle(value = {}) {
+    value = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     return {
         filePath: normalizeText(value.filePath, "", 4096),
         widthPx: normalizeInteger(value.widthPx, 180, 24, 960),
@@ -304,9 +315,10 @@ function normalizeWatermarkStyle(value = {}) {
 }
 
 function normalizeOutputSettings(value = {}) {
-    const audio = value.audio ?? {};
-    const ndi = value.ndi ?? {};
-    const srt = value.srt ?? {};
+    value = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+    const audio = value.audio && typeof value.audio === "object" ? value.audio : {};
+    const ndi = value.ndi && typeof value.ndi === "object" ? value.ndi : {};
+    const srt = value.srt && typeof value.srt === "object" ? value.srt : {};
 
     return {
         resolution: normalizeChoice(
@@ -487,8 +499,12 @@ function loadDatabase() {
         );
 
         const parsedData = JSON.parse(fileContent);
-        const parsedSettings =
-            parsedData.settings ?? {};
+        if (!parsedData || typeof parsedData !== "object" || Array.isArray(parsedData) ||
+            !Array.isArray(parsedData.media) || !Array.isArray(parsedData.timeline) ||
+            !parsedData.settings || typeof parsedData.settings !== "object") {
+            throw new Error("O banco nao contem uma estrutura valida de programacao.");
+        }
+        const parsedSettings = parsedData.settings;
 
         data = {
             ...structuredClone(initialData),
@@ -548,31 +564,39 @@ function loadDatabase() {
                 : []
         };
     } catch (error) {
-        console.error(
-            "Não foi possível carregar o banco:",
-            error
-        );
-
+        console.error("Banco invalido: inicializacao bloqueada para evitar perda de grade.", error);
         const corruptedFile = path.join(
             databaseFolder,
             `santtos-tv-corrompido-${Date.now()}.json`
         );
-
         try {
-            fs.copyFileSync(
-                databaseFile,
-                corruptedFile
-            );
-        } catch {
-            // O programa continua mesmo que o backup falhe.
+            fs.copyFileSync(databaseFile, corruptedFile);
+        } catch (copyError) {
+            console.error("Nao foi possivel copiar o banco corrompido:", copyError);
         }
-
-        data = structuredClone(initialData);
-        saveDatabase();
+        throw new Error(
+            `Banco de programacao invalido. Original preservado em ${databaseFile}. ` +
+            `Verifique o backup ${databaseFile}.bak antes de restaurar: ${error.message}`
+        );
     }
 }
 
-function initializeDatabase() {
+function initializeDatabase(options = {}) {
+    if (options.userDataPath) {
+        if (typeof options.userDataPath !== "string" ||
+            !path.isAbsolute(options.userDataPath)) {
+            throw new TypeError("Diretorio de dados do usuario invalido.");
+        }
+        databaseFolder = path.join(options.userDataPath, "database");
+        databaseFile = path.join(databaseFolder, "santtos-tv.json");
+        ensureDatabaseFolder();
+        const legacyFile = path.join(legacyDatabaseFolder, "santtos-tv.json");
+        if (!fs.existsSync(databaseFile) && fs.existsSync(legacyFile) &&
+            path.resolve(legacyFile) !== path.resolve(databaseFile)) {
+            // Migra sem apagar nem alterar o arquivo antigo.
+            fs.copyFileSync(legacyFile, databaseFile, fs.constants.COPYFILE_EXCL);
+        }
+    }
     loadDatabase();
 }
 
@@ -749,6 +773,10 @@ function normalizeRundownDate(value) {
     const date = normalizeText(value, "", 10);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         throw new TypeError("Data do roteiro inválida.");
+    }
+    const parsed = new Date(`${date}T12:00:00.000Z`);
+    if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
+        throw new TypeError("Data do roteiro inexistente.");
     }
     return date;
 }

@@ -4,9 +4,11 @@ const {
     webUtils
 } = require("electron");
 
-const {
-    pathToFileURL
-} = require("url");
+// Sandboxed preload: Node modules from project files are intentionally unavailable.
+const buildMediaUrl = (filePath) =>
+    typeof filePath === "string" && filePath.length <= 4096
+        ? `santtos-media://local/video?path=${encodeURIComponent(filePath)}`
+        : "";
 
 contextBridge.exposeInMainWorld(
     "santtosAPI",
@@ -226,8 +228,6 @@ contextBridge.exposeInMainWorld(
         getMediaFileUrl: (
             filePath
         ) =>
-            pathToFileURL(
-                filePath
-            ).toString()
+            buildMediaUrl(filePath)
     }
 );

@@ -13,19 +13,14 @@ async function waitFor(predicate, timeoutMs = 6000) {
 }
 
 async function main() {
-    const repoRoot = path.resolve(__dirname, "..");
-    const databaseDir = path.join(repoRoot, "database");
-    const databaseFile = path.join(databaseDir, "santtos-tv.json");
-    const hadDatabase = fs.existsSync(databaseFile);
-    const databaseBackup = hadDatabase ? fs.readFileSync(databaseFile) : null;
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-tests-"));
+    const databaseUserData = path.join(tempRoot, "userData");
+    const databaseFile = path.join(databaseUserData, "database", "santtos-tv.json");
 
     try {
-        fs.mkdirSync(databaseDir, { recursive: true });
-        if (fs.existsSync(databaseFile)) fs.rmSync(databaseFile, { force: true });
-
         const db = require("../src/database/database");
-        db.initializeDatabase();
+        db.initializeDatabase({ userDataPath: databaseUserData });
+        assert(fs.existsSync(databaseFile), "Banco deve ser gravado em userData, nao no executavel.");
 
         const mediaFolder = path.join(tempRoot, "media");
         fs.mkdirSync(mediaFolder, { recursive: true });
@@ -127,6 +122,27 @@ async function main() {
         assert(scan.filePaths.some((p) => p.endsWith("A.mp4")));
         assert(scan.filePaths.some((p) => p.endsWith("B.MKV")));
 
+        // Salvar segunda geracao: o backup mantem a versao anterior, agora
+        // ja contendo a categoria personalizada.
+        library.saveLibraryCategories(library.getLibraryCategories());
+
+        // Configuracao danificada nunca pode apagar as abas da biblioteca.
+        const categoriesFile = path.join(userData, "library-categories.json");
+        assert(fs.existsSync(`${categoriesFile}.bak`));
+        fs.writeFileSync(categoriesFile, "{configuracao interrompida", "utf8");
+        assert.throws(
+            () => library.initializeLibraryCategories(userData),
+            /biblioteca danificadas/,
+            "Falha de leitura deve preservar categorias sem sobrescrever o original."
+        );
+        assert.strictEqual(
+            fs.readFileSync(categoriesFile, "utf8"),
+            "{configuracao interrompida"
+        );
+        fs.copyFileSync(`${categoriesFile}.bak`, categoriesFile);
+        library.initializeLibraryCategories(userData);
+        assert.strictEqual(library.scanLibraryCategory("custom-qa").filePaths.length, 2);
+
         const reports = require("../src/core/reporting/playout-report");
         const docs = path.join(tempRoot, "docs");
         reports.initializePlayoutReports({
@@ -154,22 +170,41 @@ async function main() {
             fs.readdirSync(reportDir).some((name) => name.endsWith(".xlsx"))
         );
 
+        assert(fs.existsSync(`${databaseFile}.bak`), "Deve existir backup da geracao anterior.");
+        const persisted = JSON.parse(fs.readFileSync(databaseFile, "utf8"));
+        assert.strictEqual(persisted.timeline.length, 1, "Timeline nao deve se perder no disco.");
+        fs.writeFileSync(databaseFile, "{json interrompido", "utf8");
+        assert.throws(
+            () => db.initializeDatabase({ userDataPath: databaseUserData }),
+            /Banco de programacao invalido/,
+            "Nao iniciar com programacao vazia se o arquivo estiver corrompido."
+        );
+        assert.strictEqual(fs.readFileSync(databaseFile, "utf8"), "{json interrompido");
+        fs.copyFileSync(`${databaseFile}.bak`, databaseFile);
+        db.initializeDatabase({ userDataPath: databaseUserData });
+        assert.strictEqual(db.getTimeline().length, 1, "Backup deve permitir restaurar a timeline.");
+        assert.throws(() => db.getDailyRundown("2026-02-30"), /inexistente/);
+
+        // Historico de exibição corrompido deve bloquear inicializacao.
+        const reportUserData = path.join(tempRoot, "report-user");
+        const reportStateFile = path.join(reportUserData, "reporting", "playout-report-state.json");
+        assert(fs.existsSync(`${reportStateFile}.bak`));
+        fs.writeFileSync(reportStateFile, "{historico interrompido", "utf8");
+        assert.throws(
+            () => reports.initializePlayoutReports({
+                userDataPath: reportUserData,
+                documentsPath: docs
+            }),
+            /Historico de exibicao danificado/
+        );
+        assert.strictEqual(fs.readFileSync(reportStateFile, "utf8"), "{historico interrompido");
+
         console.log("BACKEND QA: APROVADO");
         console.log("✓ banco e normalização");
         console.log("✓ biblioteca por pastas");
         console.log("✓ timeline e roteiro diário");
         console.log("✓ relatório Excel");
     } finally {
-        try {
-            if (hadDatabase && databaseBackup) {
-                fs.mkdirSync(databaseDir, { recursive: true });
-                fs.writeFileSync(databaseFile, databaseBackup);
-            } else if (fs.existsSync(databaseFile)) {
-                fs.rmSync(databaseFile, { force: true });
-            }
-        } catch (error) {
-            console.warn("Aviso ao restaurar banco de teste:", error.message);
-        }
         fs.rmSync(tempRoot, { recursive: true, force: true });
     }
 }

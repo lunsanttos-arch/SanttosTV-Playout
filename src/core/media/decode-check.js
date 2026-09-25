@@ -8,6 +8,7 @@ if (!ffmpegStatic) {
         "FFmpeg runtime não encontrado para validação de decode."
     );
 }
+const ffmpegPath = ffmpegStatic.replace("app.asar", "app.asar.unpacked");
 
 function runDecodeProbe(
     filePath,
@@ -58,7 +59,7 @@ function runDecodeProbe(
         );
 
         execFile(
-            ffmpegStatic,
+            ffmpegPath,
             args,
             {
                 windowsHide: true,
