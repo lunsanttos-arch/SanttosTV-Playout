@@ -212,6 +212,8 @@ declare global {
                 online: boolean;
                 source: string;
                 nativePlaybackActive?: boolean;
+                error?: string | null;
+                restarting?: boolean;
             }>;
             playNdiFile: (
                 filePath: string,
@@ -274,6 +276,7 @@ export default function App() {
         useState("00:00:00");
     const [ndiOnline, setNdiOnline] =
         useState(false);
+    const [ndiError, setNdiError] = useState<string | null>(null);
     const [activePanel, setActivePanel] =
         useState<Panel>("playout");
     const [media, setMedia] =
@@ -322,8 +325,10 @@ export default function App() {
                     await window.santtosAPI
                         .getNdiStatus();
                 setNdiOnline(status.online);
+                setNdiError(status.error ?? null);
             } catch {
                 setNdiOnline(false);
+                setNdiError("Falha ao consultar o engine NDI.");
             }
         };
 
@@ -536,15 +541,14 @@ export default function App() {
                         ● SISTEMA ONLINE
                     </span>
                     <span
-                        className={
-                            ndiOnline
-                                ? "status-online"
-                                : ""
-                        }
+                        title={ndiError ?? undefined}
+                        className={ndiOnline ? "status-online" : ""}
                     >
                         {ndiOnline
                             ? "● NDI ONLINE"
-                            : "NDI OFFLINE"}
+                            : ndiError
+                              ? `● NDI OFFLINE: ${ndiError}`
+                              : "● NDI OFFLINE"}
                     </span>
                 </div>
             </header>
@@ -565,6 +569,7 @@ export default function App() {
                         aria-hidden={activePanel !== "playout"}
                     >
                         <PlayoutPanel
+                            ndiOnline={ndiOnline}
                             media={media}
                             isLoading={isLoading}
                             message={message}
@@ -669,6 +674,7 @@ function Sidebar({
 }
 
 interface PlayoutPanelProps {
+    ndiOnline: boolean;
     media: MediaItem[];
     isLoading: boolean;
     message: string;
@@ -695,6 +701,7 @@ interface PlayoutPanelProps {
 }
 
 function PlayoutPanel({
+    ndiOnline,
     media,
     isLoading,
     message,
@@ -720,6 +727,8 @@ function PlayoutPanel({
         useState(0);
     const [isPlaying, setIsPlaying] =
         useState(false);
+    const ndiWasOnlineRef = useRef(false);
+    const resumeAfterNdiLossRef = useRef(false);
     const [timelineQueue, setTimelineQueue] =
         useState<MediaItem[]>([]);
     const [draggedMediaId, setDraggedMediaId] =
@@ -1275,6 +1284,40 @@ function PlayoutPanel({
             );
         }
     }
+
+    // Nao deixa o monitor continuar consumindo comerciais enquanto o sinal
+    // NDI esta fora do ar. Quando o sender retorna, resincroniza no timecode
+    // exato em que o monitor foi pausado.
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!ndiOnline) {
+            if (ndiWasOnlineRef.current && isPlaying && video) {
+                video.pause();
+                resumeAfterNdiLossRef.current = true;
+            }
+            ndiWasOnlineRef.current = false;
+            return;
+        }
+
+        ndiWasOnlineRef.current = true;
+        if (!resumeAfterNdiLossRef.current) return;
+        if (!isPlaying || !selectedMedia || !video) {
+            resumeAfterNdiLossRef.current = false;
+            return;
+        }
+
+        resumeAfterNdiLossRef.current = false;
+        void (async () => {
+            await startNativeNdi(selectedMedia, video.currentTime);
+            await video.play();
+        })().catch((error) => {
+            console.error("Falha ao retomar sinal NDI:", error);
+            video.pause();
+            setIsPlaying(false);
+            void finishExecutionReport("PULADO", selectedMedia);
+            window.alert("O NDI foi restabelecido, mas nao foi possivel retomar o video. Verifique o sinal e reinicie o PROGRAM.");
+        });
+    }, [ndiOnline]);
 
     useEffect(() => {
         const signature =
@@ -1936,9 +1979,11 @@ function PlayoutPanel({
                         </div>
 
                         <span className="program-status">
-                            {isPlaying
+                            {isPlaying && ndiOnline
                                 ? "● ON AIR"
-                                : "● OFF AIR"}
+                                : isPlaying
+                                  ? "● SEM SINAL NDI"
+                                  : "● OFF AIR"}
                         </span>
                     </div>
 
