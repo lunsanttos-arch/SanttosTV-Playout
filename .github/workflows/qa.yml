@@ -42,6 +42,9 @@ jobs:
           node --check src/core/library/library-categories.js
           node --check src/core/reporting/playout-report.js
 
+      - name: Security regression tests
+        run: npm run test:security
+
       - name: Backend regression tests
         run: npm run test:backend
 
