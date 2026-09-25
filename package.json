@@ -14,7 +14,7 @@
     "test:backend": "node scripts/test-backend.js",
     "test:frontend": "npm exec tsc -- --noEmit && npm run build:renderer && node scripts/test-frontend.js",
     "test:security": "node --test scripts/test-security.js",
-    "test": "npm run test:backend && npm run test:frontend && npm run test:security",
+    "test": "npm run test:backend && npm run test:frontend && npm run test:security && npm run test:media-protocol",
     "stress:smoke": "node scripts/stress-playout.js smoke",
     "stress:quick": "node scripts/stress-playout.js quick",
     "stress:day": "node scripts/stress-playout.js day",
@@ -22,7 +22,8 @@
     "stress:large": "node scripts/stress-playout.js large",
     "build:ndi": "node scripts/build-ndi.js",
     "build:windows": "npm run build:renderer && npm run build:ndi && electron-builder --win nsis --publish never",
-    "build:win:dir": "npm run build:renderer && npm run build:ndi && electron-builder --win dir --publish never"
+    "build:win:dir": "npm run build:renderer && npm run build:ndi && electron-builder --win dir --publish never",
+    "test:media-protocol": "node --test scripts/test-media-protocol.js"
   },
   "dependencies": {
     "@derhuerst/ffprobe-static": "5.3.0",
