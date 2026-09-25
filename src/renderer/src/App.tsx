@@ -324,6 +324,7 @@ export default function App() {
         useState(false);
     const [programmedEndAtMs, setProgrammedEndAtMs] =
         useState<number | null>(null);
+    const [programmedLive, setProgrammedLive] = useState(false);
     const [rundownApplyRequest, setRundownApplyRequest] = useState<{
         key: number;
         items: MediaItem[];
@@ -334,11 +335,13 @@ export default function App() {
     const handleScheduleSummary = useCallback((
         remainingSeconds: number | null,
         indefinite: boolean,
-        endsAtMs: number | null
+        endsAtMs: number | null,
+        live: boolean
     ) => {
         setProgrammedRemainingSeconds(remainingSeconds ?? 0);
         setProgrammedIndefinite(indefinite);
         setProgrammedEndAtMs(endsAtMs);
+        setProgrammedLive(live);
     }, []);
 
     useEffect(() => {
@@ -554,7 +557,9 @@ export default function App() {
         programmedIndefinite ? "SEM PREVISÃO"
             : programmedEndAtMs !== null
               ? formatEstimatedClock(programmedEndAtMs, Date.now())
-              : "AGUARDANDO PLAY";
+              : programmedLive
+                ? "SEM PREVISÃO"
+                : "AGUARDANDO REPRODUÇÃO";
 
     return (
         <div className="app-shell">
@@ -750,7 +755,8 @@ interface PlayoutPanelProps {
     onScheduleSummary: (
         remainingSeconds: number | null,
         indefinite: boolean,
-        endsAtMs: number | null
+        endsAtMs: number | null,
+        live: boolean
     ) => void;
 }
 
@@ -1143,12 +1149,14 @@ function PlayoutPanel({
         onScheduleSummary(
             timelineForecast.remainingSeconds,
             timelineForecast.hasLoop,
-            timelineForecast.endsAtMs
+            timelineForecast.endsAtMs,
+            timelineForecast.isLive
         );
     }, [
         timelineForecast.remainingSeconds,
         timelineForecast.hasLoop,
         timelineForecast.endsAtMs,
+        timelineForecast.isLive,
         onScheduleSummary
     ]);
 
@@ -2472,7 +2480,7 @@ function PlayoutPanel({
                                             <div className="timeline-marker" />
                                             <div className="timeline-position">
                                                 {isCurrent
-                                                    ? forecastRunning ? "NO AR" : "PRONTO"
+                                                    ? forecastRunning ? "NO AR" : isPlaying ? "AGUARDANDO" : "PRONTO"
                                                     : `${index + 1}`}
                                             </div>
 
