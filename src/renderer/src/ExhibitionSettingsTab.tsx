@@ -155,6 +155,14 @@ export default function ExhibitionSettingsTab({ style, watermark, patch }: Props
                         );
                     })}
                     <small>Até 32 caracteres por identificação. A opção Normal não imprime texto.</small>
+                    <button type="button" className="exhibition-reset"
+                        onClick={() => patch({
+                            ...DEFAULT_EXHIBITION_STYLE,
+                            labels: { ...DEFAULT_EXHIBITION_STYLE.labels }
+                        })}
+                    >
+                        Restaurar configurações padrão (sem tarja)
+                    </button>
                 </Card>
 
                 <Card title="Posição em relação ao logo">
