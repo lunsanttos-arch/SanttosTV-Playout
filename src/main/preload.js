@@ -4,10 +4,6 @@ const {
     webUtils
 } = require("electron");
 
-const {
-    pathToFileURL
-} = require("url");
-
 contextBridge.exposeInMainWorld(
     "santtosAPI",
     {
@@ -223,11 +219,9 @@ contextBridge.exposeInMainWorld(
                 frameData
             ),
 
-        getMediaFileUrl: (
-            filePath
-        ) =>
-            pathToFileURL(
-                filePath
-            ).toString()
+        getMediaFileUrl: (filePath) =>
+            typeof filePath === "string" && filePath.length <= 4096
+                ? "santtos-media://media/" + encodeURIComponent(filePath)
+                : ""
     }
 );
