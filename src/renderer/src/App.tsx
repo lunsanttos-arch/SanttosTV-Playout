@@ -7,6 +7,8 @@ import {
 import type { CSSProperties } from "react";
 import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
+import { EXHIBITION_OPTIONS, exhibitionLabel, normalizeExhibitionType } from "./exhibition";
+import type { ExhibitionType } from "./exhibition";
 
 type Panel =
     | "playout"
@@ -24,6 +26,7 @@ export interface MediaItem {
     inPoint?: number;
     outPoint?: number | null;
     blockLabel?: string;
+    exhibitionType?: ExhibitionType;
     name: string;
     path: string;
     extension: string;
@@ -938,7 +941,8 @@ function PlayoutPanel({
                             entry.outPoint,
                             source.duration
                         ),
-                        blockLabel: entry.blockLabel ?? ""
+                        blockLabel: entry.blockLabel ?? "",
+                        exhibitionType: normalizeExhibitionType(entry.exhibitionType)
                     };
                 })
                 .filter(
@@ -1588,7 +1592,8 @@ function PlayoutPanel({
             hashtag: "",
             inPoint: 0,
             outPoint: mediaItem.duration ?? null,
-            blockLabel: ""
+            blockLabel: "",
+            exhibitionType: "NORMAL"
         };
 
         setTimelineQueue((current) => {
@@ -1732,6 +1737,17 @@ function PlayoutPanel({
                     );
                 }
             }
+        }
+    }
+
+    function changeExhibitionType(mediaId: string, value: ExhibitionType) {
+        setTimelineQueue((current) =>
+            current.map((entry) =>
+                entry.id === mediaId ? { ...entry, exhibitionType: value } : entry
+            )
+        );
+        if (selectedMedia?.id === mediaId) {
+            onSelectMedia({ ...selectedMedia, exhibitionType: value });
         }
     }
 
@@ -2153,6 +2169,9 @@ function PlayoutPanel({
                                 : "Nenhum conteúdo"}
                         </strong>
                         <span>
+                            {selectedMedia ? `IDENTIFICAÇÃO: ${exhibitionLabel(selectedMedia.exhibitionType)}` : ""}
+                        </span>
+                        <span>
                             {selectedMedia?.hashtag
                                 ? `GC: ${selectedMedia.hashtag}`
                                 : "Sem hashtag nesta entrada"}
@@ -2168,6 +2187,9 @@ function PlayoutPanel({
                                 ? nextMedia.name
                                 : "Nenhum conteúdo"}
                         </strong>
+                        <span>
+                            {nextMedia ? `IDENTIFICAÇÃO: ${exhibitionLabel(nextMedia.exhibitionType)}` : ""}
+                        </span>
                         <span>
                             {nextMedia?.hashtag
                                 ? `GC: ${nextMedia.hashtag}`
@@ -2334,6 +2356,11 @@ function PlayoutPanel({
                                                         ? `${item.name} — ${item.blockLabel}`
                                                         : item.name}
                                                 </strong>
+                                                {normalizeExhibitionType(item.exhibitionType) !== "NORMAL" && (
+                                                    <span className={`exhibition-badge badge-${normalizeExhibitionType(item.exhibitionType).toLowerCase()}`}>
+                                                        {exhibitionLabel(item.exhibitionType)}
+                                                    </span>
+                                                )
                                                 <span>
                                                     {isCurrent
                                                         ? `${formatDuration(
@@ -2372,6 +2399,25 @@ function PlayoutPanel({
                                                     event.stopPropagation()
                                                 }
                                             >
+                                                <div className="timeline-exhibition">
+                                                    <label htmlFor={`exhibition-${item.id}`}>Exibição</label>
+                                                    <select
+                                                        id={`exhibition-${item.id}`}
+                                                        value={normalizeExhibitionType(item.exhibitionType)}
+                                                        onChange={(event) =>
+                                                            changeExhibitionType(
+                                                                item.id,
+                                                                event.currentTarget.value as ExhibitionType
+                                                            )
+                                                        }
+                                                    >
+                                                        {EXHIBITION_OPTIONS.map((option) => (
+                                                            <option key={option.value} value={option.value}>
+                                                                {option.label}
+                                                            </option>
+                                                        ))}
+                                                    </select>
+                                                </div>
                                                 <div className="timeline-gc-controls">
                                                     <label
                                                         className="timeline-watermark-toggle"
