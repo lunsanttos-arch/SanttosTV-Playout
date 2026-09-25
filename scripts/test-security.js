@@ -62,6 +62,7 @@ test("UI, database, and media probe keep security contracts",()=>{
     assert(main.includes("webviewTag: false"));
     assert(main.includes("contextIsolation: true"));
     assert(main.includes("nodeIntegration: false"));
+    assert(main.includes("createSecretStore(app.getPath(\"userData\"), safeStorage)"));
     assert(check.includes("videoStreamIndex !== null"));
     assert(!app.includes("dangerouslySetInnerHTML"));
 });
@@ -80,4 +81,40 @@ test("Audio 01 remains program even when Audio 02 is default",()=>{
     assert.equal(result.audioStreamIndex,0);
     assert.equal(result.audioTracks[0].role,"program");
     assert.equal(result.audioTracks[1].role,"alternate");
+});
+
+
+test("SRT secrets are encrypted and stored outside the JSON database",()=>{
+    const os=require("node:os");
+    const crypto=require("node:crypto");
+    const {createSecretStore}=require("../src/main/secret-store");
+    const temp=fs.mkdtempSync(path.join(os.tmpdir(),"santtos-secret-"));
+    const key=crypto.randomBytes(32);
+    const mockDpapi={
+        isEncryptionAvailable:()=>true,
+        encryptString:(text)=>{
+            const iv=crypto.randomBytes(12);
+            const cipher=crypto.createCipheriv("aes-256-gcm",key,iv);
+            const payload=Buffer.concat([cipher.update(text,"utf8"),cipher.final()]);
+            return Buffer.concat([iv,cipher.getAuthTag(),payload]);
+        },
+        decryptString:(bytes)=>{
+            const decipher=crypto.createDecipheriv("aes-256-gcm",key,bytes.subarray(0,12));
+            decipher.setAuthTag(bytes.subarray(12,28));
+            return Buffer.concat([decipher.update(bytes.subarray(28)),decipher.final()]).toString("utf8");
+        }
+    };
+    try {
+        const store=createSecretStore(temp,mockDpapi);
+        assert.equal(store.read(),"");
+        store.write("example-password");
+        assert.equal(store.read(),"example-password");
+        assert(!fs.readFileSync(store.file).includes(Buffer.from("example-password")));
+        store.clear();
+        assert.equal(store.read(),"");
+        const unavailable=createSecretStore(temp,{isEncryptionAvailable:()=>false});
+        assert.throws(()=>unavailable.write("another-password"),/indisponível/);
+    } finally {
+        fs.rmSync(temp,{recursive:true,force:true});
+    }
 });
