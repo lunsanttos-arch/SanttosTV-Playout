@@ -746,6 +746,12 @@ function PlayoutPanel({
 
     const [currentTime, setCurrentTime] =
         useState(0);
+    const [timelineClock, setTimelineClock] = useState(() => Date.now());
+
+    useEffect(() => {
+        const interval = window.setInterval(() => setTimelineClock(Date.now()), 1000);
+        return () => window.clearInterval(interval);
+    }, []);
     const [duration, setDuration] =
         useState(0);
     const [isPlaying, setIsPlaying] =
@@ -1099,48 +1105,46 @@ function PlayoutPanel({
               )
             : 0;
 
-    const timelineStartTimes = (() => {
-        const startTimes =
-            new Map<string, string>();
-        let cursor = new Date(
-            selectedMediaIndex >= 0
-                ? Date.now() - currentTime * 1000
-                : Date.now()
-        );
-
-        timelineMedia.forEach(
-            (item, index) => {
-                startTimes.set(
-                    item.id,
-                    cursor.toLocaleTimeString(
-                        "pt-BR",
-                        {
-                            hour: "2-digit",
-                            minute: "2-digit",
-                            second: "2-digit"
-                        }
-                    )
-                );
-
-                const itemDuration =
-                    index === 0 &&
-                    selectedMediaIndex >= 0
-                        ? Math.max(
-                              0,
-                              getClipDuration(item) -
-                                  selectedClipCurrent
-                          )
-                        : getClipDuration(item);
-
-                cursor = new Date(
-                    cursor.getTime() +
-                        itemDuration * 1000
-                );
+    // Horario de entrada calculado a partir do tempo restante, nao do
+    // timecode absoluto do arquivo (que pode comecar no meio do filme).
+    // Se houver loop anterior, os horarios seguintes sao indefinidos.
+    const timelineForecast = (() => {
+        const forecast = new Map<string, {
+            delaySeconds: number;
+            entryClock: string;
+        } | null>();
+        let delay = 0;
+        let blockedByLoop = false;
+        for (let index = 0; index < timelineMedia.length; index++) {
+            const item = timelineMedia[index];
+            if (blockedByLoop) {
+                forecast.set(item.id, null);
+                continue;
             }
-        );
-
-        return startTimes;
+            forecast.set(item.id, {
+                delaySeconds: delay,
+                entryClock: new Date(timelineClock + delay * 1000)
+                    .toLocaleTimeString("pt-BR", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                        second: "2-digit"
+                    })
+            });
+            const current = index === 0 && selectedMediaIndex >= 0;
+            delay += current
+                ? Math.max(0, getClipDuration(item) - selectedClipCurrent)
+                : getClipDuration(item);
+            if (item.loop) blockedByLoop = true;
+        }
+        return forecast;
     })();
+
+    function describeForecast(item: MediaItem | null): string {
+        if (!item) return "Nenhum próximo vídeo";
+        const entry = timelineForecast.get(item.id);
+        if (!entry) return "ENTRA: sem previsão (loop anterior)";
+        return `FALTA ${formatDuration(Math.ceil(entry.delaySeconds))}  •  ENTRA ${entry.entryClock}`;
+    }
 
     useEffect(() => {
         const video = videoRef.current;
@@ -2197,6 +2201,9 @@ function PlayoutPanel({
                                   ? "Sem hashtag nesta entrada"
                                   : "Fim da timeline"}
                         </span>
+                        {nextMedia && (
+                            <span className="next-entry-forecast">{describeForecast(nextMedia)}</span>
+                        )
                     </section>
                 </div>
 
@@ -2382,11 +2389,17 @@ function PlayoutPanel({
 
                                                 <span className="timeline-air-time">
                                                     {isCurrent
-                                                        ? "ENTROU "
-                                                        : "ENTRA "}
-                                                    {timelineStartTimes.get(
-                                                        item.id
-                                                    ) ?? "--:--:--"}
+                                                        ? `RESTA ${formatDuration(
+                                                              Math.max(0, selectedClipDuration - selectedClipCurrent)
+                                                          )} • FIM ESTIMADO ${new Date(
+                                                              timelineClock +
+                                                              Math.max(0, selectedClipDuration - selectedClipCurrent) * 1000
+                                                          ).toLocaleTimeString("pt-BR", {
+                                                              hour: "2-digit",
+                                                              minute: "2-digit",
+                                                              second: "2-digit"
+                                                          })}`
+                                                        : describeForecast(item)}
                                                 </span>
                                             </div>
 
