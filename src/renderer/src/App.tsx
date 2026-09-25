@@ -104,8 +104,17 @@ interface RemoveResult {
 interface NdiCommandResult {
     ok: boolean;
     error?: string;
+    playbackId?: string;
     filePath?: string;
     startSeconds?: number;
+}
+
+interface NdiPlaybackEvent {
+    type: "engine-online" | "engine-offline" |
+          "playback-progress" | "playback-finished" | "playback-failed";
+    playbackId?: string;
+    currentSeconds?: number;
+    error?: string | null;
 }
 
 interface SaveHashtagStyleResult {
@@ -238,6 +247,7 @@ declare global {
                 error?: string;
             }>;
             stopNdiFile: () => Promise<NdiCommandResult>;
+            onNdiEvent: (callback: (event: NdiPlaybackEvent) => void) => () => void;
             startPlayoutReport: (
                 mediaItem: MediaItem & {
                     plannedDurationSeconds: number;
