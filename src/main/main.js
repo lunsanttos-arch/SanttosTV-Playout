@@ -28,6 +28,8 @@ protocol.registerSchemesAsPrivileged([
     }
 ]);
 const { spawn } = require("child_process");
+const crypto = require("node:crypto");
+const { forwardCompleteFrames } = require("./frame-pump");
 const ffmpegStatic = require("ffmpeg-static");
 
 const {
@@ -134,6 +136,80 @@ let nativePlaybackActive = false;
 
 const analysesInProgress = new Map();
 let secretStore = null;
+let nativeSession = null;
+let ndiQueuedFrames = 0;
+let ndiAcknowledgedFrames = 0;
+let ndiLastHeartbeatAt = 0;
+let ndiRestartTimer = null;
+let ndiWatchdogTimer = null;
+let ndiRestartAttempts = 0;
+let ndiShuttingDown = false;
+
+function emitNdiEvent(event) {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send("ndi:event", event);
+    }
+}
+
+function finishNativeSession(session, ok, message = "") {
+    if (!session || session.cancelled || session.finished) return;
+    session.finished = true;
+    if (session.ackTimer) clearTimeout(session.ackTimer);
+    if (nativeSession === session) {
+        nativeSession = null;
+        ffmpegProcess = null;
+        nativePlaybackActive = false;
+    }
+    emitNdiEvent({
+        type: ok ? "playback-finished" : "playback-failed",
+        playbackId: session.playbackId,
+        frames: session.framesQueued,
+        startSeconds: session.startSeconds,
+        error: ok ? null : message
+    });
+}
+
+function maybeCompleteNativeSession(session) {
+    if (!session || !session.ffmpegFinished || session.finished || session.cancelled) return;
+    if (session.exitCode !== 0 || session.trailingBytes !== 0 || session.framesQueued === 0) {
+        finishNativeSession(session, false, session.error || "Decodificação FFmpeg incompleta.");
+        return;
+    }
+    if (ndiAcknowledgedFrames >= session.lastFrameSequence) {
+        const estimatedFrames = Number.isFinite(session.plannedSeconds)
+            ? Math.max(1, Math.round(session.plannedSeconds * 30000 / 1001))
+            : 0;
+        if (estimatedFrames && session.framesQueued < estimatedFrames - 2) {
+            finishNativeSession(session, false, "O FFmpeg terminou antes do OUT previsto.");
+        } else {
+            finishNativeSession(session, true);
+        }
+        return;
+    }
+    if (!session.ackTimer) {
+        session.ackTimer = setTimeout(() => {
+            finishNativeSession(session, false, "O sender NDI não confirmou os últimos frames.");
+        }, 10000);
+    }
+}
+
+function onNdiFrameAck(counter) {
+    if (!Number.isSafeInteger(counter) || counter <= ndiAcknowledgedFrames) return;
+    ndiAcknowledgedFrames = counter;
+    const session = nativeSession;
+    if (!session || !session.framesQueued || session.cancelled) return;
+    if (counter >= session.firstFrameSequence &&
+        (counter - session.firstFrameSequence + 1) % 30 === 0) {
+        emitNdiEvent({
+            type: "playback-progress",
+            playbackId: session.playbackId,
+            currentSeconds: session.startSeconds +
+                (counter - session.firstFrameSequence + 1) * 1001 / 30000
+        });
+    }
+    maybeCompleteNativeSession(session);
+}
+
 
 // Somente o documento principal do Playout pode executar comandos com
 // privilegios do processo principal. Iframes e janelas externas sao bloqueados.
@@ -623,32 +699,19 @@ function buildProgramFilterGraph(
 }
 
 function stopNativePlayback() {
-    if (!ffmpegProcess) {
-        nativePlaybackActive = false;
-        return;
+    if (nativeSession) {
+        nativeSession.cancelled = true;
+        if (nativeSession.ackTimer) clearTimeout(nativeSession.ackTimer);
     }
-
     const processToStop = ffmpegProcess;
-
-    console.log(
-        "Encerrando playout FFmpeg..."
-    );
-
-    if (
-        processToStop.stdout &&
-        ndiProcess &&
-        ndiProcess.stdin
-    ) {
-        processToStop.stdout.unpipe(
-            ndiProcess.stdin
-        );
-    }
-
+    nativeSession = null;
     ffmpegProcess = null;
     nativePlaybackActive = false;
-
-    if (!processToStop.killed) {
-        processToStop.kill();
+    if (processToStop) {
+        processToStop.stdout?.destroy();
+        if (processToStop.exitCode === null && !processToStop.killed) {
+            processToStop.kill();
+        }
     }
 }
 
