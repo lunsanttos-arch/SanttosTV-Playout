@@ -76,9 +76,9 @@ function build() {
         "if errorlevel 1 exit /b 1",
         "link /nologo " + quote(object) + " /OUT:" + quote(executable) +
           " /LIBPATH:" + quote(sdk.library) + " Processing.NDI.Lib.x64.lib"
-    ].join("\\r\\n");
+    ].join("\r\n");
     const script = path.join(target,"build-native-ndi.cmd");
-    fs.writeFileSync(script, command + "\\r\\n", "utf8");
+    fs.writeFileSync(script, command + "\r\n", "utf8");
     console.log("[NDI BUILD] Compilando sender nativo com SDK:", sdk.sdk);
     let result;
     try {
