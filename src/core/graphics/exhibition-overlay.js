@@ -137,7 +137,7 @@ function buildExhibitionDrawtext(inputLabel, type, watermarkStyle, fontFile, sty
         `fontcolor=${ffmpegColor(cfg.color, cfg.opacity)}`,
         `borderw=${cfg.outlineWidth}`,
         `bordercolor=${ffmpegColor(cfg.outlineColor, cfg.outlineOpacity)}`,
-        `x='max(8\\\\,min(w-text_w-8\\\\,${overlay.right}-text_w))'`,
+        `x='max(8\\,min(w-text_w-8\\,${overlay.right}-text_w))'`,
         `y=${overlay.top}`
     ];
     if (cfg.backgroundEnabled) {
