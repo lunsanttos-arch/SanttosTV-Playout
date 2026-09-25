@@ -158,6 +158,11 @@ declare global {
             importMedia: (
                 filePaths: string[]
             ) => Promise<ImportResult>;
+            prepareMediaPreview: (filePath: string) => Promise<{
+                ok: boolean;
+                filePath?: string;
+                error?: string;
+            }>;
             getDroppedFilePath: (file: File) => string;
             removeMedia: (
                 mediaId: string
@@ -769,6 +774,10 @@ function PlayoutPanel({
         );
     const [watermarkPreviewUrl, setWatermarkPreviewUrl] =
         useState("");
+    const [previewProxyBySource, setPreviewProxyBySource] =
+        useState<Record<string, string>>({});
+    const [previewError, setPreviewError] = useState("");
+    const [previewPreparing, setPreviewPreparing] = useState(false);
     const [editingFilm, setEditingFilm] =
         useState<MediaItem | null>(null);
     const clipAdvanceGuardRef = useRef(false);
@@ -1091,7 +1100,9 @@ function PlayoutPanel({
 
     const selectedMediaUrl =
         selectedMedia
-            ? window.santtosAPI.getMediaFileUrl(selectedMedia.path)
+            ? window.santtosAPI.getMediaFileUrl(
+                previewProxyBySource[selectedMedia.path] || selectedMedia.path
+              )
             : null;
 
     const progressPercent =
@@ -1144,6 +1155,36 @@ function PlayoutPanel({
         const entry = timelineForecast.get(item.id);
         if (!entry) return "ENTRA: sem previsão (loop anterior)";
         return `FALTA ${formatDuration(Math.ceil(entry.delaySeconds))}  •  ENTRA ${entry.entryClock}`;
+    }
+
+    useEffect(() => {
+        setPreviewError("");
+    }, [selectedMedia?.path]);
+
+    async function prepareBrowserPreview() {
+        if (!selectedMedia || previewPreparing) return;
+        if (isPlaying && !testBench) {
+            setPreviewError("Pare o PROGRAM antes de preparar uma prévia compatível.");
+            return;
+        }
+        const sourcePath = selectedMedia.path;
+        setPreviewPreparing(true);
+        setPreviewError("");
+        try {
+            const result = await window.santtosAPI.prepareMediaPreview(sourcePath);
+            if (!result.ok || !result.filePath) {
+                throw new Error(result.error || "Falha ao gerar prévia MP4.");
+            }
+            setPreviewProxyBySource((current) => ({
+                ...current,
+                [sourcePath]: result.filePath!
+            }));
+        } catch (error) {
+            console.error("Falha ao preparar prévia MP4:", error);
+            setPreviewError(error instanceof Error ? error.message : String(error));
+        } finally {
+            setPreviewPreparing(false);
+        }
     }
 
     useEffect(() => {
