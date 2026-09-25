@@ -36,7 +36,7 @@ function decodeMediaUrl(urlValue) {
         const encoded = url.pathname.slice(1);
         if (!encoded || encoded.length > MAX_MEDIA_PATH_LENGTH * 4 || encoded.includes("/")) return null;
         const decoded = decodeURIComponent(encoded);
-        if (!decoded || decoded.length > MAX_MEDIA_PATH_LENGTH || decoded.includes("\\0")) return null;
+        if (!decoded || decoded.length > MAX_MEDIA_PATH_LENGTH || decoded.includes(String.fromCharCode(0))) return null;
         return decoded;
     } catch {
         return null;
