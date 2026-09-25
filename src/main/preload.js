@@ -197,6 +197,12 @@ contextBridge.exposeInMainWorld(
                 "ndi:stop-file"
             ),
 
+        onNdiEvent: (callback) => {
+            const listener = (_event, payload) => callback(payload);
+            ipcRenderer.on("ndi:event", listener);
+            return () => ipcRenderer.removeListener("ndi:event", listener);
+        },
+
         startPlayoutReport: (mediaItem) =>
             ipcRenderer.invoke(
                 "report:playout-start",
