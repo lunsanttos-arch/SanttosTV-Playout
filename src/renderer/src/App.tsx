@@ -1050,13 +1050,8 @@ function PlayoutPanel({
         });
 
     const selectedMediaUrl =
-        selectedMedia
-            ? encodeURI(
-                  `file:///${selectedMedia.path.replace(
-                      /\\/g,
-                      "/"
-                  )}`
-              )
+        selectedMedia?.path
+            ? window.santtosAPI.getMediaFileUrl(selectedMedia.path)
             : null;
 
     const progressPercent =
