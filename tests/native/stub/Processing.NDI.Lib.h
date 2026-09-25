@@ -4,6 +4,7 @@
 // The production sender is built against the licensed NDI 6 SDK.
 #include <chrono>
 #include <cstdint>
+#include <iostream>
 #include <thread>
 
 typedef void* NDIlib_send_instance_t;
@@ -37,6 +38,7 @@ inline NDIlib_send_instance_t NDIlib_send_create(const NDIlib_send_create_t*) {
     return reinterpret_cast<void*>(0x1);
 }
 inline void NDIlib_send_send_video_v2(NDIlib_send_instance_t, const NDIlib_video_frame_v2_t*) {
+    std::cout << "NDI_STUB_SEND" << std::endl;
     std::this_thread::sleep_for(std::chrono::milliseconds(33));
 }
 inline void NDIlib_send_destroy(NDIlib_send_instance_t) {}
