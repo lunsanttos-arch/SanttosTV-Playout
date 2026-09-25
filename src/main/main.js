@@ -345,10 +345,14 @@ async function analyzeMediaItem(mediaItem) {
 }
 
 async function analyzeMediaItems(mediaItems) {
-    await Promise.all(
-        mediaItems.map(analyzeMediaItem)
-    );
-
+    // Avoid spawning hundreds of simultaneous ffprobe/ffmpeg processes
+    // when OPEC refreshes a large media folder.
+    const MAX_PARALLEL_ANALYSES = 2;
+    for (let i = 0; i < mediaItems.length; i += MAX_PARALLEL_ANALYSES) {
+        await Promise.all(
+            mediaItems.slice(i, i + MAX_PARALLEL_ANALYSES).map(analyzeMediaItem)
+        );
+    }
     return getMedia();
 }
 
