@@ -122,6 +122,23 @@ async function main() {
         assert(scan.filePaths.some((p) => p.endsWith("A.mp4")));
         assert(scan.filePaths.some((p) => p.endsWith("B.MKV")));
 
+        // Configuracao danificada nunca pode apagar as abas da biblioteca.
+        const categoriesFile = path.join(userData, "library-categories.json");
+        assert(fs.existsSync(`${categoriesFile}.bak`));
+        fs.writeFileSync(categoriesFile, "{configuracao interrompida", "utf8");
+        assert.throws(
+            () => library.initializeLibraryCategories(userData),
+            /biblioteca danificadas/,
+            "Falha de leitura deve preservar categorias sem sobrescrever o original."
+        );
+        assert.strictEqual(
+            fs.readFileSync(categoriesFile, "utf8"),
+            "{configuracao interrompida"
+        );
+        fs.copyFileSync(`${categoriesFile}.bak`, categoriesFile);
+        library.initializeLibraryCategories(userData);
+        assert.strictEqual(library.scanLibraryCategory("custom-qa").filePaths.length, 2);
+
         const reports = require("../src/core/reporting/playout-report");
         const docs = path.join(tempRoot, "docs");
         reports.initializePlayoutReports({
@@ -163,6 +180,20 @@ async function main() {
         db.initializeDatabase({ userDataPath: databaseUserData });
         assert.strictEqual(db.getTimeline().length, 1, "Backup deve permitir restaurar a timeline.");
         assert.throws(() => db.getDailyRundown("2026-02-30"), /inexistente/);
+
+        // Historico de exibição corrompido deve bloquear inicializacao.
+        const reportUserData = path.join(tempRoot, "report-user");
+        const reportStateFile = path.join(reportUserData, "reporting", "playout-report-state.json");
+        assert(fs.existsSync(`${reportStateFile}.bak`));
+        fs.writeFileSync(reportStateFile, "{historico interrompido", "utf8");
+        assert.throws(
+            () => reports.initializePlayoutReports({
+                userDataPath: reportUserData,
+                documentsPath: docs
+            }),
+            /Historico de exibicao danificado/
+        );
+        assert.strictEqual(fs.readFileSync(reportStateFile, "utf8"), "{historico interrompido");
 
         console.log("BACKEND QA: APROVADO");
         console.log("✓ banco e normalização");
