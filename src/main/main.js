@@ -3,12 +3,27 @@ const {
     BrowserWindow,
     ipcMain,
     dialog,
-    nativeImage
+    nativeImage,
+    protocol,
+    session
 } = require("electron");
 
 const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("node:url");
+const { MEDIA_SCHEME, createMediaProtocolHandler } = require("./media-protocol");
+
+protocol.registerSchemesAsPrivileged([
+    {
+        scheme: MEDIA_SCHEME,
+        privileges: {
+            standard: true,
+            secure: true,
+            stream: true,
+            supportFetchAPI: true
+        }
+    }
+]);
 const { spawn } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
 
@@ -164,8 +179,9 @@ function createWindow() {
             contextIsolation: true,
             webviewTag: false,
             devTools: isDevelopment,
-            // TODO: remover apos substituir previews file:// por protocolo seguro.
-            webSecurity: false,
+            // Preview local com esquema privado e seek via HTTP Range.
+            webSecurity: true,
+            sandbox: true,
             preload: path.join(
                 __dirname,
                 "preload.js"
@@ -1454,10 +1470,9 @@ function startNdiSender() {
     ndiReady = false;
     ndiFrameBusy = false;
 
-    const ndiExecutable = path.join(
-        __dirname,
-        "../core/ndi/ndi_test.exe"
-    );
+    const ndiExecutable = app.isPackaged
+        ? path.join(process.resourcesPath, "ndi", "ndi_test.exe")
+        : path.join(__dirname, "../core/ndi/ndi_test.exe");
 
     console.log(
         "Iniciando sender NDI..."
@@ -1614,6 +1629,12 @@ function startSystem() {
 app.whenReady().then(() => {
     if (!hasSingleInstanceLock) return;
     startSystem();
+    session.defaultSession.setPermissionRequestHandler(
+        (_contents, _permission, callback) => callback(false)
+    );
+    session.defaultSession.setPermissionCheckHandler(() => false);
+    protocol.handle(MEDIA_SCHEME, createMediaProtocolHandler(getMedia));
+
     startNdiSender();
     registerIpcHandlers();
     createWindow();
