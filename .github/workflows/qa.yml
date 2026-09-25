@@ -11,6 +11,7 @@ on:
       - "scripts/test-media-stream.js"
       - "scripts/test-preview-proxy.js"
       - "scripts/test-exhibition-output.js"
+      - "scripts/test-timeline-forecast.js"
       - "scripts/test-testbench.js"
       - "scripts/start-testbench.js"
       - "src/**"
@@ -24,6 +25,7 @@ on:
       - "scripts/test-media-stream.js"
       - "scripts/test-preview-proxy.js"
       - "scripts/test-exhibition-output.js"
+      - "scripts/test-timeline-forecast.js"
       - "scripts/test-testbench.js"
       - "scripts/start-testbench.js"
       - "src/**"
@@ -71,6 +73,9 @@ jobs:
 
       - name: NDI editorial overlay render regression
         run: npm run test:exhibition-output
+
+      - name: Live entry-time forecasting regression
+        run: npm run test:timeline-forecast
 
       - name: Backend regression tests
         run: npm run test:backend
