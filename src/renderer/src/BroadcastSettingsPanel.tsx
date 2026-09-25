@@ -162,6 +162,21 @@ export default function BroadcastSettingsPanel({
             });
     }, []);
 
+    // A marca d'água é editada em outra aba. Ao voltar para Identificação,
+    // atualizar a posição do logo antes de desenhar a prévia.
+    useEffect(() => {
+        if (tab !== "exhibition") return;
+        let cancelled = false;
+        window.santtosAPI.getSettings()
+            .then((settings) => {
+                if (!cancelled && settings.watermarkStyle) {
+                    setWatermarkPosition(settings.watermarkStyle);
+                }
+            })
+            .catch((error) => console.error("Falha ao atualizar posição do logo:", error));
+        return () => { cancelled = true; };
+    }, [tab]);
+
     function patchOutput(
         values: Partial<OutputSettings>
     ) {
