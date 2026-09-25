@@ -68,10 +68,12 @@ export function buildTimelineForecast(
     }
 ): ForecastResult {
     const entries = new Map<string, ForecastEntry>();
-    const hasLoop = queue.some(item => item.loop === true);
     const now = Number.isFinite(options.nowMs) ? options.nowMs : Date.now();
     const selectedIndex = selectedMediaId === null
         ? -1 : queue.findIndex(item => item.id === selectedMediaId);
+    // Loops já executados não podem bloquear a previsão da fila atual.
+    const hasLoop = queue.slice(Math.max(0, selectedIndex))
+        .some(item => item.loop === true);
 
     if (selectedIndex < 0 || !options.isRunning ||
         !Number.isFinite(options.currentTime)) {
