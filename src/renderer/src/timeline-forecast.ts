@@ -153,6 +153,69 @@ export function buildTimelineForecast(
     };
 }
 
+/**
+ * OPEC: horário PROGRAMADO é fixado pelo início informado no roteiro.
+ * Não confundir com ENTRA EST. (previsão operacional ao vivo).
+ * Um clipe sem duração ou loop invalida os horários seguintes.
+ */
+export interface PlannedSchedule {
+    times: Map<string, string>;
+    end: string;
+    totalSeconds: number | null;
+}
+
+function formatPlannedClock(seconds: number): string {
+    const total = Math.max(0, Math.floor(seconds));
+    const days = Math.floor(total / 86400);
+    const remainder = total % 86400;
+    const clock = [
+        Math.floor(remainder / 3600),
+        Math.floor((remainder % 3600) / 60),
+        remainder % 60
+    ].map(value => String(value).padStart(2, "0")).join(":");
+    return days === 0 ? clock
+        : clock + (days === 1 ? " (+1 dia)" : ` (+${days} dias)`);
+}
+
+export function buildPlannedSchedule(
+    items: ForecastMedia[],
+    startTime: string
+): PlannedSchedule {
+    const times = new Map<string, string>();
+    const match = /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(startTime)
+        ? startTime.split(":").map(Number) : null;
+    if (!match) {
+        items.forEach(item => times.set(item.id, "SEM PREVISÃO — INÍCIO INVÁLIDO"));
+        return { times, end: "SEM PREVISÃO", totalSeconds: null };
+    }
+    let cursor = match[0] * 3600 + match[1] * 60;
+    let total = 0;
+    let blocked: "LOOP ANTERIOR" | "DURAÇÃO ANTERIOR DESCONHECIDA" | null = null;
+    for (const item of items) {
+        if (blocked) {
+            times.set(item.id, "SEM PREVISÃO — " + blocked);
+            continue;
+        }
+        times.set(item.id, formatPlannedClock(cursor));
+        const clip = knownClipRange(item);
+        if (!clip) {
+            blocked = "DURAÇÃO ANTERIOR DESCONHECIDA";
+            continue;
+        }
+        if (item.loop) {
+            blocked = "LOOP ANTERIOR";
+            continue;
+        }
+        cursor += clip.length;
+        total += clip.length;
+    }
+    return {
+        times,
+        end: blocked ? "SEM PREVISÃO" : formatPlannedClock(cursor),
+        totalSeconds: blocked ? null : total
+    };
+}
+
 function localCalendarDaysApart(first: Date, second: Date): number {
     const firstDay = Date.UTC(first.getFullYear(), first.getMonth(), first.getDate());
     const secondDay = Date.UTC(second.getFullYear(), second.getMonth(), second.getDate());
