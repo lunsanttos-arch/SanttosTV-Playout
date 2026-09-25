@@ -1565,7 +1565,10 @@ function startSystem() {
         "Inicializando Santtos TV Automation..."
     );
 
-    initializeDatabase({ userDataPath: app.getPath("userData") });
+    initializeDatabase({
+        userDataPath: app.getPath("userData"),
+        migrateLegacy: !isTestBench
+    });
     initializeLibraryCategories(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
