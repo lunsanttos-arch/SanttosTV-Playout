@@ -154,6 +154,20 @@ let ndiRestartTimer = null;
 let ndiRestartFailures = 0;
 let ndiStopping = false;
 let nativePlaybackActive = false;
+let playoutLastError = "";
+
+function onPlayoutFault(message) {
+    playoutLastError = message;
+    nativePlaybackActive = false;
+
+    // Em falha inesperada, enviar um frame preto valido ao sender:
+    // evita que o ultimo frame do comercial congele sem aviso.
+    if (ndiReady && ndiProcess?.stdin && !ndiProcess.stdin.destroyed) {
+        ndiProcess.stdin.write(Buffer.alloc(NDI_FRAME_SIZE), (error) => {
+            if (error) console.error("Nao foi possivel limpar o PROGRAM NDI:", error);
+        });
+    }
+}
 
 const analysesInProgress = new Map();
 
@@ -662,6 +676,7 @@ function startNativePlayback(
     }
 
     stopNativePlayback();
+    playoutLastError = "";
 
     const ffmpegPath = resolveFfmpegPath();
     const watermarkStyle =
@@ -822,7 +837,7 @@ function startNativePlayback(
 
             if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
-                nativePlaybackActive = false;
+                onPlayoutFault("Erro no decodificador FFmpeg: " + error.message);
             }
         }
     );
@@ -846,7 +861,9 @@ function startNativePlayback(
 
             if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
-                nativePlaybackActive = false;
+                onPlayoutFault(
+                    `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`
+                );
             }
         }
     );
@@ -945,6 +962,7 @@ function registerIpcHandlers() {
             source:
                 "Santtos TV - PROGRAM",
             nativePlaybackActive,
+            playoutError: playoutLastError || null,
             error: ndiLastError || null,
             restarting: Boolean(ndiRestartTimer)
         })
