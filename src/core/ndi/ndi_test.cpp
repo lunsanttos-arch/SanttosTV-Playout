@@ -1,7 +1,11 @@
 #include <Processing.NDI.Lib.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <iostream>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 #include <fcntl.h>
@@ -100,11 +104,42 @@ int main()
         << "Aguardando frames do PROGRAM..."
         << std::endl;
 
-    // Mantem uma imagem preta valida ate o primeiro frame chegar.
-    NDIlib_send_send_video_v2(
-        sender,
-        &videoFrame
-    );
+    // Keep a valid black signal while no video file is on air.
+    std::vector<std::uint8_t> black(frameSize, 0);
+    for (std::size_t offset = 3; offset < frameSize; offset += 4)
+        black[offset] = 255;
+    NDIlib_video_frame_v2_t blackFrame = videoFrame;
+    blackFrame.p_data = black.data();
+
+    std::mutex senderMutex;
+    std::atomic<bool> shuttingDown(false);
+    const auto steadyMillis = []() -> std::int64_t {
+        using namespace std::chrono;
+        return duration_cast<milliseconds>(
+            steady_clock::now().time_since_epoch()
+        ).count();
+    };
+    std::atomic<std::int64_t> lastProgramFrame(steadyMillis());
+    std::uint64_t acknowledgedFrames = 0;
+
+    NDIlib_send_send_video_v2(sender, &blackFrame);
+
+    // The stdin reader may block between programs. The idle worker keeps
+    // the source alive, provides a black fallback, and emits a heartbeat.
+    std::thread idleWorker([&]() {
+        while (!shuttingDown.load())
+        {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            if (shuttingDown.load()) break;
+
+            std::cout << "NDI HEARTBEAT" << std::endl;
+            if (steadyMillis() - lastProgramFrame.load() < 2000) continue;
+
+            std::lock_guard<std::mutex> guard(senderMutex);
+            if (steadyMillis() - lastProgramFrame.load() >= 2000)
+                NDIlib_send_send_video_v2(sender, &blackFrame);
+        }
+    });
 
     while (true)
     {
@@ -127,17 +162,22 @@ int main()
             break;
         }
 
-        videoFrame.p_data =
-            frame.data();
+        videoFrame.p_data = frame.data();
 
-        // Cada frame completo lido do FFmpeg e enviado uma unica vez.
-        // clock_video=true faz o NDI aplicar o pacing de 29.97 fps.
-        NDIlib_send_send_video_v2(
-            sender,
-            &videoFrame
-        );
+        // SDK acceptance is acknowledged only after the synchronous send.
+        // This confirms PROGRAM frames entered the NDI sender, not their
+        // reception by a remote transmitter or a distant TV.
+        {
+            std::lock_guard<std::mutex> guard(senderMutex);
+            lastProgramFrame.store(steadyMillis());
+            NDIlib_send_send_video_v2(sender, &videoFrame);
+            ++acknowledgedFrames;
+            std::cout << "FRAME_ACK " << acknowledgedFrames << std::endl;
+        }
     }
 
+    shuttingDown.store(true);
+    idleWorker.join();
     NDIlib_send_destroy(sender);
     NDIlib_destroy();
 
