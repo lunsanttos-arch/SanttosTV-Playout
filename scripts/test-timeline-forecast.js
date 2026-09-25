@@ -94,6 +94,15 @@ const resumedMuchLater = plan(queue, queue[0].id, {
 assert.equal(resumedMuchLater.entries.get("ad").startsAtMs, now + 680000,
     "Retomada: calcular a partir do novo horario real, não do inicio antigo.");
 
+const resumedAfterBriefPause = plan(queue, queue[0].id, {
+    nowMs: now + 13000,
+    currentTime: 50,
+    sampledAtMs: now + 13000
+});
+assert.equal(resumedAfterBriefPause.entries.get("ad").startsAtMs, now + 93000,
+    "Mesmo pausas curtas devem deslocar a previsão para o instante real da retomada.");
+
+
 const seekForward = plan(queue, queue[0].id, { currentTime: 110 });
 assert.equal(seekForward.entries.get("ad").remainingSeconds, 20);
 const reordered = plan([queue[0], queue[2], queue[1]], queue[0].id, {
