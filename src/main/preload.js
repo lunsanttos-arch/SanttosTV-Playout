@@ -170,6 +170,9 @@ contextBridge.exposeInMainWorld(
                 style
             ),
 
+        openNdiWebsite: () =>
+            ipcRenderer.invoke("ndi:website"),
+
         getNdiStatus: () =>
             ipcRenderer.invoke(
                 "ndi:status"
