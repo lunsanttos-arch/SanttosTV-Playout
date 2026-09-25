@@ -174,3 +174,16 @@
 @media (max-width: 560px) {
     .exhibition-field-row { grid-template-columns: 1fr; }
 }
+
+.exhibition-reset {
+    align-self: flex-start;
+    min-height: 33px;
+    padding: 6px 10px;
+    border: 1px solid #545454;
+    border-radius: 5px;
+    background: #252525;
+    color: #ddd;
+    font-size: 11px;
+    cursor: pointer;
+}
+.exhibition-reset:hover { background: #363636; }
