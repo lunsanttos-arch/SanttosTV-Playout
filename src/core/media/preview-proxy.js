@@ -7,6 +7,7 @@ const { spawn } = require("node:child_process");
 const ffmpegStatic = require("ffmpeg-static");
 
 const activeConversions = new Map();
+const activeChildren = new Set();
 const PROXY_LIMIT = 2 * 1024 * 1024 * 1024; // 2 GiB por proxy de preview
 
 /**
@@ -62,6 +63,7 @@ async function preparePreviewProxy(sourcePath, cacheFolder, options = {}) {
                     stdio: ["ignore", "ignore", "pipe"],
                     windowsHide: true
                 });
+                activeChildren.add(child);
                 let stderr = "";
                 let finished = false;
                 const checkSize = setInterval(() => {
@@ -75,6 +77,7 @@ async function preparePreviewProxy(sourcePath, cacheFolder, options = {}) {
                     if (finished) return;
                     finished = true;
                     clearInterval(checkSize);
+                    activeChildren.delete(child);
                     error ? reject(error) : resolve();
                 };
                 child.stderr.on("data", (chunk) => {
@@ -106,4 +109,10 @@ async function preparePreviewProxy(sourcePath, cacheFolder, options = {}) {
     }
 }
 
-module.exports = { preparePreviewProxy };
+function cancelActivePreviews() {
+    for (const child of activeChildren) {
+        try { child.kill(); } catch { /* already gone */ }
+    }
+}
+
+module.exports = { preparePreviewProxy, cancelActivePreviews };
