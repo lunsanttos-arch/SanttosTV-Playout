@@ -563,7 +563,7 @@ function OutputTab({
             </SettingsCard>
 
             <SettingsCard
-                title="NDI"
+                title="NDI®"
                 description="Saída de rede local do PROGRAM."
             >
                 <ToggleField
@@ -581,6 +581,16 @@ function OutputTab({
                         patchNdi({ name })
                     }
                 />
+
+                <div className="settings-info">
+                    NDI® é marca registrada da Vizrt NDI AB.{" "}
+                    <button
+                        type="button"
+                        onClick={() => (window as any).santtosAPI.openNdiWebsite()}
+                    >
+                        Conheça NDI® e os recursos oficiais
+                    </button>
+                </div>
 
                 <div className="output-state online">
                     <strong>Engine atual</strong>

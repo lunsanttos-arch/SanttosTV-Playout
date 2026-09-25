@@ -1,0 +1,43 @@
+name: Security Review
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  security-review:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Audit all and production dependencies
+        shell: pwsh
+        run: |
+          npm audit --json | Set-Content -Encoding utf8 audit-all.json
+          npm audit --omit=dev --json | Set-Content -Encoding utf8 audit-production.json
+          node scripts/security-audit-summary.cjs
+      - name: Native binary versions
+        shell: pwsh
+        run: |
+          node -e "const cp=require('node:child_process'); for(const pkg of ['ffmpeg-static','@derhuerst/ffprobe-static']) {const m=require(pkg);const p=typeof m==='string'?m:m.path??m.default;const v=cp.spawnSync(p,['-version'],{encoding:'utf8'});console.log(pkg, p, v.stdout.split(/\r?\n/)[0]);if(v.error) console.error(v.error.message)}"
+      - name: Backend and frontend QA
+        run: npm test
+      - name: Native NDI protocol and watchdog (simulated SDK)
+        run: npm run test:native
+      - name: Smoke stress
+        run: npm run stress:smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dependency-audit-json
+          path: |
+            audit-all.json
+            audit-production.json

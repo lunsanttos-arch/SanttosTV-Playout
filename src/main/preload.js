@@ -4,10 +4,6 @@ const {
     webUtils
 } = require("electron");
 
-const {
-    pathToFileURL
-} = require("url");
-
 contextBridge.exposeInMainWorld(
     "santtosAPI",
     {
@@ -174,6 +170,9 @@ contextBridge.exposeInMainWorld(
                 style
             ),
 
+        openNdiWebsite: () =>
+            ipcRenderer.invoke("ndi:website"),
+
         getNdiStatus: () =>
             ipcRenderer.invoke(
                 "ndi:status"
@@ -197,6 +196,12 @@ contextBridge.exposeInMainWorld(
             ipcRenderer.invoke(
                 "ndi:stop-file"
             ),
+
+        onNdiEvent: (callback) => {
+            const listener = (_event, payload) => callback(payload);
+            ipcRenderer.on("ndi:event", listener);
+            return () => ipcRenderer.removeListener("ndi:event", listener);
+        },
 
         startPlayoutReport: (mediaItem) =>
             ipcRenderer.invoke(
@@ -223,11 +228,9 @@ contextBridge.exposeInMainWorld(
                 frameData
             ),
 
-        getMediaFileUrl: (
-            filePath
-        ) =>
-            pathToFileURL(
-                filePath
-            ).toString()
+        getMediaFileUrl: (filePath) =>
+            typeof filePath === "string" && filePath.length <= 4096
+                ? "santtos-media://media/" + encodeURIComponent(filePath)
+                : ""
     }
 );

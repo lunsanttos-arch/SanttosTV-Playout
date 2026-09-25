@@ -10,15 +10,22 @@
     "dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
     "start": "npm run dev",
     "build:renderer": "vite build",
-    "build": "npm run build:renderer && electron-builder",
+    "build": "npm run build:windows",
     "test:backend": "node scripts/test-backend.js",
     "test:frontend": "npm exec tsc -- --noEmit && npm run build:renderer && node scripts/test-frontend.js",
-    "test": "npm run test:backend && npm run test:frontend",
+    "test:security": "node --test scripts/test-security.js",
+    "test": "npm run test:backend && npm run test:frontend && npm run test:security && npm run test:media-protocol && npm run test:frames",
     "stress:smoke": "node scripts/stress-playout.js smoke",
     "stress:quick": "node scripts/stress-playout.js quick",
     "stress:day": "node scripts/stress-playout.js day",
     "stress:72h": "node scripts/stress-playout.js 72h",
-    "stress:large": "node scripts/stress-playout.js large"
+    "stress:large": "node scripts/stress-playout.js large",
+    "build:ndi": "node scripts/build-ndi.js",
+    "build:windows": "npm run build:renderer && npm run build:ndi && electron-builder --win nsis --publish never",
+    "build:win:dir": "npm run build:renderer && npm run build:ndi && electron-builder --win dir --publish never",
+    "test:media-protocol": "node --test scripts/test-media-protocol.js",
+    "test:native": "node scripts/test-native-ndi.js",
+    "test:frames": "node --test scripts/test-frame-pump.js"
   },
   "dependencies": {
     "@derhuerst/ffprobe-static": "5.3.0",
@@ -32,7 +39,7 @@
     "@types/react-dom": "^19.1.7",
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^9.2.0",
-    "electron": "^37.2.5",
+    "electron": "^44.4.5",
     "electron-builder": "^26.0.12",
     "typescript": "^5.8.3",
     "vite": "^7.0.6",
@@ -57,6 +64,19 @@
     ],
     "win": {
       "target": "nsis"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "src/core/ndi/ndi_test.exe",
+        "to": "ndi/ndi_test.exe"
+      },
+      {
+        "from": "src/core/ndi/Processing.NDI.Lib.x64.dll",
+        "to": "ndi/Processing.NDI.Lib.x64.dll"
+      }
+    ]
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

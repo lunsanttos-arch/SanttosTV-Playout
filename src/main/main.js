@@ -3,12 +3,33 @@ const {
     BrowserWindow,
     ipcMain,
     dialog,
-    nativeImage
+    nativeImage,
+    protocol,
+    session,
+    shell,
+    safeStorage
 } = require("electron");
 
 const path = require("path");
 const fs = require("fs");
+const { pathToFileURL } = require("node:url");
+const { MEDIA_SCHEME, createMediaProtocolHandler } = require("./media-protocol");
+const { createSecretStore } = require("./secret-store");
+
+protocol.registerSchemesAsPrivileged([
+    {
+        scheme: MEDIA_SCHEME,
+        privileges: {
+            standard: true,
+            secure: true,
+            stream: true,
+            supportFetchAPI: true
+        }
+    }
+]);
 const { spawn } = require("child_process");
+const crypto = require("node:crypto");
+const { forwardCompleteFrames } = require("./frame-pump");
 const ffmpegStatic = require("ffmpeg-static");
 
 const {
@@ -62,6 +83,17 @@ const {
 );
 
 const isDevelopment = !app.isPackaged;
+const hasSingleInstanceLock = app.requestSingleInstanceLock();
+if (!hasSingleInstanceLock) {
+    app.quit();
+}
+app.on("second-instance", () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.show();
+        mainWindow.focus();
+    }
+});
 
 const NDI_FRAME_WIDTH = 1920;
 const NDI_FRAME_HEIGHT = 1080;
@@ -103,6 +135,117 @@ let ndiFrameBusy = false;
 let nativePlaybackActive = false;
 
 const analysesInProgress = new Map();
+let secretStore = null;
+let nativeSession = null;
+let ndiQueuedFrames = 0;
+let ndiAcknowledgedFrames = 0;
+let ndiLastHeartbeatAt = 0;
+let ndiStartedAt = 0;
+let ndiRestartTimer = null;
+let ndiWatchdogTimer = null;
+let ndiRestartAttempts = 0;
+let ndiShuttingDown = false;
+
+function emitNdiEvent(event) {
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+        mainWindow.webContents.send("ndi:event", event);
+    }
+}
+
+function finishNativeSession(session, ok, message = "") {
+    if (!session || session.cancelled || session.finished) return;
+    session.finished = true;
+    if (session.ackTimer) clearTimeout(session.ackTimer);
+    if (nativeSession === session) {
+        nativeSession = null;
+        ffmpegProcess = null;
+        nativePlaybackActive = false;
+    }
+    emitNdiEvent({
+        type: ok ? "playback-finished" : "playback-failed",
+        playbackId: session.playbackId,
+        frames: session.framesQueued,
+        startSeconds: session.startSeconds,
+        error: ok ? null : message
+    });
+}
+
+function maybeCompleteNativeSession(session) {
+    if (!session || !session.ffmpegFinished || session.finished || session.cancelled) return;
+    if (session.exitCode !== 0 || session.trailingBytes !== 0 || session.framesQueued === 0) {
+        finishNativeSession(session, false, session.error || "Decodificação FFmpeg incompleta.");
+        return;
+    }
+    if (ndiAcknowledgedFrames >= session.lastFrameSequence) {
+        const estimatedFrames = Number.isFinite(session.plannedSeconds)
+            ? Math.max(1, Math.round(session.plannedSeconds * 30000 / 1001))
+            : 0;
+        if (estimatedFrames && session.framesQueued < estimatedFrames - 2) {
+            finishNativeSession(session, false, "O FFmpeg terminou antes do OUT previsto.");
+        } else {
+            finishNativeSession(session, true);
+        }
+        return;
+    }
+    if (!session.ackTimer) {
+        session.ackTimer = setTimeout(() => {
+            finishNativeSession(session, false, "O sender NDI não confirmou os últimos frames.");
+        }, 10000);
+    }
+}
+
+function onNdiFrameAck(counter) {
+    if (!Number.isSafeInteger(counter) || counter <= ndiAcknowledgedFrames) return;
+    ndiAcknowledgedFrames = counter;
+    const session = nativeSession;
+    if (!session || !session.framesQueued || session.cancelled) return;
+    if (counter >= session.firstFrameSequence &&
+        (counter - session.firstFrameSequence + 1) % 30 === 0) {
+        emitNdiEvent({
+            type: "playback-progress",
+            playbackId: session.playbackId,
+            currentSeconds: session.startSeconds +
+                (counter - session.firstFrameSequence + 1) * 1001 / 30000
+        });
+    }
+    maybeCompleteNativeSession(session);
+}
+
+
+// Somente o documento principal do Playout pode executar comandos com
+// privilegios do processo principal. Iframes e janelas externas sao bloqueados.
+function isTrustedIpcEvent(event) {
+    return Boolean(
+        mainWindow &&
+        !mainWindow.isDestroyed() &&
+        event.sender === mainWindow.webContents &&
+        event.senderFrame === mainWindow.webContents.mainFrame
+    );
+}
+
+function secureIpcHandle(channel, handler) {
+    ipcMain.handle(channel, (event, ...args) => {
+        if (!isTrustedIpcEvent(event)) {
+            console.warn(`IPC nao autorizado bloqueado: ${channel}`);
+            throw new Error("Origem IPC nao autorizada.");
+        }
+        return handler(event, ...args);
+    });
+}
+
+function isAllowedMainNavigation(targetUrl, expectedUrl) {
+    try {
+        const target = new URL(targetUrl);
+        const expected = new URL(expectedUrl);
+        return (
+            target.protocol === expected.protocol &&
+            target.host === expected.host &&
+            target.pathname === expected.pathname
+        );
+    } catch {
+        return false;
+    }
+}
 
 function createWindow() {
     mainWindow = new BrowserWindow({
@@ -115,13 +258,37 @@ function createWindow() {
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
-            webSecurity: false,
+            webviewTag: false,
+            devTools: isDevelopment,
+            // Preview local com esquema privado e seek via HTTP Range.
+            webSecurity: true,
+            sandbox: true,
             preload: path.join(
                 __dirname,
                 "preload.js"
             )
         }
     });
+
+    // Impede que links externos herdem acesso ao bridge privilegiado.
+    const expectedUrl = isDevelopment
+        ? "http://localhost:5173/"
+        : pathToFileURL(
+              path.join(__dirname, "../../dist/index.html")
+          ).toString();
+
+    mainWindow.webContents.setWindowOpenHandler(() => ({
+        action: "deny"
+    }));
+    for (const eventName of ["will-navigate", "will-redirect"]) {
+        mainWindow.webContents.on(eventName, (event, target) => {
+            const targetUrl =
+                typeof target === "string" ? target : target?.url;
+            if (!isAllowedMainNavigation(targetUrl, expectedUrl)) {
+                event.preventDefault();
+            }
+        });
+    }
 
     mainWindow.maximize();
 
@@ -255,10 +422,14 @@ async function analyzeMediaItem(mediaItem) {
 }
 
 async function analyzeMediaItems(mediaItems) {
-    await Promise.all(
-        mediaItems.map(analyzeMediaItem)
-    );
-
+    // Avoid spawning hundreds of simultaneous ffprobe/ffmpeg processes
+    // when OPEC refreshes a large media folder.
+    const MAX_PARALLEL_ANALYSES = 2;
+    for (let i = 0; i < mediaItems.length; i += MAX_PARALLEL_ANALYSES) {
+        await Promise.all(
+            mediaItems.slice(i, i + MAX_PARALLEL_ANALYSES).map(analyzeMediaItem)
+        );
+    }
     return getMedia();
 }
 
@@ -412,7 +583,10 @@ function buildProgramFilterGraph(
     );
 
     const sourceVideo =
-        Number.isInteger(Number(videoStreamIndex))
+        videoStreamIndex !== null &&
+        videoStreamIndex !== undefined &&
+        Number.isInteger(Number(videoStreamIndex)) &&
+        Number(videoStreamIndex) >= 0
             ? `[0:${Number(videoStreamIndex)}]`
             : "[0:v:0]";
 
@@ -526,32 +700,19 @@ function buildProgramFilterGraph(
 }
 
 function stopNativePlayback() {
-    if (!ffmpegProcess) {
-        nativePlaybackActive = false;
-        return;
+    if (nativeSession) {
+        nativeSession.cancelled = true;
+        if (nativeSession.ackTimer) clearTimeout(nativeSession.ackTimer);
     }
-
     const processToStop = ffmpegProcess;
-
-    console.log(
-        "Encerrando playout FFmpeg..."
-    );
-
-    if (
-        processToStop.stdout &&
-        ndiProcess &&
-        ndiProcess.stdin
-    ) {
-        processToStop.stdout.unpipe(
-            ndiProcess.stdin
-        );
-    }
-
+    nativeSession = null;
     ffmpegProcess = null;
     nativePlaybackActive = false;
-
-    if (!processToStop.killed) {
-        processToStop.kill();
+    if (processToStop) {
+        processToStop.stdout?.destroy();
+        if (processToStop.exitCode === null && !processToStop.killed) {
+            processToStop.kill();
+        }
     }
 }
 
@@ -615,11 +776,11 @@ function startNativePlayback(
             normalizedStartSeconds
     };
     const normalizedOutPoint =
-        Number.isFinite(Number(programState.outPointSeconds))
-            ? Math.max(
-                  normalizedStartSeconds,
-                  Number(programState.outPointSeconds)
-              )
+        programState.outPointSeconds !== null &&
+        programState.outPointSeconds !== undefined &&
+        Number.isFinite(Number(programState.outPointSeconds)) &&
+        Number(programState.outPointSeconds) > normalizedStartSeconds
+            ? Number(programState.outPointSeconds)
             : null;
     const clipRemainingSeconds =
         normalizedOutPoint !== null
@@ -723,73 +884,81 @@ function startNativePlayback(
         }
     );
 
+    const session = {
+        playbackId: crypto.randomUUID(),
+        startSeconds: normalizedStartSeconds,
+        plannedSeconds: clipRemainingSeconds,
+        framesQueued: 0,
+        firstFrameSequence: 0,
+        lastFrameSequence: 0,
+        trailingBytes: 0,
+        exitCode: null,
+        ffmpegFinished: false,
+        finished: false,
+        cancelled: false,
+        error: "",
+        ackTimer: null,
+        pump: null
+    };
+    nativeSession = session;
     ffmpegProcess = processRef;
     nativePlaybackActive = true;
     ndiFrameBusy = false;
 
-    processRef.stdout.pipe(
+    // Complete-frame assembly prevents an interrupted rawvideo frame from
+    // bleeding into the next item on the shared NDI stdin.
+    session.pump = forwardCompleteFrames(
+        processRef.stdout,
         ndiProcess.stdin,
-        { end: false }
-    );
-
-    processRef.stderr.on(
-        "data",
-        (data) => {
-            const message =
-                data.toString().trim();
-
-            if (message) {
-                console.warn(
-                    `[FFmpeg] ${message}`
-                );
+        NDI_FRAME_SIZE,
+        () => {
+            if (session.cancelled) return;
+            session.framesQueued++;
+            session.lastFrameSequence = ++ndiQueuedFrames;
+            if (!session.firstFrameSequence) {
+                session.firstFrameSequence = session.lastFrameSequence;
+            }
+        },
+        () => session.cancelled
+    ).then((result) => {
+        session.trailingBytes = result.trailingBytes;
+    }).catch((error) => {
+        if (!session.cancelled) {
+            session.error = error.message;
+            processRef.stdout?.destroy();
+            if (processRef.exitCode === null && !processRef.killed) {
+                processRef.kill();
             }
         }
-    );
+    });
 
-    processRef.on(
-        "error",
-        (error) => {
-            console.error(
-                "Falha no playout FFmpeg:",
-                error
-            );
+    processRef.stderr.on("data", (data) => {
+        const message = data.toString().trim();
+        if (message) console.warn(`[FFmpeg] ${message}`);
+    });
 
-            if (ffmpegProcess === processRef) {
-                ffmpegProcess = null;
-                nativePlaybackActive = false;
-            }
-        }
-    );
+    processRef.on("error", (error) => {
+        if (session.cancelled) return;
+        session.error = error.message;
+        console.error("Falha no playout FFmpeg:", error);
+    });
 
-    processRef.on(
-        "exit",
-        (code, signal) => {
-            if (
-                ndiProcess &&
-                ndiProcess.stdin &&
-                processRef.stdout
-            ) {
-                processRef.stdout.unpipe(
-                    ndiProcess.stdin
-                );
-            }
-
-            console.log(
-                `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`
-            );
-
-            if (ffmpegProcess === processRef) {
-                ffmpegProcess = null;
-                nativePlaybackActive = false;
-            }
-        }
-    );
+    processRef.on("close", async (code, signal) => {
+        await session.pump;
+        if (session.cancelled) return;
+        console.log(
+            `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`
+        );
+        session.exitCode = code;
+        session.ffmpegFinished = true;
+        maybeCompleteNativeSession(session);
+    });
 
     return {
         ok: true,
+        playbackId: session.playbackId,
         filePath,
-        startSeconds:
-            normalizedStartSeconds
+        startSeconds: normalizedStartSeconds
     };
 }
 
@@ -869,7 +1038,12 @@ function createWatermarkPreviewDataUrl(filePath) {
 }
 
 function registerIpcHandlers() {
-    ipcMain.handle(
+    secureIpcHandle("ndi:website", async () => {
+        await shell.openExternal("https://ndi.video/");
+        return { ok: true };
+    });
+
+    secureIpcHandle(
         "ndi:status",
         async () => ({
             online:
@@ -882,7 +1056,7 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "ndi:play-file",
         async (
             _event,
@@ -912,7 +1086,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "ndi:stop-file",
         async () => {
             stopNativePlayback();
@@ -920,12 +1094,12 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "library-categories:get",
         async () => getLibraryCategories()
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "library-categories:save",
         async (_event, categories) => {
             try {
@@ -944,7 +1118,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "library-categories:select-folder",
         async () => {
             const result = await dialog.showOpenDialog(
@@ -963,7 +1137,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "library-categories:scan",
         async (_event, categoryId) => {
             try {
@@ -982,21 +1156,61 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "settings:get",
-        async () => getSettings()
+        async () => {
+            const settings = getSettings();
+            if (secretStore && secretStore.isAvailable()) {
+                try {
+                    settings.output.srt.passphrase = secretStore.read();
+                } catch (error) {
+                    console.error("Não foi possível ler a senha protegida SRT:", error.message);
+                    settings.output.srt.passphrase = "";
+                }
+            } else {
+                settings.output.srt.passphrase = "";
+            }
+            return settings;
+        }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "settings:set-output",
-        async (_event, output) => ({
-            ok: true,
-            output:
-                updateOutputSettings(output)
-        })
+        async (_event, output) => {
+            try {
+                const passphrase = output?.srt?.passphrase ?? "";
+                if (typeof passphrase !== "string") {
+                    throw new Error("Senha SRT inválida.");
+                }
+                if (passphrase) {
+                    secretStore.write(passphrase);
+                } else {
+                    secretStore.clear();
+                }
+                const settings = {
+                    ...output,
+                    srt: { ...output.srt, passphrase: "" }
+                };
+                const saved = updateOutputSettings(settings);
+                return {
+                    ok: true,
+                    output: {
+                        ...saved,
+                        srt: { ...saved.srt, passphrase }
+                    }
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+                    error: error instanceof Error
+                        ? error.message
+                        : "Não foi possível salvar configurações."
+                };
+            }
+        }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "settings:set-hashtag-style",
         async (_event, style) => ({
             ok: true,
@@ -1005,7 +1219,7 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "watermark:preview",
         async (_event, filePath) => {
             try {
@@ -1035,7 +1249,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "watermark:select",
         async () => {
             try {
@@ -1104,7 +1318,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "settings:set-watermark-style",
         async (_event, style) => {
             try {
@@ -1136,7 +1350,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "report:playout-start",
         async (_event, mediaItem) => {
             try {
@@ -1159,7 +1373,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "report:playout-finish",
         async (_event, entryId, status, playedSeconds) => {
             try {
@@ -1183,7 +1397,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "report:folder",
         async () => ({
             ok: true,
@@ -1191,12 +1405,12 @@ function registerIpcHandlers() {
         })
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "rundown:get",
         async (_event, date) => getDailyRundown(date)
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "rundown:save",
         async (_event, rundown) => {
             try {
@@ -1216,12 +1430,12 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "timeline:list",
         async () => getTimeline()
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "timeline:save",
         async (_event, timelineItems) =>
             saveTimeline(timelineItems)
@@ -1229,7 +1443,11 @@ function registerIpcHandlers() {
 
     ipcMain.on(
         "ndi:frame",
-        (_event, frameData) => {
+        (event, frameData) => {
+            if (!isTrustedIpcEvent(event)) {
+                console.warn("Frame NDI nao autorizado bloqueado.");
+                return;
+            }
             if (
                 nativePlaybackActive ||
                 !ndiProcess ||
@@ -1241,8 +1459,16 @@ function registerIpcHandlers() {
                 return;
             }
 
-            const frameBuffer =
-                Buffer.from(frameData);
+            // Rejeitar tamanho e tipo ANTES de criar uma copia de 8MB.
+            if (
+                !(frameData instanceof Uint8Array) ||
+                frameData.byteLength !== NDI_FRAME_SIZE
+            ) {
+                console.warn("Frame NDI invalido ou fora do tamanho esperado.");
+                return;
+            }
+
+            const frameBuffer = Buffer.from(frameData);
 
             if (
                 frameBuffer.length !==
@@ -1272,7 +1498,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "media:select",
         async () => {
             const result =
@@ -1314,7 +1540,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "media:list",
         async () => {
             const media = getMedia();
@@ -1336,7 +1562,7 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "media:import",
         async (_event, filePaths) => {
             const importResult =
@@ -1354,157 +1580,129 @@ function registerIpcHandlers() {
         }
     );
 
-    ipcMain.handle(
+    secureIpcHandle(
         "media:remove",
         async (_event, mediaId) =>
             removeMedia(mediaId)
     );
 }
 
-function startNdiSender() {
-    if (ndiProcess) {
-        return;
-    }
+function scheduleNdiRestart() {
+    if (ndiShuttingDown || ndiRestartTimer) return;
+    const delay = Math.min(30000, 1000 * Math.pow(2, Math.min(ndiRestartAttempts, 5)));
+    ndiRestartAttempts++;
+    console.warn(`Sender NDI será reiniciado em ${delay} ms.`);
+    ndiRestartTimer = setTimeout(() => {
+        ndiRestartTimer = null;
+        startNdiSender();
+    }, delay);
+}
 
+function handleNdiFailure(processRef, reason) {
+    if (ndiProcess !== processRef) return;
+    const session = nativeSession;
+    if (session && !session.finished) {
+        if (ffmpegProcess?.exitCode === null && !ffmpegProcess.killed) {
+            ffmpegProcess.kill();
+        }
+        finishNativeSession(session, false, reason);
+        session.cancelled = true;
+    }
+    ndiProcess = null;
     ndiReady = false;
     ndiFrameBusy = false;
+    ndiQueuedFrames = 0;
+    ndiAcknowledgedFrames = 0;
+    emitNdiEvent({type:"engine-offline", error:reason});
+    if (!ndiShuttingDown) scheduleNdiRestart();
+}
 
-    const ndiExecutable = path.join(
-        __dirname,
-        "../core/ndi/ndi_test.exe"
-    );
+function startNdiSender() {
+    if (ndiProcess || ndiShuttingDown) return;
+    ndiReady = false;
+    ndiFrameBusy = false;
+    ndiQueuedFrames = 0;
+    ndiAcknowledgedFrames = 0;
+    ndiLastHeartbeatAt = Date.now();
+    ndiStartedAt = ndiLastHeartbeatAt;
 
-    console.log(
-        "Iniciando sender NDI..."
-    );
+    const executable = app.isPackaged
+        ? path.join(process.resourcesPath, "ndi", "ndi_test.exe")
+        : path.join(__dirname, "../core/ndi/ndi_test.exe");
 
+    console.log("Iniciando sender NDI:", executable);
+    let processRef;
     try {
-        ndiProcess = spawn(
-            ndiExecutable,
-            [],
-            {
-                cwd: path.dirname(
-                    ndiExecutable
-                ),
-                windowsHide: true,
-                stdio: [
-                    "pipe",
-                    "pipe",
-                    "pipe"
-                ]
-            }
-        );
-
-        ndiProcess.stdin.on(
-            "error",
-            (error) => {
-                ndiFrameBusy = false;
-                console.error(
-                    "Erro no stdin do engine NDI:",
-                    error
-                );
-            }
-        );
-
-        ndiProcess.stdout.on(
-            "data",
-            (data) => {
-                const message =
-                    data.toString().trim();
-
-                if (
-                    message.includes(
-                        "NDI ONLINE:"
-                    )
-                ) {
+        processRef = spawn(executable, [], {
+            cwd: path.dirname(executable),
+            windowsHide: true,
+            stdio: ["pipe", "pipe", "pipe"]
+        });
+        ndiProcess = processRef;
+        let textBuffer = "";
+        processRef.stdout.on("data", (data) => {
+            textBuffer += data.toString();
+            if (textBuffer.length > 8192) textBuffer = textBuffer.slice(-2048);
+            let lineBreak;
+            while ((lineBreak = textBuffer.indexOf("\n")) >= 0) {
+                const line = textBuffer.slice(0,lineBreak).trim();
+                textBuffer = textBuffer.slice(lineBreak + 1);
+                if (line === "NDI HEARTBEAT") {
+                    ndiLastHeartbeatAt = Date.now();
+                    if (ndiRestartAttempts && Date.now() - ndiStartedAt > 60000) {
+                        ndiRestartAttempts = 0;
+                    }
+                } else if (line.startsWith("FRAME_ACK ")) {
+                    onNdiFrameAck(Number(line.slice(10)));
+                } else if (line.includes("NDI ONLINE:")) {
                     ndiReady = true;
-                    console.log(
-                        "Santtos NDI confirmado ONLINE"
-                    );
-                }
-
-                if (message) {
-                    console.log(
-                        `[NDI] ${message}`
-                    );
+                    ndiLastHeartbeatAt = Date.now();
+                    emitNdiEvent({type:"engine-online"});
+                    console.log("Santtos NDI confirmado ONLINE");
+                } else if (line) {
+                    console.log("[NDI]", line);
                 }
             }
-        );
-
-        ndiProcess.stderr.on(
-            "data",
-            (data) => {
-                const message =
-                    data.toString().trim();
-
-                if (message) {
-                    console.error(
-                        `[NDI] ${message}`
-                    );
-                }
-            }
-        );
-
-        ndiProcess.on(
-            "error",
-            (error) => {
-                console.error(
-                    "Falha ao iniciar NDI:",
-                    error
-                );
-
-                stopNativePlayback();
-                ndiReady = false;
-                ndiFrameBusy = false;
-                ndiProcess = null;
-            }
-        );
-
-        ndiProcess.on(
-            "exit",
-            (code, signal) => {
-                console.log(
-                    `Sender NDI encerrado. Código: ${code}, sinal: ${signal}`
-                );
-
-                stopNativePlayback();
-                ndiReady = false;
-                ndiFrameBusy = false;
-                ndiProcess = null;
-            }
-        );
+        });
+        processRef.stderr.on("data", data => {
+            const message = data.toString().trim();
+            if (message) console.error("[NDI]", message);
+        });
+        processRef.stdin.on("error", error => {
+            console.error("Erro no stdin do engine NDI:", error.message);
+        });
+        processRef.on("error", error => {
+            console.error("Falha ao iniciar NDI:", error);
+            handleNdiFailure(processRef, error.message);
+        });
+        processRef.on("exit", (code, signal) => {
+            console.warn(`Sender NDI encerrado: ${code ?? "?"}, sinal: ${signal ?? "?"}`);
+            handleNdiFailure(processRef, "Sender NDI parou inesperadamente.");
+        });
     } catch (error) {
-        console.error(
-            "Erro ao iniciar sender NDI:",
-            error
-        );
-
-        stopNativePlayback();
-        ndiReady = false;
-        ndiFrameBusy = false;
-        ndiProcess = null;
+        console.error("Falha ao criar sender NDI:", error);
+        if (processRef && ndiProcess === processRef) {
+            handleNdiFailure(processRef, error.message);
+        } else {
+            scheduleNdiRestart();
+        }
     }
 }
 
 function stopNdiSender() {
+    ndiShuttingDown = true;
+    if (ndiRestartTimer) clearTimeout(ndiRestartTimer);
+    if (ndiWatchdogTimer) clearInterval(ndiWatchdogTimer);
+    ndiRestartTimer = null;
+    ndiWatchdogTimer = null;
     stopNativePlayback();
-
-    if (
-        !ndiProcess ||
-        ndiProcess.killed
-    ) {
-        return;
-    }
-
-    console.log(
-        "Encerrando sender NDI..."
-    );
-
-    ndiFrameBusy = false;
-    ndiReady = false;
-
-    ndiProcess.kill();
+    const processRef = ndiProcess;
     ndiProcess = null;
+    ndiReady = false;
+    ndiFrameBusy = false;
+    if (processRef && processRef.exitCode === null && !processRef.killed) {
+        processRef.kill();
+    }
 }
 
 function startSystem() {
@@ -1512,7 +1710,22 @@ function startSystem() {
         "Inicializando Santtos TV Automation..."
     );
 
-    initializeDatabase();
+    initializeDatabase(app.getPath("userData"));
+    secretStore = createSecretStore(app.getPath("userData"), safeStorage);
+    // Remove any legacy plaintext SRT password on first startup after upgrade.
+    const oldSettings = getSettings();
+    const legacyPassphrase = oldSettings?.output?.srt?.passphrase;
+    if (legacyPassphrase) {
+        if (!secretStore.isAvailable()) {
+            console.error("Senha SRT antiga ainda sem migrar: proteção do Windows indisponível.");
+        } else {
+            secretStore.write(legacyPassphrase);
+            updateOutputSettings({
+                ...oldSettings.output,
+                srt: { ...oldSettings.output.srt, passphrase: "" }
+            });
+        }
+    }
     initializeLibraryCategories(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
@@ -1527,8 +1740,23 @@ function startSystem() {
 }
 
 app.whenReady().then(() => {
+    if (!hasSingleInstanceLock) return;
     startSystem();
+    session.defaultSession.setPermissionRequestHandler(
+        (_contents, _permission, callback) => callback(false)
+    );
+    session.defaultSession.setPermissionCheckHandler(() => false);
+    protocol.handle(MEDIA_SCHEME, createMediaProtocolHandler(getMedia));
+
     startNdiSender();
+    ndiWatchdogTimer = setInterval(() => {
+        if (ndiShuttingDown || !ndiProcess) return;
+        const timeout = ndiReady ? 6000 : 15000;
+        if (Date.now() - ndiLastHeartbeatAt > timeout) {
+            console.error("Timeout de heartbeat NDI: reiniciando o sender.");
+            ndiProcess.kill();
+        }
+    }, 1000);
     registerIpcHandlers();
     createWindow();
 

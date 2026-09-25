@@ -104,8 +104,17 @@ interface RemoveResult {
 interface NdiCommandResult {
     ok: boolean;
     error?: string;
+    playbackId?: string;
     filePath?: string;
     startSeconds?: number;
+}
+
+interface NdiPlaybackEvent {
+    type: "engine-online" | "engine-offline" |
+          "playback-progress" | "playback-finished" | "playback-failed";
+    playbackId?: string;
+    currentSeconds?: number;
+    error?: string | null;
 }
 
 interface SaveHashtagStyleResult {
@@ -238,6 +247,7 @@ declare global {
                 error?: string;
             }>;
             stopNdiFile: () => Promise<NdiCommandResult>;
+            onNdiEvent: (callback: (event: NdiPlaybackEvent) => void) => () => void;
             startPlayoutReport: (
                 mediaItem: MediaItem & {
                     plannedDurationSeconds: number;
@@ -734,6 +744,16 @@ function PlayoutPanel({
         useState<MediaItem | null>(null);
     const clipAdvanceGuardRef = useRef(false);
     const activeReportIdRef = useRef<string | null>(null);
+    const activeNativePlaybackIdRef = useRef<string | null>(null);
+    const nativeProgressRef = useRef(0);
+    const reportStartTimeRef = useRef(0);
+    const recoveryRef = useRef<{ media: MediaItem; position: number } | null>(null);
+    const consecutiveFailureRef = useRef(0);
+    const ndiEventRef = useRef<(event: NdiPlaybackEvent) => void>(() => {});
+
+    useEffect(() =>
+        window.santtosAPI.onNdiEvent((event) => ndiEventRef.current(event)),
+    []);
 
     useEffect(() => {
         let cancelled = false;
@@ -1050,13 +1070,8 @@ function PlayoutPanel({
         });
 
     const selectedMediaUrl =
-        selectedMedia
-            ? encodeURI(
-                  `file:///${selectedMedia.path.replace(
-                      /\\/g,
-                      "/"
-                  )}`
-              )
+        selectedMedia?.path
+            ? window.santtosAPI.getMediaFileUrl(selectedMedia.path)
             : null;
 
     const progressPercent =
@@ -1188,17 +1203,21 @@ function PlayoutPanel({
         };
     }
 
-    async function startExecutionReport(mediaItem: MediaItem) {
+    async function startExecutionReport(
+        mediaItem: MediaItem,
+        startAt = getClipIn(mediaItem)
+    ) {
         if (activeReportIdRef.current) {
             return;
         }
+        reportStartTimeRef.current = startAt;
 
         try {
             const result = await window.santtosAPI.startPlayoutReport({
                 ...mediaItem,
-                inPoint: getClipIn(mediaItem),
+                inPoint: startAt,
                 outPoint: getClipOut(mediaItem),
-                plannedDurationSeconds: getClipDuration(mediaItem)
+                plannedDurationSeconds: Math.max(0, getClipOut(mediaItem) - startAt)
             });
 
             if (result.ok && result.id) {
@@ -1232,7 +1251,7 @@ function PlayoutPanel({
         const videoTime = videoRef.current?.currentTime ?? currentTime;
         const playedSeconds = forcedPlayedSeconds ?? Math.max(
             0,
-            videoTime - getClipIn(mediaItem)
+            Math.max(videoTime, nativeProgressRef.current) - reportStartTimeRef.current
         );
 
         try {
@@ -1273,12 +1292,14 @@ function PlayoutPanel({
                     )
                 );
 
-        if (!result.ok) {
+        if (!result.ok || !result.playbackId) {
             throw new Error(
                 result.error ??
-                    "Falha ao iniciar saída NDI."
+                    "Falha ao iniciar ou confirmar a sessão NDI."
             );
         }
+        activeNativePlaybackIdRef.current = result.playbackId;
+        nativeProgressRef.current = startSeconds;
     }
 
     useEffect(() => {
@@ -1342,14 +1363,15 @@ function PlayoutPanel({
             ) {
                 video.currentTime = clipIn;
             }
-            await startNativeNdi(
-                mediaToPlay,
-                video.currentTime || clipIn
-            );
-            await video.play();
+            const startAt = video.currentTime || clipIn;
+            await startExecutionReport(mediaToPlay, startAt);
+            await startNativeNdi(mediaToPlay, startAt);
+            await video.play().catch(() => {
+                console.warn("Preview Chromium indisponível; o NDI nativo continua.");
+            });
             setIsPlaying(true);
-            await startExecutionReport(mediaToPlay);
         } catch (error) {
+            await finishExecutionReport("PULADO", mediaToPlay);
             console.error(error);
             window.alert(
                 `Não foi possível reproduzir o vídeo.\n\n${String(error)}`
@@ -1358,12 +1380,15 @@ function PlayoutPanel({
     }
 
     async function pauseVideo() {
+        activeNativePlaybackIdRef.current = null;
         videoRef.current?.pause();
         setIsPlaying(false);
         await window.santtosAPI.stopNdiFile();
     }
 
     async function stopVideo() {
+        activeNativePlaybackIdRef.current = null;
+        recoveryRef.current = null;
         await finishExecutionReport("PULADO");
         await window.santtosAPI.stopNdiFile();
         const video = videoRef.current;
@@ -1385,11 +1410,11 @@ function PlayoutPanel({
             reason === "completed" ? "EXECUTADO" : "PULADO",
             selectedMedia,
             reason === "completed"
-                ? getClipDuration(selectedMedia)
+                ? Math.max(0, getClipOut(selectedMedia) - reportStartTimeRef.current)
                 : undefined
         );
 
-        if (selectedMedia?.loop) {
+        if (selectedMedia?.loop && reason === "completed") {
             const video = videoRef.current;
             if (!video) {
                 return;
@@ -1397,18 +1422,15 @@ function PlayoutPanel({
 
             const clipIn = getClipIn(selectedMedia);
             video.currentTime = clipIn;
-            await startNativeNdi(
-                selectedMedia,
-                clipIn,
-                true
-            );
-            await video.play();
+            await startExecutionReport(selectedMedia, clipIn);
+            await startNativeNdi(selectedMedia, clipIn, true);
+            await video.play().catch(() => {});
             setIsPlaying(true);
-            await startExecutionReport(selectedMedia);
             return;
         }
 
         if (!nextMedia) {
+            activeNativePlaybackIdRef.current = null;
             setIsPlaying(false);
             await window.santtosAPI.stopNdiFile();
             return;
@@ -1427,10 +1449,16 @@ function PlayoutPanel({
 
         const nextIn = getClipIn(nextMedia);
         video.currentTime = nextIn;
-        await startNativeNdi(nextMedia, nextIn);
-        await video.play();
-        setIsPlaying(true);
-        await startExecutionReport(nextMedia);
+        await startExecutionReport(nextMedia, nextIn);
+        try {
+            await startNativeNdi(nextMedia, nextIn);
+            await video.play().catch(() => {});
+            setIsPlaying(true);
+        } catch (error) {
+            await finishExecutionReport("PULADO", nextMedia);
+            setIsPlaying(false);
+            console.error("Falha ao avançar a Timeline:", error);
+        }
     }
 
     async function handleProgramTimeUpdate(
@@ -1447,8 +1475,12 @@ function PlayoutPanel({
             video.currentTime >= outPoint - 0.035 &&
             !clipAdvanceGuardRef.current
         ) {
+            if (activeNativePlaybackIdRef.current) {
+                video.pause();
+                return; // native NDI sender owns EOF and report completion
+            }
             clipAdvanceGuardRef.current = true;
-            await playNextMedia("completed");
+            await playNextMedia("skipped");
         }
     }
 
@@ -1928,6 +1960,119 @@ function PlayoutPanel({
         setDraggedMediaId(null);
     }
 
+    ndiEventRef.current = (event) => {
+        const currentId = activeNativePlaybackIdRef.current;
+
+        if (
+            event.type === "playback-progress" &&
+            currentId &&
+            event.playbackId === currentId &&
+            typeof event.currentSeconds === "number"
+        ) {
+            nativeProgressRef.current = event.currentSeconds;
+            setCurrentTime(event.currentSeconds);
+            return;
+        }
+
+        if (
+            event.type === "playback-finished" &&
+            currentId &&
+            event.playbackId === currentId
+        ) {
+            activeNativePlaybackIdRef.current = null;
+            consecutiveFailureRef.current = 0;
+            if (!clipAdvanceGuardRef.current) {
+                clipAdvanceGuardRef.current = true;
+                void playNextMedia("completed").catch((error) =>
+                    console.error("Erro ao avançar após confirmação NDI:", error)
+                );
+            }
+            return;
+        }
+
+        if (
+            event.type === "playback-failed" &&
+            currentId &&
+            event.playbackId === currentId
+        ) {
+            activeNativePlaybackIdRef.current = null;
+            consecutiveFailureRef.current++;
+            const reason = event.error || "O engine não confirmou esta exibição.";
+            console.error("Falha real do PROGRAM:", reason);
+
+            if (reason.includes("Sender NDI") && selectedMedia) {
+                recoveryRef.current = {
+                    media: selectedMedia,
+                    position: Math.max(
+                        getClipIn(selectedMedia),
+                        nativeProgressRef.current
+                    )
+                };
+                videoRef.current?.pause();
+                setIsPlaying(false);
+                void finishExecutionReport("PULADO");
+                return;
+            }
+            if (consecutiveFailureRef.current >= 5) {
+                videoRef.current?.pause();
+                setIsPlaying(false);
+                void finishExecutionReport("PULADO");
+                console.error("Cinco falhas consecutivas: avanço automático suspenso.");
+                return;
+            }
+            void playNextMedia("skipped").catch((error) =>
+                console.error("Erro ao pular item falho:", error)
+            );
+            return;
+        }
+
+        if (event.type === "engine-offline") {
+            if (isPlaying && selectedMedia && !recoveryRef.current) {
+                recoveryRef.current = {
+                    media: selectedMedia,
+                    position: Math.max(
+                        getClipIn(selectedMedia),
+                        nativeProgressRef.current
+                    )
+                };
+                activeNativePlaybackIdRef.current = null;
+                videoRef.current?.pause();
+                setIsPlaying(false);
+                void finishExecutionReport("PULADO");
+            }
+            return;
+        }
+
+        if (event.type === "engine-online" && recoveryRef.current) {
+            const pending = recoveryRef.current;
+            recoveryRef.current = null;
+            void (async () => {
+                const mediaItem = pending.media;
+                const startAt = Math.min(
+                    Math.max(getClipIn(mediaItem), pending.position),
+                    getClipOut(mediaItem)
+                );
+                if (startAt >= getClipOut(mediaItem) - 0.05) {
+                    await playNextMedia("skipped");
+                    return;
+                }
+                await startExecutionReport(mediaItem, startAt);
+                await startNativeNdi(mediaItem, startAt);
+                const video = videoRef.current;
+                if (video) {
+                    video.currentTime = startAt;
+                    await video.play().catch(() => {});
+                }
+                setIsPlaying(true);
+                console.log("PROGRAM retomado automaticamente após reconexão NDI.");
+            })().catch((error) => {
+                recoveryRef.current = pending;
+                setIsPlaying(false);
+                console.error("Falha ao recuperar a saída NDI:", error);
+            });
+        }
+    };
+
     return (
         <div className="playout-operation-layout">
             <div className="program-column">
@@ -1983,7 +2128,11 @@ function PlayoutPanel({
                                             event.currentTarget
                                         )
                                     }
-                                    onEnded={() => playNextMedia("completed")}
+                                    onEnded={() => {
+                                        if (!activeNativePlaybackIdRef.current) {
+                                            void playNextMedia("skipped");
+                                        }
+                                    }}
                                 />
 
                                 {watermarkPreviewUrl && (

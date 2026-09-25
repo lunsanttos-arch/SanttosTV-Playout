@@ -8,7 +8,7 @@ Sistema profissional de automação de TV desenvolvido para gerenciamento de pro
 
 ## Versão atual
 
-Alpha 0.1
+Alpha 0.2 — validação em desenvolvimento; homologação 24/7 e instalador NDI dependem de testes em Windows com SDK.
 
 ---
 
@@ -42,6 +42,12 @@ Gerador de caracteres e gráficos.
 Programação automática.
 
 ---
+
+## Compilar instalador Windows
+
+Instale Node.js 22, Visual Studio Build Tools com C++ x64 e o NDI 6 SDK oficial. Na pasta do projeto, execute `npm ci` e `npm run build`. O script `scripts/build-ndi.js` recompila o engine nativo e copia a DLL autorizada para dentro do instalador. Não distribua o NDI Tools: a aplicação empacota somente o runtime conforme os termos aceitos do SDK. O instalador fica em `build/`.
+
+NDI® é marca registrada da Vizrt NDI AB. Documentação e ferramentas oficiais: https://ndi.video/ . A redistribuição da DLL deve respeitar a licença contida na instalação do SDK; avalie a EULA do seu instalador antes de publicação.
 
 ## Tecnologia
 
