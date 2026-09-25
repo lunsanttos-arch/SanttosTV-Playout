@@ -132,6 +132,8 @@ async function main() {
         assert.strictEqual(sanitizedExhibition.color, "#ffffff");
         assert.strictEqual(sanitizedExhibition.labels.REPRISE, "REPRISE");
         db.updateExhibitionStyle(configuredExhibition);
+        // O arquivo .bak precisa conter a configuracao boa antes do teste de corrupção.
+        db.updateExhibitionStyle(configuredExhibition);
 
 
         const library = require("../src/core/library/library-categories");
