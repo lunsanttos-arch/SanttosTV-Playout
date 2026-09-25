@@ -212,6 +212,7 @@ declare global {
                 online: boolean;
                 source: string;
                 nativePlaybackActive?: boolean;
+                playoutError?: string | null;
                 error?: string | null;
                 restarting?: boolean;
             }>;
@@ -277,6 +278,8 @@ export default function App() {
     const [ndiOnline, setNdiOnline] =
         useState(false);
     const [ndiError, setNdiError] = useState<string | null>(null);
+    const [nativePlaybackActive, setNativePlaybackActive] = useState(false);
+    const [playoutError, setPlayoutError] = useState<string | null>(null);
     const [activePanel, setActivePanel] =
         useState<Panel>("playout");
     const [media, setMedia] =
@@ -326,8 +329,11 @@ export default function App() {
                         .getNdiStatus();
                 setNdiOnline(status.online);
                 setNdiError(status.error ?? null);
+                setNativePlaybackActive(Boolean(status.nativePlaybackActive));
+                setPlayoutError(status.playoutError ?? null);
             } catch {
                 setNdiOnline(false);
+                setNativePlaybackActive(false);
                 setNdiError("Falha ao consultar o engine NDI.");
             }
         };
@@ -570,6 +576,8 @@ export default function App() {
                     >
                         <PlayoutPanel
                             ndiOnline={ndiOnline}
+                            nativePlaybackActive={nativePlaybackActive}
+                            playoutError={playoutError}
                             media={media}
                             isLoading={isLoading}
                             message={message}
@@ -675,6 +683,8 @@ function Sidebar({
 
 interface PlayoutPanelProps {
     ndiOnline: boolean;
+    nativePlaybackActive: boolean;
+    playoutError: string | null;
     media: MediaItem[];
     isLoading: boolean;
     message: string;
@@ -702,6 +712,8 @@ interface PlayoutPanelProps {
 
 function PlayoutPanel({
     ndiOnline,
+    nativePlaybackActive,
+    playoutError,
     media,
     isLoading,
     message,
@@ -728,6 +740,7 @@ function PlayoutPanel({
     const [isPlaying, setIsPlaying] =
         useState(false);
     const ndiWasOnlineRef = useRef(false);
+    const nativePlaybackWasActiveRef = useRef(false);
     const resumeAfterNdiLossRef = useRef(false);
     const [timelineQueue, setTimelineQueue] =
         useState<MediaItem[]>([]);
@@ -1284,6 +1297,23 @@ function PlayoutPanel({
             );
         }
     }
+
+    // Um FFmpeg travado nao pode deixar a interface anunciando ON AIR,
+    // enquanto o sender NDI permanece com o ultimo frame congelado.
+    useEffect(() => {
+        if (nativePlaybackActive) {
+            nativePlaybackWasActiveRef.current = true;
+            return;
+        }
+        if (nativePlaybackWasActiveRef.current && ndiOnline && isPlaying) {
+            const video = videoRef.current;
+            video?.pause();
+            setIsPlaying(false);
+            nativePlaybackWasActiveRef.current = false;
+            void finishExecutionReport("PULADO", selectedMedia);
+            console.error("Falha no playout nativo:", playoutError);
+        }
+    }, [nativePlaybackActive]);
 
     // Nao deixa o monitor continuar consumindo comerciais enquanto o sinal
     // NDI esta fora do ar. Quando o sender retorna, resincroniza no timecode
@@ -1979,11 +2009,13 @@ function PlayoutPanel({
                         </div>
 
                         <span className="program-status">
-                            {isPlaying && ndiOnline
-                                ? "● ON AIR"
+                            {isPlaying && ndiOnline && nativePlaybackActive
+                                ? "● ENVIANDO NDI"
                                 : isPlaying
-                                  ? "● SEM SINAL NDI"
-                                  : "● OFF AIR"}
+                                  ? "● SEM SINAL DE PROGRAMA"
+                                  : playoutError
+                                    ? "● FALHA NO PLAYOUT"
+                                    : "● OFF AIR"}
                         </span>
                     </div>
 
