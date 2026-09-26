@@ -57,10 +57,8 @@ class PlayoutHealth {
         if (this.startedAt === null || !Number.isSafeInteger(size) || size < 1) return;
         this.bytes += size;
         this.lastByteAt = this.now();
-        if (this.mode === "STALLED" || this.mode === "START_DELAY") {
-            this.event("FLUXO_RESTABELECIDO", "FFmpeg voltou a produzir bytes de vídeo.");
-        }
-        this.mode = "FLOWING";
+        // A healthy frame is only confirmed when at least one full BGRA
+        // frame exists. Recovery is logged by snapshot(), not per chunk.
     }
 
     stop() {
