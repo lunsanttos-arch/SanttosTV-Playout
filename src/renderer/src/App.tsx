@@ -8,6 +8,8 @@ import {
 import type { CSSProperties } from "react";
 import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
+import ProgramAudioMeters from "./ProgramAudioMeters";
+import type { NativeAudioStatus } from "./ProgramAudioMeters";
 import { buildTimelineForecast, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
 import { EXHIBITION_OPTIONS, DEFAULT_EXHIBITION_STYLE, exhibitionLabel, exhibitionPreviewStyle, exhibitionText, normalizeExhibitionType } from "./exhibition";
 import type { ExhibitionStyle, ExhibitionType } from "./exhibition";
@@ -235,6 +237,8 @@ declare global {
                 error?: string | null;
                 restarting?: boolean;
                 testBench?: boolean;
+                ndiTestMode?: boolean;
+                audio?: NativeAudioStatus;
             }>;
             playNdiFile: (
                 filePath: string,
@@ -300,6 +304,8 @@ export default function App() {
         useState(false);
     const [ndiError, setNdiError] = useState<string | null>(null);
     const [testBench, setTestBench] = useState(false);
+    const [ndiTestMode, setNdiTestMode] = useState(false);
+    const [audioStatus, setAudioStatus] = useState<NativeAudioStatus>({ state: "IDLE" });
     const [nativePlaybackActive, setNativePlaybackActive] = useState(false);
     const [playoutError, setPlayoutError] = useState<string | null>(null);
     const [activePanel, setActivePanel] =
@@ -370,6 +376,8 @@ export default function App() {
                         .getNdiStatus();
                 setNdiOnline(status.online);
                 setTestBench(Boolean(status.testBench));
+                setNdiTestMode(Boolean(status.ndiTestMode));
+                setAudioStatus(status.audio ?? { state: "IDLE" });
                 setNdiError(status.error ?? null);
                 setNativePlaybackActive(Boolean(status.nativePlaybackActive));
                 setPlayoutError(status.playoutError ?? null);
@@ -377,6 +385,7 @@ export default function App() {
                 setNdiOnline(false);
                 setNativePlaybackActive(false);
                 setNdiError("Falha ao consultar o engine NDI.");
+                setAudioStatus({ state: "ERROR", error: "NDI não responde" });
             }
         };
 
@@ -587,16 +596,20 @@ export default function App() {
 
                 <div className="system-status">
                     <span className="status-online">
-                        {testBench ? "● BANCADA ISOLADA — SEM SAÍDA NDI" : "● SISTEMA ONLINE"}
+                        {ndiTestMode ? "● BANCADA NDI — FONTE QA"
+                          : testBench ? "● BANCADA ISOLADA — SEM NDI"
+                          : "● SISTEMA ONLINE"}
                     </span>
                     <span
                         title={ndiError ?? undefined}
                         className={ndiOnline ? "status-online" : ""}
                     >
-                        {testBench
+                        {testBench && !ndiTestMode
                             ? "● PRÉVIA DE TESTE"
                             : ndiOnline
-                              ? "● NDI ENGINE ONLINE (VÍDEO; ÁUDIO PENDENTE)"
+                              ? audioStatus.state === "FLOWING"
+                                  ? "● NDI ONLINE — VÍDEO E PCM ESTÉREO"
+                                  : "● NDI ONLINE — ÁUDIO: " + audioStatus.state
                             : ndiError
                               ? `● NDI OFFLINE: ${ndiError}`
                               : "● NDI OFFLINE"}
@@ -621,6 +634,8 @@ export default function App() {
                     >
                         <PlayoutPanel
                             testBench={testBench}
+                            ndiTestMode={ndiTestMode}
+                            audioStatus={audioStatus}
                             ndiOnline={ndiOnline}
                             nativePlaybackActive={nativePlaybackActive}
                             playoutError={playoutError}
@@ -729,6 +744,8 @@ function Sidebar({
 
 interface PlayoutPanelProps {
     testBench: boolean;
+    ndiTestMode: boolean;
+    audioStatus: NativeAudioStatus;
     ndiOnline: boolean;
     nativePlaybackActive: boolean;
     playoutError: string | null;
@@ -762,6 +779,8 @@ interface PlayoutPanelProps {
 
 function PlayoutPanel({
     testBench,
+    ndiTestMode,
+    audioStatus,
     ndiOnline,
     nativePlaybackActive,
     playoutError,
@@ -780,6 +799,7 @@ function PlayoutPanel({
 }: PlayoutPanelProps) {
     const videoRef =
         useRef<HTMLVideoElement | null>(null);
+    const nativeOutputEnabled = !testBench || ndiTestMode;
     const timelineLoadedRef = useRef(false);
     const previousStyleRef = useRef(
         JSON.stringify(hashtagStyle)
@@ -1131,7 +1151,7 @@ function PlayoutPanel({
         !programVideo.seeking &&
         programVideo.readyState >= 2 &&
         Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000 &&
-        (testBench || (ndiOnline && nativePlaybackActive))
+        (!nativeOutputEnabled || (ndiOnline && nativePlaybackActive))
     );
     const timelineForecast = buildTimelineForecast(
         timelineQueue,
@@ -1348,7 +1368,7 @@ function PlayoutPanel({
         startSeconds = 0,
         continuousSelf = false
     ) {
-        if (testBench) return;
+        if (!nativeOutputEnabled) return;
         const result =
             await window.santtosAPI
                 .playNdiFile(
@@ -1373,7 +1393,7 @@ function PlayoutPanel({
     // Um FFmpeg travado nao pode deixar a interface anunciando ON AIR,
     // enquanto o sender NDI permanece com o ultimo frame congelado.
     useEffect(() => {
-        if (testBench) return;
+        if (!nativeOutputEnabled) return;
         if (nativePlaybackActive) {
             nativePlaybackWasActiveRef.current = true;
             return;
@@ -1392,7 +1412,7 @@ function PlayoutPanel({
     // NDI esta fora do ar. Quando o sender retorna, resincroniza no timecode
     // exato em que o monitor foi pausado.
     useEffect(() => {
-        if (testBench) return;
+        if (!nativeOutputEnabled) return;
         const video = videoRef.current;
         if (!ndiOnline) {
             if (ndiWasOnlineRef.current && isPlaying && video) {
@@ -1505,7 +1525,7 @@ function PlayoutPanel({
             console.error("Falha ao iniciar vídeo:", error);
             video.pause();
             setIsPlaying(false);
-            if (!testBench) {
+            if (nativeOutputEnabled) {
                 try { await window.santtosAPI.stopNdiFile(); }
                 catch (stopError) { console.error(stopError); }
             }
@@ -2124,7 +2144,7 @@ function PlayoutPanel({
                         </div>
 
                         <span className="program-status">
-                            {testBench && isPlaying
+                            {testBench && !ndiTestMode && isPlaying
                                 ? "● PRÉVIA DE TESTE (SEM NDI)"
                                 : isPlaying && ndiOnline && nativePlaybackActive
                                   ? "● SENDER NDI ATIVO"
@@ -2136,7 +2156,8 @@ function PlayoutPanel({
                         </span>
                     </div>
 
-                    <div className="program-monitor">
+                    <div className="program-media-row">
+                        <div className="program-monitor">
                         {selectedMediaUrl ? (
                             <>
                                 <video
@@ -2249,6 +2270,14 @@ function PlayoutPanel({
                         ) : (
                             "SEM SINAL"
                         )}
+                        </div>
+                        <ProgramAudioMeters
+                            videoRef={videoRef}
+                            mediaUrl={selectedMediaUrl}
+                            isPlaying={isPlaying}
+                            nativeOutput={nativeOutputEnabled}
+                            audio={audioStatus}
+                        />
                     </div>
 
                     <div className="program-controls">
