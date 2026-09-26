@@ -8,6 +8,8 @@ import {
 import type { CSSProperties } from "react";
 import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
+import ProgramAudioMeters from "./ProgramAudioMeters";
+import type { NativeAudioStatus } from "./ProgramAudioMeters";
 import { buildTimelineForecast, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
 import { EXHIBITION_OPTIONS, DEFAULT_EXHIBITION_STYLE, exhibitionLabel, exhibitionPreviewStyle, exhibitionText, normalizeExhibitionType } from "./exhibition";
 import type { ExhibitionStyle, ExhibitionType } from "./exhibition";
@@ -235,15 +237,8 @@ declare global {
                 error?: string | null;
                 restarting?: boolean;
                 testBench?: boolean;
-                health?: PlayoutHealthStatus;
-                incidents?: DiagnosticIncident[];
-                diagnosticWriteError?: string | null;
-            }>;
-            exportPlayoutDiagnostics: () => Promise<{
-                ok: boolean;
-                canceled?: boolean;
-                filePath?: string;
-                error?: string;
+                ndiTestMode?: boolean;
+                audio?: NativeAudioStatus;
             }>;
             playNdiFile: (
                 filePath: string,
@@ -302,26 +297,6 @@ declare global {
     }
 }
 
-interface PlayoutHealthStatus {
-    state: "IDLE" | "BANCADA" | "STARTING" | "START_DELAY" |
-        "FLOWING" | "STALLED" | "NDI_OFFLINE" | "FAULT";
-    mediaName?: string;
-    decodedFramesApprox?: number;
-    bytesProduced?: number;
-    lastByteAgoMs?: number | null;
-    runningSeconds?: number | null;
-    startedAt?: string | null;
-    lastFault?: string | null;
-    verifiedReceiver?: boolean;
-}
-
-interface DiagnosticIncident {
-    at: string;
-    type: string;
-    detail: string;
-    mediaName: string;
-}
-
 export default function App() {
     const [clock, setClock] =
         useState("00:00:00");
@@ -329,11 +304,10 @@ export default function App() {
         useState(false);
     const [ndiError, setNdiError] = useState<string | null>(null);
     const [testBench, setTestBench] = useState(false);
+    const [ndiTestMode, setNdiTestMode] = useState(false);
+    const [audioStatus, setAudioStatus] = useState<NativeAudioStatus>({ state: "IDLE" });
     const [nativePlaybackActive, setNativePlaybackActive] = useState(false);
     const [playoutError, setPlayoutError] = useState<string | null>(null);
-    const [playoutHealth, setPlayoutHealth] = useState<PlayoutHealthStatus>({ state: "IDLE" });
-    const [incidents, setIncidents] = useState<DiagnosticIncident[]>([]);
-    const [diagnosticWriteError, setDiagnosticWriteError] = useState<string | null>(null);
     const [activePanel, setActivePanel] =
         useState<Panel>("playout");
     const [media, setMedia] =
@@ -402,17 +376,16 @@ export default function App() {
                         .getNdiStatus();
                 setNdiOnline(status.online);
                 setTestBench(Boolean(status.testBench));
+                setNdiTestMode(Boolean(status.ndiTestMode));
+                setAudioStatus(status.audio ?? { state: "IDLE" });
                 setNdiError(status.error ?? null);
                 setNativePlaybackActive(Boolean(status.nativePlaybackActive));
                 setPlayoutError(status.playoutError ?? null);
-                setPlayoutHealth(status.health ?? { state: "IDLE" });
-                setIncidents(status.incidents ?? []);
-                setDiagnosticWriteError(status.diagnosticWriteError ?? null);
             } catch {
                 setNdiOnline(false);
                 setNativePlaybackActive(false);
                 setNdiError("Falha ao consultar o engine NDI.");
-                setPlayoutHealth({ state: "NDI_OFFLINE" });
+                setAudioStatus({ state: "ERROR", error: "NDI não responde" });
             }
         };
 
@@ -623,16 +596,20 @@ export default function App() {
 
                 <div className="system-status">
                     <span className="status-online">
-                        {testBench ? "● BANCADA ISOLADA — SEM SAÍDA NDI" : "● SISTEMA ONLINE"}
+                        {ndiTestMode ? "● BANCADA NDI — FONTE QA"
+                          : testBench ? "● BANCADA ISOLADA — SEM NDI"
+                          : "● SISTEMA ONLINE"}
                     </span>
                     <span
                         title={ndiError ?? undefined}
                         className={ndiOnline ? "status-online" : ""}
                     >
-                        {testBench
+                        {testBench && !ndiTestMode
                             ? "● PRÉVIA DE TESTE"
                             : ndiOnline
-                              ? "● NDI ENGINE ONLINE (VÍDEO; ÁUDIO PENDENTE)"
+                              ? audioStatus.state === "FLOWING"
+                                  ? "● NDI ONLINE — VÍDEO E PCM ESTÉREO"
+                                  : "● NDI ONLINE — ÁUDIO: " + audioStatus.state
                             : ndiError
                               ? `● NDI OFFLINE: ${ndiError}`
                               : "● NDI OFFLINE"}
@@ -657,12 +634,11 @@ export default function App() {
                     >
                         <PlayoutPanel
                             testBench={testBench}
+                            ndiTestMode={ndiTestMode}
+                            audioStatus={audioStatus}
                             ndiOnline={ndiOnline}
                             nativePlaybackActive={nativePlaybackActive}
                             playoutError={playoutError}
-                            health={playoutHealth}
-                            incidents={incidents}
-                            diagnosticWriteError={diagnosticWriteError}
                             media={media}
                             isLoading={isLoading}
                             message={message}
@@ -768,12 +744,11 @@ function Sidebar({
 
 interface PlayoutPanelProps {
     testBench: boolean;
+    ndiTestMode: boolean;
+    audioStatus: NativeAudioStatus;
     ndiOnline: boolean;
     nativePlaybackActive: boolean;
     playoutError: string | null;
-    health: PlayoutHealthStatus;
-    incidents: DiagnosticIncident[];
-    diagnosticWriteError: string | null;
     media: MediaItem[];
     isLoading: boolean;
     message: string;
@@ -804,12 +779,11 @@ interface PlayoutPanelProps {
 
 function PlayoutPanel({
     testBench,
+    ndiTestMode,
+    audioStatus,
     ndiOnline,
     nativePlaybackActive,
     playoutError,
-    health,
-    incidents,
-    diagnosticWriteError,
     media,
     isLoading,
     message,
@@ -825,6 +799,7 @@ function PlayoutPanel({
 }: PlayoutPanelProps) {
     const videoRef =
         useRef<HTMLVideoElement | null>(null);
+    const nativeOutputEnabled = !testBench || ndiTestMode;
     const timelineLoadedRef = useRef(false);
     const previousStyleRef = useRef(
         JSON.stringify(hashtagStyle)
@@ -859,8 +834,6 @@ function PlayoutPanel({
         useState<Record<string, string>>({});
     const [previewError, setPreviewError] = useState("");
     const [previewPreparing, setPreviewPreparing] = useState(false);
-    const [diagnosticExporting, setDiagnosticExporting] = useState(false);
-    const [diagnosticExportNotice, setDiagnosticExportNotice] = useState("");
     const [editingFilm, setEditingFilm] =
         useState<MediaItem | null>(null);
     const clipAdvanceGuardRef = useRef(false);
@@ -1178,7 +1151,7 @@ function PlayoutPanel({
         !programVideo.seeking &&
         programVideo.readyState >= 2 &&
         Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000 &&
-        (testBench || (ndiOnline && nativePlaybackActive && health.state === "FLOWING"))
+        (!nativeOutputEnabled || (ndiOnline && nativePlaybackActive))
     );
     const timelineForecast = buildTimelineForecast(
         timelineQueue,
@@ -1265,25 +1238,6 @@ function PlayoutPanel({
         clipAdvanceGuardRef.current = false;
         setIsPlaying(false);
     }, [selectedMediaUrl]);
-
-    async function exportDiagnosticReport() {
-        if (diagnosticExporting) return;
-        setDiagnosticExporting(true);
-        setDiagnosticExportNotice("");
-        try {
-            const result = await window.santtosAPI.exportPlayoutDiagnostics();
-            if (result.ok) {
-                setDiagnosticExportNotice("Diagnóstico salvo em: " + (result.filePath || ""));
-            } else if (!result.canceled) {
-                setDiagnosticExportNotice(result.error || "Falha ao exportar diagnóstico.");
-            }
-        } catch (error) {
-            console.error("Falha ao exportar diagnóstico:", error);
-            setDiagnosticExportNotice("Não foi possível salvar o diagnóstico.");
-        } finally {
-            setDiagnosticExporting(false);
-        }
-    }
 
     function buildOverlayState(
         mediaItem: MediaItem,
@@ -1414,7 +1368,7 @@ function PlayoutPanel({
         startSeconds = 0,
         continuousSelf = false
     ) {
-        if (testBench) return;
+        if (!nativeOutputEnabled) return;
         const result =
             await window.santtosAPI
                 .playNdiFile(
@@ -1439,7 +1393,7 @@ function PlayoutPanel({
     // Um FFmpeg travado nao pode deixar a interface anunciando ON AIR,
     // enquanto o sender NDI permanece com o ultimo frame congelado.
     useEffect(() => {
-        if (testBench) return;
+        if (!nativeOutputEnabled) return;
         if (nativePlaybackActive) {
             nativePlaybackWasActiveRef.current = true;
             return;
@@ -1458,7 +1412,7 @@ function PlayoutPanel({
     // NDI esta fora do ar. Quando o sender retorna, resincroniza no timecode
     // exato em que o monitor foi pausado.
     useEffect(() => {
-        if (testBench) return;
+        if (!nativeOutputEnabled) return;
         const video = videoRef.current;
         if (!ndiOnline) {
             if (ndiWasOnlineRef.current && isPlaying && video) {
@@ -1571,7 +1525,7 @@ function PlayoutPanel({
             console.error("Falha ao iniciar vídeo:", error);
             video.pause();
             setIsPlaying(false);
-            if (!testBench) {
+            if (nativeOutputEnabled) {
                 try { await window.santtosAPI.stopNdiFile(); }
                 catch (stopError) { console.error(stopError); }
             }
@@ -2190,13 +2144,9 @@ function PlayoutPanel({
                         </div>
 
                         <span className="program-status">
-                            {testBench && isPlaying
+                            {testBench && !ndiTestMode && isPlaying
                                 ? "● PRÉVIA DE TESTE (SEM NDI)"
-                                : isPlaying && health.state === "STALLED"
-                                  ? "● ALERTA: FFmpeg SEM QUADROS"
-                                  : isPlaying && health.state === "START_DELAY"
-                                    ? "● ALERTA: DECODIFICAÇÃO DEMORADA"
-                                    : isPlaying && ndiOnline && nativePlaybackActive
+                                : isPlaying && ndiOnline && nativePlaybackActive
                                   ? "● SENDER NDI ATIVO"
                                 : isPlaying
                                   ? "● SEM SINAL DE PROGRAMA"
@@ -2206,7 +2156,8 @@ function PlayoutPanel({
                         </span>
                     </div>
 
-                    <div className="program-monitor">
+                    <div className="program-media-row">
+                        <div className="program-monitor">
                         {selectedMediaUrl ? (
                             <>
                                 <video
@@ -2319,6 +2270,14 @@ function PlayoutPanel({
                         ) : (
                             "SEM SINAL"
                         )}
+                        </div>
+                        <ProgramAudioMeters
+                            videoRef={videoRef}
+                            mediaUrl={selectedMediaUrl}
+                            isPlaying={isPlaying}
+                            nativeOutput={nativeOutputEnabled}
+                            audio={audioStatus}
+                        />
                     </div>
 
                     <div className="program-controls">
@@ -2370,113 +2329,42 @@ function PlayoutPanel({
                     </div>
                 </section>
 
-                <section className="panel playout-health-panel" aria-label="Diagnóstico operacional">
-                    <div className="playout-health-topline">
-                        <strong>DIAGNÓSTICO DO PLAYOUT</strong>
-                        <span
-                            role={(testBench && isPlaying &&
-                                timelineClock - lastProgressRef.current.atMs >= 8000) ||
-                                health.state === "STALLED" || health.state === "FAULT" ||
-                                health.state === "START_DELAY" || health.state === "NDI_OFFLINE"
-                                    ? "alert" : "status"}
-                            className={"playout-health-badge state-" + health.state.toLowerCase()}
-                        >
-                            {testBench
-                                ? isPlaying && timelineClock - lastProgressRef.current.atMs >= 8000
-                                    ? "● PRÉVIA SEM PROGRESSO"
-                                    : isPlaying ? "● PRÉVIA EM EXECUÇÃO" : "● BANCADA PARADA"
-                                : health.state === "FLOWING" ? "● QUADROS FFmpeg FLUINDO"
-                                : health.state === "STARTING" ? "● INICIANDO DECODIFICAÇÃO"
-                                : health.state === "START_DELAY" ? "● DEMORA PARA GERAR QUADROS"
-                                : health.state === "STALLED" ? "● ALERTA: FLUXO CONGELADO"
-                                : health.state === "NDI_OFFLINE" ? "● NDI OFFLINE"
-                                : health.state === "FAULT" ? "● FALHA DE PLAYOUT"
-                                : "● AGUARDANDO REPRODUÇÃO"}
-                        </span>
-                        <button
-                            type="button"
-                            className="playout-export-diagnostics"
-                            disabled={diagnosticExporting}
-                            onClick={() => void exportDiagnosticReport()}
-                        >
-                            {diagnosticExporting ? "Salvando…" : "Exportar diagnóstico"}
-                        </button>
-                    </div>
-                    <div className="playout-health-metrics">
-                        {testBench
-                            ? "Bancada isolada · somente prévia local; não há transmissão NDI."
-                            : health.state === "FLOWING" || health.state === "STALLED"
-                                ? "Quadros gerados (estimativa): " +
-                                  (health.decodedFramesApprox ?? 0).toLocaleString("pt-BR") +
-                                  " · Última atividade do FFmpeg: " +
-                                  (health.lastByteAgoMs === null || health.lastByteAgoMs === undefined
-                                    ? "--" : (health.lastByteAgoMs / 1000).toFixed(1) + " s")
-                                : "Sem medição ativa de quadros do FFmpeg."}
-                    </div>
-                    <div className="playout-health-disclaimer">
-                        Indicador do fluxo local FFmpeg → processo NDI. Não confirma sinal no receptor nem áudio.
-                        {diagnosticWriteError ? " ⚠ " + diagnosticWriteError : ""}
-                    </div>
-                    {diagnosticExportNotice && (
-                        <div className="playout-health-notice" role="status">{diagnosticExportNotice}</div>
-                    )}
-                    {incidents.length > 0 && (
-                        <details className="playout-incidents">
-                            <summary>Últimas ocorrências ({incidents.length})</summary>
-                            <div className="playout-incidents-list">
-                                {incidents.slice(0, 8).map((incident, index) => (
-                                    <div key={incident.at + incident.type + index}>
-                                        <time>{new Date(incident.at).toLocaleString("pt-BR")}</time>
-                                        <strong>{incident.type.replace(/_/g, " ")}</strong>
-                                        <span>{incident.detail}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        </details>
-                    )}
-                </section>
-
                 <div className="playout-status-row">
                     <section className="panel compact-status-card">
-                        <div className="panel-title">
-                            NO AR
-                        </div>
-                        <strong>
-                            {selectedMedia
-                                ? selectedMedia.name
-                                : "Nenhum conteúdo"}
+                        <div className="panel-title">NO AR</div>
+                        <strong title={selectedMedia?.name ?? "Nenhum conteúdo"}>
+                            {selectedMedia?.name ?? "Nenhum conteúdo"}
                         </strong>
-                        <span>
-                            {selectedMedia ? `IDENTIFICAÇÃO: ${exhibitionLabel(selectedMedia.exhibitionType)}` : ""}
-                        </span>
-                        <span>
-                            {selectedMedia?.hashtag
-                                ? `GC: ${selectedMedia.hashtag}`
-                                : "Sem hashtag nesta entrada"}
-                        </span>
+                        {selectedMedia && (
+                            <span className="compact-status-meta">
+                                {normalizeExhibitionType(selectedMedia.exhibitionType) !== "NORMAL"
+                                    ? exhibitionLabel(selectedMedia.exhibitionType)
+                                    : ""}
+                                {selectedMedia.hashtag
+                                    ? (normalizeExhibitionType(selectedMedia.exhibitionType) !== "NORMAL" ? " · " : "") +
+                                      "GC: " + selectedMedia.hashtag
+                                    : ""}
+                            </span>
+                        )}
                     </section>
-
                     <section className="panel compact-status-card">
-                        <div className="panel-title">
-                            PRÓXIMO
-                        </div>
-                        <strong>
-                            {nextMedia
-                                ? nextMedia.name
-                                : "Nenhum conteúdo"}
+                        <div className="panel-title">PRÓXIMO</div>
+                        <strong title={nextMedia?.name ?? "Nenhum conteúdo"}>
+                            {nextMedia?.name ?? "Nenhum conteúdo"}
                         </strong>
-                        <span>
-                            {nextMedia ? `IDENTIFICAÇÃO: ${exhibitionLabel(nextMedia.exhibitionType)}` : ""}
-                        </span>
-                        <span>
-                            {nextMedia?.hashtag
-                                ? `GC: ${nextMedia.hashtag}`
-                                : nextMedia
-                                  ? "Sem hashtag nesta entrada"
-                                  : "Fim da timeline"}
-                        </span>
                         {nextMedia && (
-                            <span className="next-entry-forecast">{describeForecast(nextMedia)}</span>
+                            <>
+                                <span className="compact-status-meta">
+                                    {normalizeExhibitionType(nextMedia.exhibitionType) !== "NORMAL"
+                                        ? exhibitionLabel(nextMedia.exhibitionType)
+                                        : ""}
+                                    {nextMedia.hashtag
+                                        ? (normalizeExhibitionType(nextMedia.exhibitionType) !== "NORMAL" ? " · " : "") +
+                                          "GC: " + nextMedia.hashtag
+                                        : ""}
+                                </span>
+                                <span className="next-entry-forecast">{describeForecast(nextMedia)}</span>
+                            </>
                         )}
                     </section>
                 </div>

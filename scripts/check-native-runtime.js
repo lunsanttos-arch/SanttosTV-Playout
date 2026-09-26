@@ -13,4 +13,11 @@ if (missing.length > 0) {
     console.error("Nao distribuir uma versao que exibe NDI ONLINE sem sender funcional.");
     process.exit(1);
 }
-console.log("NDI runtime: executavel e biblioteca localizados.");
+const { checkNdiRuntime } = require("../src/core/ndi/ndi-capabilities");
+const native = checkNdiRuntime();
+if (!native.ok || !native.modern) {
+    console.error("PACOTE BLOQUEADO: novo sender com áudio PCM obrigatório.");
+    console.error(native.error || "Recompile src/core/ndi/ndi_test.cpp com o SDK NDI x64.");
+    process.exit(1);
+}
+console.log("NDI runtime: sender x64 atualizado, vídeo 1080p29.97 e áudio PCM 48k estéreo.");

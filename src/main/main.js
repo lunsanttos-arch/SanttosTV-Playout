@@ -15,10 +15,11 @@ const { MEDIA_SCHEME, serveImportedVideo } = require("../core/media/media-protoc
 const { preparePreviewProxy, cancelActivePreviews } = require("../core/media/preview-proxy");
 const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
+const crypto = require("node:crypto");
+const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
+const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
-const { PlayoutHealth } = require("../core/monitoring/playout-health");
-const { IncidentJournal } = require("../core/monitoring/incident-journal");
 
 const {
     initializeDatabase,
@@ -73,6 +74,9 @@ const {
 
 const testBenchConfig = configureTestBench(app);
 const isTestBench = testBenchConfig.enabled;
+const isNdiTestBench = testBenchConfig.ndiEnabled;
+const nativeOutputAllowed = !isTestBench || isNdiTestBench;
+const ndiSourceName = isNdiTestBench ? "Santtos TV - QA" : "Santtos TV - PROGRAM";
 const isDevelopment = !app.isPackaged;
 
 // Um protocolo exclusivo permite reproduzir midias com webSecurity habilitado.
@@ -162,27 +166,15 @@ let ndiRestartFailures = 0;
 let ndiStopping = false;
 let nativePlaybackActive = false;
 let playoutLastError = "";
-let diagnosticJournal = null;
-let diagnosticWriteError = "";
-let healthWatchTimer = null;
-const playoutHealth = new PlayoutHealth({
-    frameBytes: NDI_FRAME_SIZE,
-    onIncident(record) {
-        if (!diagnosticJournal) return;
-        try {
-            diagnosticJournal.append(record);
-            diagnosticWriteError = "";
-        } catch (error) {
-            diagnosticWriteError = "Falha ao gravar o histórico de incidentes.";
-            console.error(diagnosticWriteError, error);
-        }
-    }
-});
-
+let ndiAudioPipe = "";
+let ndiAudioReady = false;
+let ndiAudioSupported = false;
+let audioSource = null;
+let audioOutputStatus = "IDLE";
+let audioOutputError = "";
 function onPlayoutFault(message) {
     playoutLastError = message;
     nativePlaybackActive = false;
-    playoutHealth.fail(message);
 
     // Em falha inesperada, enviar um frame preto valido ao sender:
     // evita que o ultimo frame do comercial congele sem aviso.
@@ -203,7 +195,9 @@ function createWindow() {
         minWidth: 1100,
         minHeight: 700,
         backgroundColor: "#0b0b0b",
-        title: isTestBench ? "Santtos TV Automation — BANCADA" : "Santtos TV Automation",
+        title: isNdiTestBench ? "Santtos TV Automation — TESTE NDI (FONTE QA)"
+            : isTestBench ? "Santtos TV Automation — BANCADA"
+            : "Santtos TV Automation",
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -642,8 +636,12 @@ function buildProgramFilterGraph(
 }
 
 function stopNativePlayback() {
-    // A parada voluntária deve desarmar alertas antes de matar o FFmpeg.
-    playoutHealth.stop();
+    if (audioSource) {
+        audioSource.stop();
+        audioSource = null;
+    }
+    audioOutputStatus = "IDLE";
+    audioOutputError = "";
     if (!ffmpegProcess) {
         nativePlaybackActive = false;
         return;
@@ -848,15 +846,34 @@ function startNativePlayback(
     ffmpegProcess = processRef;
     nativePlaybackActive = true;
     ndiFrameBusy = false;
-    playoutHealth.start(filePath);
 
-    // Apenas conta os bytes gerados; .pipe() continua responsável pelo
-    // fluxo e backpressure. NÃO comprova chegada a um receiver NDI.
-    processRef.stdout.on("data", (chunk) => {
-        if (ffmpegProcess === processRef) {
-            playoutHealth.acceptBytes(chunk.length);
+    const selectedAudioIndex = programState.audioStreamIndex;
+    if (Number.isSafeInteger(selectedAudioIndex) && selectedAudioIndex >= 0) {
+        if (ndiAudioSupported && ndiAudioReady && ndiAudioPipe) {
+            try {
+                audioSource = new NdiAudioSource({
+                    pipePath: ndiAudioPipe,
+                    ffmpegPath,
+                    filePath,
+                    streamIndex: selectedAudioIndex,
+                    startSeconds: normalizedStartSeconds,
+                    durationSeconds: clipRemainingSeconds
+                }).start();
+                audioOutputStatus = "STARTING";
+            } catch (error) {
+                audioOutputStatus = "ERROR";
+                audioOutputError = String(error?.message || error);
+                console.error("Falha ao iniciar áudio NDI:", error);
+            }
+        } else {
+            audioOutputStatus = ndiAudioSupported ? "PIPE_NOT_READY" : "REBUILD_REQUIRED";
+            audioOutputError = ndiAudioSupported
+                ? "Canal de áudio ainda não foi aberto pelo sender NDI."
+                : "Atualize ndi_test.exe para o sender com áudio estéreo.";
         }
-    });
+    } else {
+        audioOutputStatus = "NO_TRACK";
+    }
 
     processRef.stdout.pipe(
         ndiProcess.stdin,
@@ -916,7 +933,11 @@ function startNativePlayback(
                     // not an operational incident. The renderer advances
                     // to the next occurrence using the clip OUT/ended event.
                     nativePlaybackActive = false;
-                    playoutHealth.stop();
+                    if (audioSource) {
+                        audioSource.stop();
+                        audioSource = null;
+                    }
+                    audioOutputStatus = "IDLE";
                 } else {
                     onPlayoutFault(
                         `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`
@@ -1017,65 +1038,21 @@ function registerIpcHandlers() {
                 ndiReady &&
                 Boolean(ndiProcess) &&
                 !ndiProcess.killed,
-            source:
-                "Santtos TV - PROGRAM",
+            source: ndiSourceName,
+            ndiTestMode: isNdiTestBench,
+            audio: audioSource
+                ? { ...audioSource.snapshot(), route: ndiSourceName,
+                    receiverVerified: false }
+                : { state: audioOutputStatus, error: audioOutputError || null,
+                    active: false, leftDb: -60, rightDb: -60,
+                    peakLeftDb: -60, peakRightDb: -60,
+                    receiverVerified: false, route: ndiSourceName },
             nativePlaybackActive,
             playoutError: playoutLastError || null,
             error: ndiLastError || null,
             restarting: Boolean(ndiRestartTimer),
-            testBench: isTestBench,
-            health: isTestBench
-                ? { state: "BANCADA", verifiedReceiver: false }
-                : playoutHealth.snapshot(
-                    ndiReady && Boolean(ndiProcess) && !ndiProcess.killed
-                ),
-            incidents: diagnosticJournal
-                ? diagnosticJournal.recent(8)
-                : playoutHealth.recent(8),
-            diagnosticWriteError: diagnosticWriteError || null
+            testBench: isTestBench
         })
-    );
-
-    registerTrustedHandle(
-        "monitor:export",
-        async () => {
-            const result = await dialog.showSaveDialog(mainWindow, {
-                title: "Salvar diagnóstico do playout",
-                defaultPath: path.join(
-                    isTestBench ? testBenchConfig.userDataPath : app.getPath("documents"),
-                    "Santtos_TV_Diagnostico_" +
-                        new Date().toISOString().slice(0, 10) + ".json"
-                ),
-                filters: [{ name: "Relatório JSON", extensions: ["json"] }]
-            });
-            if (result.canceled || !result.filePath) return { ok: false, canceled: true };
-            try {
-                const payload = {
-                    generatedAt: new Date().toISOString(),
-                    appVersion: app.getVersion(),
-                    testBench: isTestBench,
-                    limitations: "Mede apenas saída de bytes FFmpeg e estado do processo NDI; não mede rede, recepção nem áudio.",
-                    ffmpegPipe: isTestBench
-                        ? { state: "BANCADA" }
-                        : playoutHealth.snapshot(
-                            ndiReady && Boolean(ndiProcess) && !ndiProcess.killed
-                        ),
-                    senderProcessOnline: ndiReady && Boolean(ndiProcess) && !ndiProcess.killed,
-                    incidents: diagnosticJournal
-                        ? diagnosticJournal.recent(100)
-                        : playoutHealth.recent(100)
-                };
-                fs.writeFileSync(result.filePath, JSON.stringify(payload, null, 2), {
-                    encoding: "utf8",
-                    mode: 0o600,
-                    flag: "w"
-                });
-                return { ok: true, filePath: result.filePath };
-            } catch (error) {
-                console.error("Falha ao exportar diagnóstico:", error);
-                return { ok: false, error: "Não foi possível salvar o relatório." };
-            }
-        }
     );
 
     registerTrustedHandle(
@@ -1087,7 +1064,7 @@ function registerIpcHandlers() {
             hashtag = "",
             overlayState = {}
         ) => {
-            if (isTestBench) return { ok: true, previewOnly: true };
+            if (!nativeOutputAllowed) return { ok: true, previewOnly: true };
             try {
                 return startNativePlayback(
                     filePath,
@@ -1624,15 +1601,30 @@ function startNdiSender() {
         ? path.join(process.resourcesPath, "ndi", "ndi_test.exe")
         : path.join(__dirname, "../core/ndi/ndi_test.exe");
 
-    if (!fs.existsSync(ndiExecutable)) {
-        ndiLastError = "Executavel NDI ausente: " + ndiExecutable;
+    const runtime = checkNdiRuntime({
+        requireModern: isNdiTestBench,
+        executablePath: ndiExecutable,
+        dllPath: path.join(path.dirname(ndiExecutable), "Processing.NDI.Lib.x64.dll")
+    });
+    if (!runtime.ok) {
+        ndiLastError = runtime.error || "Runtime NDI não disponível.";
         console.error(ndiLastError);
-        scheduleNdiRestart();
+        // A QA nunca pode abrir um sender legado usando o nome PROGRAM.
+        if (!isNdiTestBench) scheduleNdiRestart();
         return;
     }
 
+    ndiAudioSupported = Boolean(runtime.modern);
+    ndiAudioReady = false;
+    ndiAudioPipe = runtime.modern
+        ? "\\\\.\\pipe\\SanttosAudio-" + process.pid + "-" +
+          crypto.randomBytes(6).toString("hex")
+        : "";
+    const nativeArgs = runtime.modern
+        ? ["--name", ndiSourceName, "--audio-pipe", ndiAudioPipe] : [];
+
     try {
-        const processRef = spawn(ndiExecutable, [], {
+        const processRef = spawn(ndiExecutable, nativeArgs, {
             cwd: path.dirname(ndiExecutable),
             windowsHide: true,
             stdio: ["pipe", "pipe", "pipe"]
@@ -1645,9 +1637,10 @@ function startNdiSender() {
             ndiLastError = reason;
             console.error("Sender NDI interrompido:", reason);
             stopNativePlayback();
-            playoutHealth.senderLost(reason);
             ndiReady = false;
             ndiFrameBusy = false;
+            ndiAudioReady = false;
+            ndiAudioPipe = "";
             ndiProcess = null;
             scheduleNdiRestart();
         }
@@ -1664,12 +1657,18 @@ function startNdiSender() {
             while ((newline = pendingOutput.indexOf("\n")) >= 0) {
                 const line = pendingOutput.slice(0, newline).trim();
                 pendingOutput = pendingOutput.slice(newline + 1);
-                if (line.includes("NDI ONLINE:")) {
-                    const recovered = ndiRestartFailures > 0 || Boolean(ndiLastError);
-                    ndiReady = true;
-                    ndiLastError = "";
-                    ndiRestartFailures = 0;
-                    if (recovered) playoutHealth.senderReady();
+                if (ndiAudioPipe && line === "NDI AUDIO PIPE READY:" + ndiAudioPipe) {
+                    ndiAudioReady = true;
+                }
+                if (line.startsWith("NDI ONLINE:")) {
+                    if (line === "NDI ONLINE: " + ndiSourceName) {
+                        ndiReady = true;
+                        ndiLastError = "";
+                        ndiRestartFailures = 0;
+                    } else {
+                        onNdiStopped("Nome de fonte NDI inesperado; sender bloqueado.");
+                        processRef.kill();
+                    }
                 }
                 if (line) console.log("[NDI] " + line.slice(0, 1024));
             }
@@ -1706,23 +1705,13 @@ function stopNdiSender() {
     stopNativePlayback();
     ndiFrameBusy = false;
     ndiReady = false;
+    ndiAudioReady = false;
+    ndiAudioPipe = "";
     const processRef = ndiProcess;
     ndiProcess = null;
     if (processRef && !processRef.killed) {
         processRef.kill();
     }
-}
-
-function startHealthWatch() {
-    if (isTestBench || healthWatchTimer) return;
-    // Main-process timer: works even when the operator minimizes the UI
-    // and Chromium throttles renderer intervals.
-    healthWatchTimer = setInterval(() => {
-        playoutHealth.snapshot(
-            ndiReady && Boolean(ndiProcess) && !ndiProcess.killed
-        );
-    }, 2000);
-    healthWatchTimer.unref?.();
 }
 
 function startSystem() {
@@ -1734,16 +1723,6 @@ function startSystem() {
         userDataPath: app.getPath("userData"),
         migrateLegacy: !isTestBench
     });
-    // Diagnóstico não é requisito para reprodução. Uma falha de permissão
-    // no log gera aviso visível, mas não impede o PROGRAM.
-    try {
-        diagnosticJournal = new IncidentJournal(app.getPath("userData"));
-        diagnosticWriteError = "";
-    } catch (error) {
-        diagnosticJournal = null;
-        diagnosticWriteError = "Histórico de incidentes indisponível.";
-        console.error(diagnosticWriteError, error);
-    }
     initializeLibraryCategories(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
@@ -1778,11 +1757,10 @@ app.whenReady().then(() => {
         session.defaultSession.setPermissionRequestHandler(
             (_webContents, _permission, callback) => callback(false)
         );
-        if (!isTestBench) {
+        if (nativeOutputAllowed) {
             startNdiSender();
-            startHealthWatch();
         } else {
-            ndiLastError = "Bancada: NDI propositalmente desativado para proteger a emissora.";
+            ndiLastError = "Bancada: NDI propositalmente desativado.";
         }
         registerIpcHandlers();
         createWindow();
@@ -1808,10 +1786,6 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
-    if (healthWatchTimer) {
-        clearInterval(healthWatchTimer);
-        healthWatchTimer = null;
-    }
     cancelActivePreviews();
     closeOpenEntriesAsSkipped();
     stopNativePlayback();
