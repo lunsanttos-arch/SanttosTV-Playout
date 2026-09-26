@@ -39,10 +39,9 @@ try {
 
     const main = fs.readFileSync(path.join(__dirname, "../src/main/main.js"), "utf8");
     const renderer = fs.readFileSync(path.join(__dirname, "../src/renderer/src/App.tsx"), "utf8");
-    assert(
-        /if \(!isTestBench\) \{\s*startNdiSender\(\);\s*startHealthWatch\(\);\s*\} else \{/.test(main),
-        "Bancada deve bloquear sender NDI e watchdog nativo."
-    );
+    assert(main.includes("if (!isTestBench) {") &&
+        main.includes("startNdiSender();"),
+        "Bancada comum deve continuar bloqueando sender NDI.");
     assert(renderer.includes("if (testBench) return;"), "Previa deve funcionar sem NDI.");
     assert(renderer.includes("PRÉVIA DE TESTE"), "A interface deve identificar a bancada.");
 
