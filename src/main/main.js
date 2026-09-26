@@ -195,7 +195,9 @@ function createWindow() {
         minWidth: 1100,
         minHeight: 700,
         backgroundColor: "#0b0b0b",
-        title: isTestBench ? "Santtos TV Automation — BANCADA" : "Santtos TV Automation",
+        title: isNdiTestBench ? "Santtos TV Automation — TESTE NDI (FONTE QA)"
+            : isTestBench ? "Santtos TV Automation — BANCADA"
+            : "Santtos TV Automation",
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
@@ -1599,15 +1601,30 @@ function startNdiSender() {
         ? path.join(process.resourcesPath, "ndi", "ndi_test.exe")
         : path.join(__dirname, "../core/ndi/ndi_test.exe");
 
-    if (!fs.existsSync(ndiExecutable)) {
-        ndiLastError = "Executavel NDI ausente: " + ndiExecutable;
+    const runtime = checkNdiRuntime({
+        requireModern: isNdiTestBench,
+        executablePath: ndiExecutable,
+        dllPath: path.join(path.dirname(ndiExecutable), "Processing.NDI.Lib.x64.dll")
+    });
+    if (!runtime.ok) {
+        ndiLastError = runtime.error || "Runtime NDI não disponível.";
         console.error(ndiLastError);
-        scheduleNdiRestart();
+        // A QA nunca pode abrir um sender legado usando o nome PROGRAM.
+        if (!isNdiTestBench) scheduleNdiRestart();
         return;
     }
 
+    ndiAudioSupported = Boolean(runtime.modern);
+    ndiAudioReady = false;
+    ndiAudioPipe = runtime.modern
+        ? "\\\\.\\pipe\\SanttosAudio-" + process.pid + "-" +
+          crypto.randomBytes(6).toString("hex")
+        : "";
+    const nativeArgs = runtime.modern
+        ? ["--name", ndiSourceName, "--audio-pipe", ndiAudioPipe] : [];
+
     try {
-        const processRef = spawn(ndiExecutable, [], {
+        const processRef = spawn(ndiExecutable, nativeArgs, {
             cwd: path.dirname(ndiExecutable),
             windowsHide: true,
             stdio: ["pipe", "pipe", "pipe"]
@@ -1622,6 +1639,8 @@ function startNdiSender() {
             stopNativePlayback();
             ndiReady = false;
             ndiFrameBusy = false;
+            ndiAudioReady = false;
+            ndiAudioPipe = "";
             ndiProcess = null;
             scheduleNdiRestart();
         }
@@ -1638,10 +1657,18 @@ function startNdiSender() {
             while ((newline = pendingOutput.indexOf("\n")) >= 0) {
                 const line = pendingOutput.slice(0, newline).trim();
                 pendingOutput = pendingOutput.slice(newline + 1);
-                if (line.includes("NDI ONLINE:")) {
-                    ndiReady = true;
-                    ndiLastError = "";
-                    ndiRestartFailures = 0;
+                if (ndiAudioPipe && line === "NDI AUDIO PIPE READY:" + ndiAudioPipe) {
+                    ndiAudioReady = true;
+                }
+                if (line.startsWith("NDI ONLINE:")) {
+                    if (line === "NDI ONLINE: " + ndiSourceName) {
+                        ndiReady = true;
+                        ndiLastError = "";
+                        ndiRestartFailures = 0;
+                    } else {
+                        onNdiStopped("Nome de fonte NDI inesperado; sender bloqueado.");
+                        processRef.kill();
+                    }
                 }
                 if (line) console.log("[NDI] " + line.slice(0, 1024));
             }
@@ -1678,6 +1705,8 @@ function stopNdiSender() {
     stopNativePlayback();
     ndiFrameBusy = false;
     ndiReady = false;
+    ndiAudioReady = false;
+    ndiAudioPipe = "";
     const processRef = ndiProcess;
     ndiProcess = null;
     if (processRef && !processRef.killed) {
@@ -1728,10 +1757,10 @@ app.whenReady().then(() => {
         session.defaultSession.setPermissionRequestHandler(
             (_webContents, _permission, callback) => callback(false)
         );
-        if (!isTestBench) {
+        if (nativeOutputAllowed) {
             startNdiSender();
         } else {
-            ndiLastError = "Bancada: NDI propositalmente desativado para proteger a emissora.";
+            ndiLastError = "Bancada: NDI propositalmente desativado.";
         }
         registerIpcHandlers();
         createWindow();
