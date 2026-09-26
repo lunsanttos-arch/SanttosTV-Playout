@@ -19,6 +19,24 @@ class IncidentJournal {
             ...this.readTail(this.previousPath),
             ...this.readTail(this.filePath)
         ].slice(-100);
+        this.sealInterruptedLastLine();
+    }
+
+    sealInterruptedLastLine() {
+        if (!fs.existsSync(this.filePath)) return;
+        const size = fs.statSync(this.filePath).size;
+        if (!size) return;
+        const fd = fs.openSync(this.filePath, "r");
+        const tail = Buffer.alloc(1);
+        try {
+            fs.readSync(fd, tail, 0, 1, size - 1);
+        } finally {
+            fs.closeSync(fd);
+        }
+        if (tail[0] !== 10) {
+            // Recover valid future append operations after a torn JSON line.
+            fs.appendFileSync(this.filePath, "\n", "utf8");
+        }
     }
 
     readTail(file) {
