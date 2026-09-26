@@ -12,6 +12,7 @@ on:
       - "scripts/test-preview-proxy.js"
       - "scripts/test-exhibition-output.js"
       - "scripts/test-timeline-forecast.js"
+      - "scripts/test-playout-health.js"
       - "scripts/test-testbench.js"
       - "scripts/start-testbench.js"
       - "src/**"
@@ -26,6 +27,7 @@ on:
       - "scripts/test-preview-proxy.js"
       - "scripts/test-exhibition-output.js"
       - "scripts/test-timeline-forecast.js"
+      - "scripts/test-playout-health.js"
       - "scripts/test-testbench.js"
       - "scripts/start-testbench.js"
       - "src/**"
@@ -55,6 +57,8 @@ jobs:
           node --check src/core/library/library-categories.js
           node --check src/core/reporting/playout-report.js
           node --check src/core/graphics/exhibition-overlay.js
+          node --check src/core/monitoring/playout-health.js
+          node --check src/core/monitoring/incident-journal.js
 
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
@@ -76,6 +80,9 @@ jobs:
 
       - name: Live entry-time forecasting regression
         run: npm run test:timeline-forecast
+
+      - name: FFmpeg and NDI incident watchdog regression
+        run: npm run test:monitor
 
       - name: Backend regression tests
         run: npm run test:backend
