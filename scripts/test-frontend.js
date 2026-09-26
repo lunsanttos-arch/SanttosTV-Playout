@@ -16,6 +16,27 @@ const settings = fs.readFileSync(settingsPath, "utf8");
 assert(!app.includes('{ panel: "library"'), "Biblioteca não deve voltar ao menu lateral.");
 assert(app.includes("persistent-playout-view"), "Playout persistente deve continuar montado na navegação.");
 assert(app.includes("OpecSchedulerPanel"), "Scheduler/OPEC deve estar integrado.");
+assert(app.includes("ProgramAudioMeters") &&
+    app.includes("nativeOutputEnabled") &&
+    app.includes("audioStatus={audioStatus}"),
+    "Barras L/R devem aparecer ao lado da tela com dados do PCM NDI ou prévia.");
+const meter = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "ProgramAudioMeters.tsx"), "utf8"
+);
+assert(meter.includes("createMediaElementSource") &&
+    meter.includes("audio.leftDb") && meter.includes("audio.rightDb"),
+    "Áudio da prévia e áudio PCM nativo precisam ter canais L/R independentes.");
+assert(!app.includes("DIAGNÓSTICO DO PLAYOUT") &&
+    !app.includes("Exportar diagnóstico"),
+    "Painel de diagnóstico deve ser removido conforme solicitação.");
+const appCss = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "styles.css"), "utf8"
+);
+assert(appCss.includes(".program-media-row") &&
+    appCss.includes(".program-audio-meters") &&
+    appCss.includes(".compact-status-card"),
+    "Medidores ao lado da tela e NO AR/PRÓXIMO compactos são necessários.");
+
 assert(app.includes("prepareBrowserPreview"), "Prévia compatível por FFmpeg deve estar disponível.");
 assert(app.includes("onError={(event) =>"), "Falha de reprodução precisa ser visível ao operador.");
 assert(app.includes("distributeParts"), "Editor de filmes deve oferecer número variável de blocos.");
