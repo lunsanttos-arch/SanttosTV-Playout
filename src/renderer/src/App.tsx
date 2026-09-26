@@ -2374,7 +2374,9 @@ function PlayoutPanel({
                     <div className="playout-health-topline">
                         <strong>DIAGNÓSTICO DO PLAYOUT</strong>
                         <span
-                            role={health.state === "STALLED" || health.state === "FAULT" ||
+                            role={(testBench && isPlaying &&
+                                timelineClock - lastProgressRef.current.atMs >= 8000) ||
+                                health.state === "STALLED" || health.state === "FAULT" ||
                                 health.state === "START_DELAY" || health.state === "NDI_OFFLINE"
                                     ? "alert" : "status"}
                             className={"playout-health-badge state-" + health.state.toLowerCase()}
