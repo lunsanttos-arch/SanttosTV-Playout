@@ -47,8 +47,8 @@ export default function ProgramAudioMeters({
         ctx: AudioContext;
         left: AnalyserNode;
         right: AnalyserNode;
-        bufferL: Float32Array;
-        bufferR: Float32Array;
+        bufferL: Float32Array<ArrayBuffer>;
+        bufferR: Float32Array<ArrayBuffer>;
         peakL: number;
         peakR: number;
     } | null>(null);
@@ -72,8 +72,8 @@ export default function ProgramAudioMeters({
             source.connect(ctx.destination);
             graph.current = {
                 element, ctx, left, right,
-                bufferL: new Float32Array(1024),
-                bufferR: new Float32Array(1024),
+                bufferL: new Float32Array(new ArrayBuffer(4096)),
+                bufferR: new Float32Array(new ArrayBuffer(4096)),
                 peakL: -60, peakR: -60
             };
             setPreviewError("");
