@@ -193,6 +193,11 @@ contextBridge.exposeInMainWorld(
                 "ndi:status"
             ),
 
+        exportPlayoutDiagnostics: () =>
+            ipcRenderer.invoke(
+                "monitor:export"
+            ),
+
         playNdiFile: (
             filePath,
             startSeconds = 0,
