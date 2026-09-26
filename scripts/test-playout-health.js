@@ -109,6 +109,11 @@ assert(main.includes('"monitor:export"') &&
     "Operator must explicitly choose where to save diagnostics.");
 assert(main.includes("playoutHealth.senderLost(reason)"),
     "Unexpected native NDI exits must generate a persistent incident.");
+assert(main.includes("function startHealthWatch()") &&
+    main.includes("healthWatchTimer = setInterval(") &&
+    main.includes("startHealthWatch();"),
+    "FFmpeg freezing must be detected by the Electron main process even when the UI is minimized.");
+
 assert(!main.includes("playoutHealth.restartPlayback"),
     "The watchdog must never auto-restart a playing clip.");
 
