@@ -911,9 +911,17 @@ function startNativePlayback(
 
             if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
-                onPlayoutFault(
-                    `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`
-                );
+                if (code === 0 && !signal) {
+                    // An FFmpeg EOF with code 0 is a normal clip completion,
+                    // not an operational incident. The renderer advances
+                    // to the next occurrence using the clip OUT/ended event.
+                    nativePlaybackActive = false;
+                    playoutHealth.stop();
+                } else {
+                    onPlayoutFault(
+                        `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`
+                    );
+                }
             }
         }
     );
