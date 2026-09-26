@@ -1752,3 +1752,137 @@ button {
     .program-preview-error { inset: 2%; }
     .program-controls { flex-wrap: wrap; }
 }
+
+/* PROGRAM horizontal: picture + source L/R meters, both within the output panel. */
+.program-media-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 70px;
+    align-items: stretch;
+    gap: 8px;
+}
+.program-media-row .program-monitor {
+    min-width: 0;
+    aspect-ratio: 16 / 9;
+}
+.program-audio-meters {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 5px;
+    padding: 4px 5px;
+    color: #ced3d6;
+    background: #171c20;
+    border: 1px solid #343f48;
+    border-radius: 5px;
+    font-variant-numeric: tabular-nums;
+}
+.audio-meter-heading {
+    text-align: center;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .55px;
+}
+.audio-meter-reference { display: none; }
+.audio-meter-pair {
+    display: flex;
+    justify-content: center;
+    flex: 1 1 auto;
+    min-height: 58px;
+    gap: 7px;
+}
+.audio-meter-channel {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1 1 0;
+    gap: 2px;
+}
+.audio-meter-track {
+    position: relative;
+    width: 15px;
+    height: 100%;
+    min-height: 40px;
+    overflow: hidden;
+    background: linear-gradient(to top,
+        #294332 0%, #294332 60%,
+        #6b6032 72%, #6b6032 84%,
+        #653238 90%, #653238 100%);
+    border: 1px solid #4e595c;
+    border-radius: 3px;
+}
+.audio-meter-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    min-height: 0;
+    transition: height 95ms linear;
+    background: #35bf82;
+}
+.audio-meter-peak {
+    position: absolute;
+    height: 2px;
+    left: 0;
+    right: 0;
+    background: #f3f4d6;
+    box-shadow: 0 0 2px #eee;
+}
+.audio-meter-channel strong { font-size: 10px; line-height: 1; }
+.audio-meter-channel small { font-size: 9px; color: #9fabb3; }
+.audio-meter-source {
+    min-height: 14px;
+    font-size: 8px;
+    font-weight: 700;
+    text-align: center;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    color: #adc2cb;
+}
+.audio-meter-limitation {
+    font-size: 8px;
+    color: #a3a9b1;
+    text-align: center;
+}
+
+/* Smaller NO AR / PROXIMO cards; timeline keeps its remaining space. */
+.program-column {
+    grid-template-columns: minmax(380px, 1.45fr) minmax(180px, .62fr);
+}
+.playout-status-row {
+    align-self: start;
+    grid-template-rows: repeat(2, auto);
+    gap: 7px;
+}
+.compact-status-card {
+    min-height: 0;
+    padding: 9px 10px;
+    gap: 4px;
+}
+.compact-status-card .panel-title {
+    margin-bottom: 0;
+    font-size: 10px;
+}
+.compact-status-card strong {
+    font-size: 12px;
+    line-height: 1.3;
+}
+.compact-status-card span { font-size: 10px; line-height: 1.35; }
+.compact-status-card .next-entry-forecast {
+    font-weight: 800;
+    color: #dfc47a !important;
+}
+@media (max-width: 1200px) {
+    .program-column {
+        grid-template-columns: 1fr;
+    }
+    .playout-status-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-rows: auto;
+    }
+}
+@media (max-width: 620px) {
+    .program-media-row { grid-template-columns: minmax(0, 1fr) 58px; gap: 4px; }
+    .playout-status-row { grid-template-columns: 1fr; }
+}
