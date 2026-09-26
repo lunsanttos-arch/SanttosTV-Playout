@@ -17,8 +17,6 @@ const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay
 const { spawn } = require("child_process");
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
-const { PlayoutHealth } = require("../core/monitoring/playout-health");
-const { IncidentJournal } = require("../core/monitoring/incident-journal");
 
 const {
     initializeDatabase,
@@ -162,27 +160,9 @@ let ndiRestartFailures = 0;
 let ndiStopping = false;
 let nativePlaybackActive = false;
 let playoutLastError = "";
-let diagnosticJournal = null;
-let diagnosticWriteError = "";
-let healthWatchTimer = null;
-const playoutHealth = new PlayoutHealth({
-    frameBytes: NDI_FRAME_SIZE,
-    onIncident(record) {
-        if (!diagnosticJournal) return;
-        try {
-            diagnosticJournal.append(record);
-            diagnosticWriteError = "";
-        } catch (error) {
-            diagnosticWriteError = "Falha ao gravar o histórico de incidentes.";
-            console.error(diagnosticWriteError, error);
-        }
-    }
-});
-
 function onPlayoutFault(message) {
     playoutLastError = message;
     nativePlaybackActive = false;
-    playoutHealth.fail(message);
 
     // Em falha inesperada, enviar um frame preto valido ao sender:
     // evita que o ultimo frame do comercial congele sem aviso.
@@ -642,8 +622,6 @@ function buildProgramFilterGraph(
 }
 
 function stopNativePlayback() {
-    // A parada voluntária deve desarmar alertas antes de matar o FFmpeg.
-    playoutHealth.stop();
     if (!ffmpegProcess) {
         nativePlaybackActive = false;
         return;
@@ -848,16 +826,6 @@ function startNativePlayback(
     ffmpegProcess = processRef;
     nativePlaybackActive = true;
     ndiFrameBusy = false;
-    playoutHealth.start(filePath);
-
-    // Apenas conta os bytes gerados; .pipe() continua responsável pelo
-    // fluxo e backpressure. NÃO comprova chegada a um receiver NDI.
-    processRef.stdout.on("data", (chunk) => {
-        if (ffmpegProcess === processRef) {
-            playoutHealth.acceptBytes(chunk.length);
-        }
-    });
-
     processRef.stdout.pipe(
         ndiProcess.stdin,
         { end: false }
@@ -916,7 +884,6 @@ function startNativePlayback(
                     // not an operational incident. The renderer advances
                     // to the next occurrence using the clip OUT/ended event.
                     nativePlaybackActive = false;
-                    playoutHealth.stop();
                 } else {
                     onPlayoutFault(
                         `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`
@@ -1023,59 +990,8 @@ function registerIpcHandlers() {
             playoutError: playoutLastError || null,
             error: ndiLastError || null,
             restarting: Boolean(ndiRestartTimer),
-            testBench: isTestBench,
-            health: isTestBench
-                ? { state: "BANCADA", verifiedReceiver: false }
-                : playoutHealth.snapshot(
-                    ndiReady && Boolean(ndiProcess) && !ndiProcess.killed
-                ),
-            incidents: diagnosticJournal
-                ? diagnosticJournal.recent(8)
-                : playoutHealth.recent(8),
-            diagnosticWriteError: diagnosticWriteError || null
+            testBench: isTestBench
         })
-    );
-
-    registerTrustedHandle(
-        "monitor:export",
-        async () => {
-            const result = await dialog.showSaveDialog(mainWindow, {
-                title: "Salvar diagnóstico do playout",
-                defaultPath: path.join(
-                    isTestBench ? testBenchConfig.userDataPath : app.getPath("documents"),
-                    "Santtos_TV_Diagnostico_" +
-                        new Date().toISOString().slice(0, 10) + ".json"
-                ),
-                filters: [{ name: "Relatório JSON", extensions: ["json"] }]
-            });
-            if (result.canceled || !result.filePath) return { ok: false, canceled: true };
-            try {
-                const payload = {
-                    generatedAt: new Date().toISOString(),
-                    appVersion: app.getVersion(),
-                    testBench: isTestBench,
-                    limitations: "Mede apenas saída de bytes FFmpeg e estado do processo NDI; não mede rede, recepção nem áudio.",
-                    ffmpegPipe: isTestBench
-                        ? { state: "BANCADA" }
-                        : playoutHealth.snapshot(
-                            ndiReady && Boolean(ndiProcess) && !ndiProcess.killed
-                        ),
-                    senderProcessOnline: ndiReady && Boolean(ndiProcess) && !ndiProcess.killed,
-                    incidents: diagnosticJournal
-                        ? diagnosticJournal.recent(100)
-                        : playoutHealth.recent(100)
-                };
-                fs.writeFileSync(result.filePath, JSON.stringify(payload, null, 2), {
-                    encoding: "utf8",
-                    mode: 0o600,
-                    flag: "w"
-                });
-                return { ok: true, filePath: result.filePath };
-            } catch (error) {
-                console.error("Falha ao exportar diagnóstico:", error);
-                return { ok: false, error: "Não foi possível salvar o relatório." };
-            }
-        }
     );
 
     registerTrustedHandle(
@@ -1645,7 +1561,6 @@ function startNdiSender() {
             ndiLastError = reason;
             console.error("Sender NDI interrompido:", reason);
             stopNativePlayback();
-            playoutHealth.senderLost(reason);
             ndiReady = false;
             ndiFrameBusy = false;
             ndiProcess = null;
@@ -1665,11 +1580,9 @@ function startNdiSender() {
                 const line = pendingOutput.slice(0, newline).trim();
                 pendingOutput = pendingOutput.slice(newline + 1);
                 if (line.includes("NDI ONLINE:")) {
-                    const recovered = ndiRestartFailures > 0 || Boolean(ndiLastError);
                     ndiReady = true;
                     ndiLastError = "";
                     ndiRestartFailures = 0;
-                    if (recovered) playoutHealth.senderReady();
                 }
                 if (line) console.log("[NDI] " + line.slice(0, 1024));
             }
@@ -1713,18 +1626,6 @@ function stopNdiSender() {
     }
 }
 
-function startHealthWatch() {
-    if (isTestBench || healthWatchTimer) return;
-    // Main-process timer: works even when the operator minimizes the UI
-    // and Chromium throttles renderer intervals.
-    healthWatchTimer = setInterval(() => {
-        playoutHealth.snapshot(
-            ndiReady && Boolean(ndiProcess) && !ndiProcess.killed
-        );
-    }, 2000);
-    healthWatchTimer.unref?.();
-}
-
 function startSystem() {
     console.log(
         "Inicializando Santtos TV Automation..."
@@ -1734,16 +1635,6 @@ function startSystem() {
         userDataPath: app.getPath("userData"),
         migrateLegacy: !isTestBench
     });
-    // Diagnóstico não é requisito para reprodução. Uma falha de permissão
-    // no log gera aviso visível, mas não impede o PROGRAM.
-    try {
-        diagnosticJournal = new IncidentJournal(app.getPath("userData"));
-        diagnosticWriteError = "";
-    } catch (error) {
-        diagnosticJournal = null;
-        diagnosticWriteError = "Histórico de incidentes indisponível.";
-        console.error(diagnosticWriteError, error);
-    }
     initializeLibraryCategories(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
@@ -1780,7 +1671,6 @@ app.whenReady().then(() => {
         );
         if (!isTestBench) {
             startNdiSender();
-            startHealthWatch();
         } else {
             ndiLastError = "Bancada: NDI propositalmente desativado para proteger a emissora.";
         }
@@ -1808,10 +1698,6 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
-    if (healthWatchTimer) {
-        clearInterval(healthWatchTimer);
-        healthWatchTimer = null;
-    }
     cancelActivePreviews();
     closeOpenEntriesAsSkipped();
     stopNativePlayback();
