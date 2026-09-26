@@ -164,6 +164,7 @@ let nativePlaybackActive = false;
 let playoutLastError = "";
 let diagnosticJournal = null;
 let diagnosticWriteError = "";
+let healthWatchTimer = null;
 const playoutHealth = new PlayoutHealth({
     frameBytes: NDI_FRAME_SIZE,
     onIncident(record) {
@@ -1704,6 +1705,18 @@ function stopNdiSender() {
     }
 }
 
+function startHealthWatch() {
+    if (isTestBench || healthWatchTimer) return;
+    // Main-process timer: works even when the operator minimizes the UI
+    // and Chromium throttles renderer intervals.
+    healthWatchTimer = setInterval(() => {
+        playoutHealth.snapshot(
+            ndiReady && Boolean(ndiProcess) && !ndiProcess.killed
+        );
+    }, 2000);
+    healthWatchTimer.unref?.();
+}
+
 function startSystem() {
     console.log(
         "Inicializando Santtos TV Automation..."
@@ -1757,8 +1770,12 @@ app.whenReady().then(() => {
         session.defaultSession.setPermissionRequestHandler(
             (_webContents, _permission, callback) => callback(false)
         );
-        if (!isTestBench) startNdiSender();
-        else ndiLastError = "Bancada: NDI propositalmente desativado para proteger a emissora.";
+        if (!isTestBench) {
+            startNdiSender();
+            startHealthWatch();
+        } else {
+            ndiLastError = "Bancada: NDI propositalmente desativado para proteger a emissora.";
+        }
         registerIpcHandlers();
         createWindow();
     } catch (error) {
@@ -1783,6 +1800,10 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
+    if (healthWatchTimer) {
+        clearInterval(healthWatchTimer);
+        healthWatchTimer = null;
+    }
     cancelActivePreviews();
     closeOpenEntriesAsSkipped();
     stopNativePlayback();
