@@ -126,5 +126,9 @@ assert(main.includes("function startHealthWatch()") &&
 
 assert(!main.includes("playoutHealth.restartPlayback"),
     "The watchdog must never auto-restart a playing clip.");
+assert(main.includes("if (code === 0 && !signal)") &&
+    main.includes("playoutHealth.stop();"),
+    "A normally completed FFmpeg clip must not be reported as a decoder crash.");
+
 
 console.log("HEALTH QA: APROVADO — startup, stall, dedup, recovery, NDI fault, journal rotation and power-cut recovery.");
