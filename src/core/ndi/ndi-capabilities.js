@@ -13,9 +13,16 @@ function checkNdiRuntime({ requireModern = true, executablePath = executable,
     if (process.platform !== "win32") {
         return { ok: false, error: "O emissor NDI nativo deste projeto é Windows x64." };
     }
-    if (!fs.existsSync(executablePath) || !fs.existsSync(dllPath)) {
+    if (!fs.existsSync(executablePath)) {
         return { ok: false, error:
-            "ndi_test.exe e/ou Processing.NDI.Lib.x64.dll ausentes. Recompile o sender com o SDK NDI antes do teste." };
+            "ndi_test.exe ausente. Compile o sender com o SDK NDI antes do teste." };
+    }
+    // Legacy production setups may use the official NDI runtime installed
+    // globally instead of an adjacent DLL. Do not break their video.
+    // The opt-in QA path MUST have a local matching DLL.
+    if (requireModern && !fs.existsSync(dllPath)) {
+        return { ok: false, error:
+            "Processing.NDI.Lib.x64.dll não encontrada na pasta do sender QA." };
     }
     // Do NOT execute an old sender with --capabilities. The old build
     // ignores args and would publish the production PROGRAM briefly.
