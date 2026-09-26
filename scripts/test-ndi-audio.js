@@ -8,6 +8,7 @@ const { execFileSync } = require("node:child_process");
 const ffmpeg = require("ffmpeg-static");
 const { StereoPcmMeter } = require("../src/core/audio/stereo-meter");
 const { audioFfmpegArgs } = require("../src/core/audio/ndi-audio-source");
+const { checkNdiRuntime } = require("../src/core/ndi/ndi-capabilities");
 
 let now = 1000;
 const meter = new StereoPcmMeter(() => now);
@@ -46,6 +47,26 @@ assert(args.includes("11.000"));
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-ndi-audio-"));
 try {
+    if (process.platform === "win32") {
+        const oldExe = path.join(root, "ndi_legacy.exe");
+        fs.writeFileSync(oldExe, "OLD NDI VIDEO BINARY ONLY");
+        const absentDll = path.join(root, "absent-runtime.dll");
+        const legacy = checkNdiRuntime({
+            requireModern: false,
+            executablePath: oldExe,
+            dllPath: absentDll
+        });
+        assert.equal(legacy.ok, true,
+            "O playout anterior com runtime NDI global não deve parar por falta de DLL local.");
+        assert.equal(legacy.modern, false);
+        const qa = checkNdiRuntime({
+            requireModern: true,
+            executablePath: oldExe,
+            dllPath: absentDll
+        });
+        assert.equal(qa.ok, false,
+            "Bancada QA jamais pode iniciar um exe legado com o nome de fonte PROGRAM.");
+    }
     const input = path.join(root, "tone.wav");
     execFileSync(ffmpeg, [
         "-hide_banner", "-loglevel", "error",
