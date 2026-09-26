@@ -2425,7 +2425,7 @@ function PlayoutPanel({
                                 {incidents.slice(0, 8).map((incident, index) => (
                                     <div key={incident.at + incident.type + index}>
                                         <time>{new Date(incident.at).toLocaleString("pt-BR")}</time>
-                                        <strong>{incident.type.replaceAll("_", " ")}</strong>
+                                        <strong>{incident.type.replace(/_/g, " ")}</strong>
                                         <span>{incident.detail}</span>
                                     </div>
                                 ))}
