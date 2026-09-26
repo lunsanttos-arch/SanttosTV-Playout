@@ -9,6 +9,10 @@ const ffmpeg = require("ffmpeg-static");
 const { StereoPcmMeter } = require("../src/core/audio/stereo-meter");
 const { audioFfmpegArgs } = require("../src/core/audio/ndi-audio-source");
 const { checkNdiRuntime } = require("../src/core/ndi/ndi-capabilities");
+const launcherPreflight = require("./check-ndi-audio");
+assert.equal(launcherPreflight.checkNdiRuntime, checkNdiRuntime,
+    "dev:ndi-test must import the native preflight without executing the CLI.");
+
 
 let now = 1000;
 const meter = new StereoPcmMeter(() => now);
