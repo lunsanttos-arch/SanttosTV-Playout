@@ -15,6 +15,9 @@ const { MEDIA_SCHEME, serveImportedVideo } = require("../core/media/media-protoc
 const { preparePreviewProxy, cancelActivePreviews } = require("../core/media/preview-proxy");
 const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
+const crypto = require("node:crypto");
+const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
+const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
 
@@ -71,6 +74,9 @@ const {
 
 const testBenchConfig = configureTestBench(app);
 const isTestBench = testBenchConfig.enabled;
+const isNdiTestBench = testBenchConfig.ndiEnabled;
+const nativeOutputAllowed = !isTestBench || isNdiTestBench;
+const ndiSourceName = isNdiTestBench ? "Santtos TV - QA" : "Santtos TV - PROGRAM";
 const isDevelopment = !app.isPackaged;
 
 // Um protocolo exclusivo permite reproduzir midias com webSecurity habilitado.
@@ -160,6 +166,12 @@ let ndiRestartFailures = 0;
 let ndiStopping = false;
 let nativePlaybackActive = false;
 let playoutLastError = "";
+let ndiAudioPipe = "";
+let ndiAudioReady = false;
+let ndiAudioSupported = false;
+let audioSource = null;
+let audioOutputStatus = "IDLE";
+let audioOutputError = "";
 function onPlayoutFault(message) {
     playoutLastError = message;
     nativePlaybackActive = false;
@@ -622,6 +634,12 @@ function buildProgramFilterGraph(
 }
 
 function stopNativePlayback() {
+    if (audioSource) {
+        audioSource.stop();
+        audioSource = null;
+    }
+    audioOutputStatus = "IDLE";
+    audioOutputError = "";
     if (!ffmpegProcess) {
         nativePlaybackActive = false;
         return;
@@ -826,6 +844,35 @@ function startNativePlayback(
     ffmpegProcess = processRef;
     nativePlaybackActive = true;
     ndiFrameBusy = false;
+
+    const selectedAudioIndex = programState.audioStreamIndex;
+    if (Number.isSafeInteger(selectedAudioIndex) && selectedAudioIndex >= 0) {
+        if (ndiAudioSupported && ndiAudioReady && ndiAudioPipe) {
+            try {
+                audioSource = new NdiAudioSource({
+                    pipePath: ndiAudioPipe,
+                    ffmpegPath,
+                    filePath,
+                    streamIndex: selectedAudioIndex,
+                    startSeconds: normalizedStartSeconds,
+                    durationSeconds: clipRemainingSeconds
+                }).start();
+                audioOutputStatus = "STARTING";
+            } catch (error) {
+                audioOutputStatus = "ERROR";
+                audioOutputError = String(error?.message || error);
+                console.error("Falha ao iniciar áudio NDI:", error);
+            }
+        } else {
+            audioOutputStatus = ndiAudioSupported ? "PIPE_NOT_READY" : "REBUILD_REQUIRED";
+            audioOutputError = ndiAudioSupported
+                ? "Canal de áudio ainda não foi aberto pelo sender NDI."
+                : "Atualize ndi_test.exe para o sender com áudio estéreo.";
+        }
+    } else {
+        audioOutputStatus = "NO_TRACK";
+    }
+
     processRef.stdout.pipe(
         ndiProcess.stdin,
         { end: false }
@@ -884,6 +931,11 @@ function startNativePlayback(
                     // not an operational incident. The renderer advances
                     // to the next occurrence using the clip OUT/ended event.
                     nativePlaybackActive = false;
+                    if (audioSource) {
+                        audioSource.stop();
+                        audioSource = null;
+                    }
+                    audioOutputStatus = "IDLE";
                 } else {
                     onPlayoutFault(
                         `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`
@@ -984,8 +1036,15 @@ function registerIpcHandlers() {
                 ndiReady &&
                 Boolean(ndiProcess) &&
                 !ndiProcess.killed,
-            source:
-                "Santtos TV - PROGRAM",
+            source: ndiSourceName,
+            ndiTestMode: isNdiTestBench,
+            audio: audioSource
+                ? { ...audioSource.snapshot(), route: ndiSourceName,
+                    receiverVerified: false }
+                : { state: audioOutputStatus, error: audioOutputError || null,
+                    active: false, leftDb: -60, rightDb: -60,
+                    peakLeftDb: -60, peakRightDb: -60,
+                    receiverVerified: false, route: ndiSourceName },
             nativePlaybackActive,
             playoutError: playoutLastError || null,
             error: ndiLastError || null,
@@ -1003,7 +1062,7 @@ function registerIpcHandlers() {
             hashtag = "",
             overlayState = {}
         ) => {
-            if (isTestBench) return { ok: true, previewOnly: true };
+            if (!nativeOutputAllowed) return { ok: true, previewOnly: true };
             try {
                 return startNativePlayback(
                     filePath,
