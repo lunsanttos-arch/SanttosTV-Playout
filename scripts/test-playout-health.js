@@ -93,6 +93,16 @@ try {
     const recovered = new IncidentJournal(root, { maxBytes: 250 });
     assert.equal(recovered.recent(1)[0].detail, "teste 13",
         "Truncated last record must not erase valid incidents.");
+    recovered.append({
+        at: new Date(now + 15000).toISOString(),
+        type: "FLUXO_RESTABELECIDO",
+        detail: "restored after power loss",
+        mediaName: "filme.mp4"
+    });
+    const reloadedAfterTornWrite = new IncidentJournal(root, { maxBytes: 250 });
+    assert.equal(reloadedAfterTornWrite.recent(1)[0].detail,
+        "restored after power loss",
+        "A torn last line must not swallow the first new incident.");
     assert.throws(() => new IncidentJournal("relative/folder"), /invalida/);
 } finally {
     fs.rmSync(root, { recursive: true, force: true });
