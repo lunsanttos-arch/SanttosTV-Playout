@@ -2331,45 +2331,40 @@ function PlayoutPanel({
 
                 <div className="playout-status-row">
                     <section className="panel compact-status-card">
-                        <div className="panel-title">
-                            NO AR
-                        </div>
-                        <strong>
-                            {selectedMedia
-                                ? selectedMedia.name
-                                : "Nenhum conteúdo"}
+                        <div className="panel-title">NO AR</div>
+                        <strong title={selectedMedia?.name ?? "Nenhum conteúdo"}>
+                            {selectedMedia?.name ?? "Nenhum conteúdo"}
                         </strong>
-                        <span>
-                            {selectedMedia ? `IDENTIFICAÇÃO: ${exhibitionLabel(selectedMedia.exhibitionType)}` : ""}
-                        </span>
-                        <span>
-                            {selectedMedia?.hashtag
-                                ? `GC: ${selectedMedia.hashtag}`
-                                : "Sem hashtag nesta entrada"}
-                        </span>
+                        {selectedMedia && (
+                            <span className="compact-status-meta">
+                                {normalizeExhibitionType(selectedMedia.exhibitionType) !== "NORMAL"
+                                    ? exhibitionLabel(selectedMedia.exhibitionType)
+                                    : ""}
+                                {selectedMedia.hashtag
+                                    ? (normalizeExhibitionType(selectedMedia.exhibitionType) !== "NORMAL" ? " · " : "") +
+                                      "GC: " + selectedMedia.hashtag
+                                    : ""}
+                            </span>
+                        )}
                     </section>
-
                     <section className="panel compact-status-card">
-                        <div className="panel-title">
-                            PRÓXIMO
-                        </div>
-                        <strong>
-                            {nextMedia
-                                ? nextMedia.name
-                                : "Nenhum conteúdo"}
+                        <div className="panel-title">PRÓXIMO</div>
+                        <strong title={nextMedia?.name ?? "Nenhum conteúdo"}>
+                            {nextMedia?.name ?? "Nenhum conteúdo"}
                         </strong>
-                        <span>
-                            {nextMedia ? `IDENTIFICAÇÃO: ${exhibitionLabel(nextMedia.exhibitionType)}` : ""}
-                        </span>
-                        <span>
-                            {nextMedia?.hashtag
-                                ? `GC: ${nextMedia.hashtag}`
-                                : nextMedia
-                                  ? "Sem hashtag nesta entrada"
-                                  : "Fim da timeline"}
-                        </span>
                         {nextMedia && (
-                            <span className="next-entry-forecast">{describeForecast(nextMedia)}</span>
+                            <>
+                                <span className="compact-status-meta">
+                                    {normalizeExhibitionType(nextMedia.exhibitionType) !== "NORMAL"
+                                        ? exhibitionLabel(nextMedia.exhibitionType)
+                                        : ""}
+                                    {nextMedia.hashtag
+                                        ? (normalizeExhibitionType(nextMedia.exhibitionType) !== "NORMAL" ? " · " : "") +
+                                          "GC: " + nextMedia.hashtag
+                                        : ""}
+                                </span>
+                                <span className="next-entry-forecast">{describeForecast(nextMedia)}</span>
+                            </>
                         )}
                     </section>
                 </div>
