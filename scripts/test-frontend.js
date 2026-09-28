@@ -33,6 +33,9 @@ assert(meter.includes("const pcmAvailable = nativeOutput &&") &&
     meter.includes("PRÉVIA · ") && meter.includes("NDI ANTIGO") &&
     meter.includes("PRÉVIA ≠ NDI"),
     "Ao faltar PCM, exibir níveis de prévia sem alegar que o NDI recebeu áudio.");
+assert(meter.includes("audio.nativeActive === true") &&
+    meter.includes("NDI SEM ACK"),
+    "A UI só pode chamar de NDI PCM após confirmação do sender nativo.");
 assert(meter.includes('audio.state === "NO_TRACK"') &&
     meter.includes('audio.state === "ERROR"'),
     "Falta de faixa e falha no encoder devem ser visíveis junto dos medidores.");

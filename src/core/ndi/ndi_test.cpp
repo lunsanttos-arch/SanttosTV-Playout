@@ -52,13 +52,16 @@ void receiveAudio(HANDLE pipe, NDIlib_send_instance_t sender,
         audioSamplesPerPacket * audioChannels * sizeof(float);
     std::vector<unsigned char> packed(bytesPerPacket);
     std::vector<float> planar(audioSamplesPerPacket * audioChannels);
-    NDIlib_audio_frame_v2_t audio = {};
+    NDIlib_audio_frame_v3_t audio = {};
     audio.sample_rate = audioRate;
     audio.no_channels = audioChannels;
     audio.no_samples = audioSamplesPerPacket;
     audio.timecode = NDIlib_send_timecode_synthesize;
+    audio.FourCC = NDIlib_FourCC_audio_type_FLTP;
     audio.channel_stride_in_bytes = audioSamplesPerPacket * sizeof(float);
-    audio.p_data = planar.data();
+    audio.p_data = reinterpret_cast<uint8_t*>(planar.data());
+    audio.p_metadata = nullptr;
+    bool announcedAudio = false;
 
     while (running.load()) {
         // One FFmpeg audio stream connects for every PLAY or seek. A new
@@ -79,7 +82,11 @@ void receiveAudio(HANDLE pipe, NDIlib_send_instance_t sender,
                     &planar[audioSamplesPerPacket + sample],
                     packed.data() + sample * 8 + 4, sizeof(float));
             }
-            NDIlib_send_send_audio_v2(sender, &audio);
+            NDIlib_send_send_audio_v3(sender, &audio);
+            if (!announcedAudio) {
+                announcedAudio = true;
+                std::cout << "NDI AUDIO ACTIVE: FLTP 48000Hz 2ch" << std::endl;
+            }
         }
         DisconnectNamedPipe(pipe);
     }
@@ -92,7 +99,7 @@ int main(int argc, char** argv) {
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--capabilities") {
-            std::cout << "SANTTOS_NDI_CAPS: AUDIO_PIPE_V1 NAME_ARGUMENT_V1"
+            std::cout << "SANTTOS_NDI_CAPS: AUDIO_PIPE_V1 NAME_ARGUMENT_V1 AUDIO_FLTP_V3"
                       << std::endl;
             return 0; // Must never create a sender in a capability probe.
         }
@@ -175,7 +182,7 @@ int main(int argc, char** argv) {
     std::cout << "NDI ONLINE: " << sourceName << std::endl;
     std::cout << "1920x1080 29.97p BGRA" << std::endl;
     if (!audioPipe.empty()) {
-        std::cout << "NDI AUDIO: PCM f32le 48kHz stereo" << std::endl;
+        std::cout << "NDI AUDIO: FLTP v3 48kHz stereo" << std::endl;
     }
     NDIlib_send_send_video_v2(sender, &video); // black until PLAY
 

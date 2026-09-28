@@ -88,10 +88,12 @@ try {
     assert(decoded.snapshot().rightDb > -55);
     const source = fs.readFileSync(
         path.join(__dirname, "../src/core/ndi/ndi_test.cpp"), "utf8");
-    assert(source.includes("NDIlib_send_send_audio_v2") &&
+    assert(source.includes("NDIlib_send_send_audio_v3") &&
+        source.includes("NDIlib_FourCC_audio_type_FLTP") &&
         source.includes("audio.channel_stride_in_bytes") &&
-        source.includes("NDI AUDIO PIPE READY:"),
-        "O sender nativo deve aceitar PCM f32le estéreo e enviá-lo pelo SDK NDI.");
+        source.includes("NDI AUDIO PIPE READY:") &&
+        source.includes("NDI AUDIO ACTIVE: FLTP 48000Hz 2ch"),
+        "O sender nativo deve enviar FLTP v3 estéreo e confirmar o primeiro pacote PCM.");
 
     assert(source.includes('arg == "--capabilities"') &&
         source.indexOf('arg == "--capabilities"') <
