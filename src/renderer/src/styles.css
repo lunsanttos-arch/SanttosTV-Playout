@@ -1840,6 +1840,36 @@ button {
     overflow-wrap: anywhere;
     color: #adc2cb;
 }
+.audio-meter-activate {
+    width: 100%;
+    padding: 4px 1px;
+    border: 1px solid #9b9b48;
+    border-radius: 3px;
+    background: #3e3820;
+    color: #fff0a9;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    cursor: pointer;
+}
+.audio-meter-activate:focus-visible {
+    outline: 2px solid #fff3bb;
+    outline-offset: 2px;
+}
+.audio-meter-warning {
+    padding: 3px 1px;
+    border-radius: 3px;
+    background: #453019;
+    color: #f4cf83;
+    font-size: 9px;
+    font-weight: 650;
+    line-height: 1.3;
+    text-align: center;
+    overflow-wrap: anywhere;
+}
+
 .audio-meter-limitation {
     font-size: 8px;
     color: #a3a9b1;
