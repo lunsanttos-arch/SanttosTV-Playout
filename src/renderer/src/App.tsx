@@ -2164,6 +2164,7 @@ function PlayoutPanel({
                                     id="program-video"
                                     ref={videoRef}
                                     className="program-video"
+                                    crossOrigin="anonymous"
                                     src={selectedMediaUrl}
                                     controls
                                     preload="auto"
