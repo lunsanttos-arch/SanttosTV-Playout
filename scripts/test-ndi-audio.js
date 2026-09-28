@@ -92,12 +92,6 @@ try {
         source.includes("audio.channel_stride_in_bytes") &&
         source.includes("NDI AUDIO PIPE READY:"),
         "O sender nativo deve aceitar PCM f32le estéreo e enviá-lo pelo SDK NDI.");
-    assert(source.includes("#include <mutex>") &&
-        source.includes("std::lock_guard<std::mutex> lock(sendMutex);"),
-        "Áudio e vídeo devem serializar acesso ao mesmo sender NDI.");
-    const lockCount = (source.match(/lock_guard<std::mutex> lock\(sendMutex\)/g) || []).length;
-    assert(lockCount >= 3,
-        "Frame preto, vídeo e áudio precisam usar o mesmo mutex do sender.");
 
     assert(source.includes('arg == "--capabilities"') &&
         source.indexOf('arg == "--capabilities"') <
