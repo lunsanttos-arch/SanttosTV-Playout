@@ -13,6 +13,7 @@ on:
       - "scripts/test-exhibition-output.js"
       - "scripts/test-timeline-forecast.js"
       - "scripts/test-ndi-audio.js"
+      - "scripts/test-audio-meter-display.js"
       - "scripts/test-ndi-pipe.js"
       - "scripts/check-ndi-audio.js"
       - "scripts/start-ndi-testbench.js"
@@ -31,6 +32,7 @@ on:
       - "scripts/test-exhibition-output.js"
       - "scripts/test-timeline-forecast.js"
       - "scripts/test-ndi-audio.js"
+      - "scripts/test-audio-meter-display.js"
       - "scripts/test-ndi-pipe.js"
       - "scripts/check-ndi-audio.js"
       - "scripts/start-ndi-testbench.js"
@@ -90,6 +92,9 @@ jobs:
 
       - name: Native NDI PCM stereo source and meter regression
         run: npm run test:ndi-audio
+
+      - name: Local preview and NDI L/R fallback regression
+        run: npm run test:meter-display
 
       - name: Backend regression tests
         run: npm run test:backend
