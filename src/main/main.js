@@ -18,6 +18,7 @@ const { spawn } = require("child_process");
 const crypto = require("node:crypto");
 const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
+const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
 
@@ -172,6 +173,7 @@ let ndiAudioSupported = false;
 let audioSource = null;
 let audioOutputStatus = "IDLE";
 let audioOutputError = "";
+let stopNdiFrameFeed = null;
 function onPlayoutFault(message) {
     playoutLastError = message;
     nativePlaybackActive = false;
@@ -636,6 +638,10 @@ function buildProgramFilterGraph(
 }
 
 function stopNativePlayback() {
+    if (stopNdiFrameFeed) {
+        stopNdiFrameFeed();
+        stopNdiFrameFeed = null;
+    }
     if (audioSource) {
         audioSource.stop();
         audioSource = null;
@@ -875,10 +881,55 @@ function startNativePlayback(
         audioOutputStatus = "NO_TRACK";
     }
 
-    processRef.stdout.pipe(
-        ndiProcess.stdin,
-        { end: false }
+    // rawvideo is a byte stream without delimiters. Never pipe it
+    // directly into the persistent NDI sender: stopping/seeking FFmpeg can
+    // leave a partial frame in stdin and the next clip would complete it,
+    // producing a picture made from two different frames.
+    let feedActive = true;
+    const assembler = new FixedFrameAssembler(
+        NDI_FRAME_SIZE,
+        (completeFrame) => {
+            if (
+                !feedActive ||
+                ffmpegProcess !== processRef ||
+                !ndiProcess?.stdin ||
+                ndiProcess.stdin.destroyed
+            ) {
+                return;
+            }
+
+            const canContinue = ndiProcess.stdin.write(completeFrame);
+            if (!canContinue && processRef.stdout && !processRef.stdout.destroyed) {
+                processRef.stdout.pause();
+                ndiProcess.stdin.once("drain", () => {
+                    if (
+                        feedActive &&
+                        ffmpegProcess === processRef &&
+                        processRef.stdout &&
+                        !processRef.stdout.destroyed
+                    ) {
+                        processRef.stdout.resume();
+                    }
+                });
+            }
+        }
     );
+
+    const onVideoBytes = (chunk) => assembler.push(chunk);
+    processRef.stdout.on("data", onVideoBytes);
+
+    const stopThisFeed = () => {
+        if (!feedActive) return;
+        feedActive = false;
+        processRef.stdout.off("data", onVideoBytes);
+        const result = assembler.stop();
+        if (result.droppedBytes > 0) {
+            console.log(
+                `Frame BGRA parcial descartado na troca: ${result.droppedBytes} bytes.`
+            );
+        }
+    };
+    stopNdiFrameFeed = stopThisFeed;
 
     processRef.stderr.on(
         "data",
@@ -912,14 +963,9 @@ function startNativePlayback(
     processRef.on(
         "exit",
         (code, signal) => {
-            if (
-                ndiProcess &&
-                ndiProcess.stdin &&
-                processRef.stdout
-            ) {
-                processRef.stdout.unpipe(
-                    ndiProcess.stdin
-                );
+            stopThisFeed();
+            if (stopNdiFrameFeed === stopThisFeed) {
+                stopNdiFrameFeed = null;
             }
 
             console.log(
