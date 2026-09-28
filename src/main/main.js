@@ -82,7 +82,7 @@ const isDevelopment = !app.isPackaged;
 // Um protocolo exclusivo permite reproduzir midias com webSecurity habilitado.
 protocol.registerSchemesAsPrivileged([{
     scheme: MEDIA_SCHEME,
-    privileges: { standard: true, secure: true, stream: true }
+    privileges: { standard: true, secure: true, stream: true, corsEnabled: true }
 }]);
 
 function isTrustedRendererUrl(rawUrl) {
@@ -1752,7 +1752,10 @@ app.whenReady().then(() => {
     try {
         startSystem();
         protocol.handle(MEDIA_SCHEME, (request) =>
-            serveImportedVideo(request, getMedia(), approvedPreviewPaths)
+            serveImportedVideo(
+                request, getMedia(), approvedPreviewPaths,
+                isDevelopment ? "http://localhost:5173" : "null"
+            )
         );
         session.defaultSession.setPermissionRequestHandler(
             (_webContents, _permission, callback) => callback(false)
