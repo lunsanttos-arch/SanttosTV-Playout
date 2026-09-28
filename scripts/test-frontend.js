@@ -55,6 +55,10 @@ assert(app.includes("prepareBrowserPreview"), "Prévia compatível por FFmpeg de
 assert(app.includes("onError={(event) =>"), "Falha de reprodução precisa ser visível ao operador.");
 assert(app.includes("distributeParts"), "Editor de filmes deve oferecer número variável de blocos.");
 assert(app.includes("partCount"), "Editor de filmes deve permitir seleção de 1 a 6 blocos.");
+assert(app.includes("durationText") && app.includes('label="DURAÇÃO"'),
+    "Editor de filmes deve permitir personalizar a duração de cada bloco.");
+assert(app.includes('field === "durationText"') && app.includes("next.inText = formatEditorTime(cursor)"),
+    "Ao alterar a duração, os blocos seguintes devem ser encadeados automaticamente.");
 assert(app.includes("describeForecast"), "Timeline deve exibir tempo restante e horário previsto.");
 assert(app.includes("buildTimelineForecast") && app.includes("forecastRunning"),
     "A previsão deve depender do PROGRAM em execução.");
