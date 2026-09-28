@@ -75,7 +75,7 @@ export default function ProgramAudioMeters({
     // disabled this entire graph in NDI mode, leaving old video-only senders
     // with permanently silent meters despite a healthy local preview.
     useEffect(() => {
-        if (!mediaUrl || !isPlaying) {
+        if (!mediaUrl || !isPlaying || route !== "preview") {
             if (!mediaUrl && graph.current) {
                 const old = graph.current;
                 graph.current = null;
@@ -123,7 +123,7 @@ export default function ProgramAudioMeters({
             setPreviewError("Falha ao iniciar medidor da prévia");
             console.error("Medidor de áudio da prévia:", error);
         }
-    }, [mediaUrl, isPlaying, videoRef]);
+    }, [mediaUrl, isPlaying, videoRef, route]);
 
     // Auto-resume after an actual PLAY, including a pause/resume or a new
     // video. If Chromium refuses autoplay for WebAudio, expose a real user
@@ -135,10 +135,10 @@ export default function ProgramAudioMeters({
             () => setPreviewContextState(current.ctx.state),
             () => setPreviewContextState(current.ctx.state)
         );
-    }, [isPlaying, mediaUrl]);
+    }, [isPlaying, mediaUrl, route]);
 
     useEffect(() => {
-        if (!isPlaying || !mediaUrl) {
+        if (!isPlaying || !mediaUrl || route !== "preview") {
             setPreview(SILENT);
             return;
         }
@@ -157,7 +157,7 @@ export default function ProgramAudioMeters({
             });
         }, 100);
         return () => window.clearInterval(timer);
-    }, [isPlaying, mediaUrl]);
+    }, [isPlaying, mediaUrl, route]);
 
     useEffect(() => () => {
         const old = graph.current;
