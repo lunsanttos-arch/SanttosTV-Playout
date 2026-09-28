@@ -6,7 +6,7 @@ const { spawnSync } = require("node:child_process");
 const nativeFolder = __dirname;
 const executable = path.join(nativeFolder, "ndi_test.exe");
 const dll = path.join(nativeFolder, "Processing.NDI.Lib.x64.dll");
-const CAPS = "SANTTOS_NDI_CAPS: AUDIO_PIPE_V1 NAME_ARGUMENT_V1";
+const CAPS = "SANTTOS_NDI_CAPS: AUDIO_PIPE_V1 NAME_ARGUMENT_V1 AUDIO_FLTP_V3";
 
 function checkNdiRuntime({ requireModern = true, executablePath = executable,
     dllPath = dll } = {}) {
