@@ -54,7 +54,9 @@ export default function ProgramAudioMeters({
     } | null>(null);
 
     useEffect(() => {
-        if (nativeOutput || !mediaUrl) return;
+        // O medidor da prévia deve funcionar EM TODOS os modos, inclusive
+        // quando o sender NDI é legado ou a faixa PCM ainda não iniciou.
+        if (!mediaUrl) return;
         const element = videoRef.current;
         if (!element || graph.current?.element === element) return;
         try {
@@ -81,11 +83,11 @@ export default function ProgramAudioMeters({
             setPreviewError("Monitor de prévia indisponível");
             console.error("Falha no medidor de prévia:", error);
         }
-    }, [mediaUrl, videoRef, nativeOutput]);
+    }, [mediaUrl, videoRef]);
 
     useEffect(() => {
-        if (nativeOutput || !isPlaying) {
-            if (!nativeOutput) setPreview(SILENT);
+        if (!isPlaying) {
+            setPreview(SILENT);
             return;
         }
         const activeGraph = graph.current;
@@ -122,7 +124,7 @@ export default function ProgramAudioMeters({
             });
         }, 100);
         return () => window.clearInterval(timer);
-    }, [isPlaying, nativeOutput]);
+    }, [isPlaying, mediaUrl]);
 
     useEffect(() => () => {
         const current = graph.current;
@@ -130,24 +132,31 @@ export default function ProgramAudioMeters({
         graph.current = null;
     }, []);
 
-    const reading: StereoValues = nativeOutput
-        ? audio.state === "FLOWING" && audio.active !== false
-            ? {
-                l: audio.leftDb ?? -60, r: audio.rightDb ?? -60,
-                pl: audio.peakLeftDb ?? -60, pr: audio.peakRightDb ?? -60
-              }
-            : SILENT
+    const pcmAvailable = nativeOutput &&
+        audio.state === "FLOWING" && audio.active === true;
+    // Na saída nativa, os níveis PCM são prioritários. Quando o encoder
+    // está antigo/desconectado, mostrar a prévia como PRÉVIA, jamais como
+    // prova de que o áudio está chegando ao NDI ou ao receiver.
+    const reading: StereoValues = pcmAvailable
+        ? {
+            l: audio.leftDb ?? -60, r: audio.rightDb ?? -60,
+            pl: audio.peakLeftDb ?? -60, pr: audio.peakRightDb ?? -60
+          }
         : isPlaying ? preview : SILENT;
 
-    const label = nativeOutput
-        ? audio.state === "FLOWING" ? "NDI PCM"
-          : audio.state === "NO_TRACK" ? "SEM FAIXA"
-          : audio.state === "REBUILD_REQUIRED" ? "NDI ANTIGO"
-          : audio.state === "ERROR" ? "ÁUDIO ERRO"
-          : audio.state === "PIPE_NOT_READY" ? "PIPE OFF"
-          : audio.state === "STARTING" ? "CARREGANDO"
-          : "NDI ÁUDIO"
-        : "PRÉVIA";
+    const nativeIssue = nativeOutput && !pcmAvailable;
+    const nativeLabel =
+        audio.state === "REBUILD_REQUIRED" ? "NDI ANTIGO"
+        : audio.state === "NO_TRACK" ? "SEM FAIXA"
+        : audio.state === "PIPE_NOT_READY" ? "PIPE OFF"
+        : audio.state === "ERROR" ? "ÁUDIO ERRO"
+        : audio.state === "STARTING" ? "CARREGANDO"
+        : audio.state === "ENDED" ? "ÁUDIO FIM"
+        : "NDI SEM PCM";
+    const label = pcmAvailable ? "NDI PCM"
+        : nativeIssue
+            ? isPlaying ? "PRÉVIA · " + nativeLabel : nativeLabel
+            : "PRÉVIA";
 
     return (
         <aside className="program-audio-meters"
@@ -174,11 +183,11 @@ export default function ProgramAudioMeters({
                 ))}
             </div>
             <div className="audio-meter-source" title={audio.error || previewError || label}>
-                {previewError || label}
+                {previewError && !pcmAvailable ? previewError : label}
             </div>
             {nativeOutput && (
                 <div className="audio-meter-limitation" title="Mede fonte PCM, não o áudio recebido no vMix">
-                    FONTE
+                    {pcmAvailable ? "FONTE PCM" : "PRÉVIA ≠ NDI"}
                 </div>
             )}
         </aside>
