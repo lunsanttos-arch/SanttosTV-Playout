@@ -42,6 +42,7 @@ export default function ProgramAudioMeters({
 }: Props) {
     const [preview, setPreview] = useState<StereoValues>(SILENT);
     const [previewError, setPreviewError] = useState("");
+    const [previewSuspended, setPreviewSuspended] = useState(false);
     const graph = useRef<{
         element: HTMLVideoElement;
         ctx: AudioContext;
@@ -54,7 +55,9 @@ export default function ProgramAudioMeters({
     } | null>(null);
 
     useEffect(() => {
-        if (nativeOutput || !mediaUrl) return;
+        // O medidor da prévia deve funcionar EM TODOS os modos, inclusive
+        // quando o sender NDI é legado ou a faixa PCM ainda não iniciou.
+        if (!mediaUrl) return;
         const element = videoRef.current;
         if (!element || graph.current?.element === element) return;
         try {
@@ -76,23 +79,30 @@ export default function ProgramAudioMeters({
                 bufferR: new Float32Array(new ArrayBuffer(4096)),
                 peakL: -60, peakR: -60
             };
+            ctx.onstatechange = () => {
+                setPreviewSuspended(ctx.state === "suspended");
+            };
+            setPreviewSuspended(ctx.state === "suspended");
             setPreviewError("");
         } catch (error) {
             setPreviewError("Monitor de prévia indisponível");
             console.error("Falha no medidor de prévia:", error);
         }
-    }, [mediaUrl, videoRef, nativeOutput]);
+    }, [mediaUrl, videoRef]);
 
     useEffect(() => {
-        if (nativeOutput || !isPlaying) {
-            if (!nativeOutput) setPreview(SILENT);
+        if (!isPlaying) {
+            setPreview(SILENT);
             return;
         }
         const activeGraph = graph.current;
         if (!activeGraph) return;
-        void activeGraph.ctx.resume().catch(error =>
-            console.warn("AudioContext suspenso:", error)
-        );
+        void activeGraph.ctx.resume()
+            .then(() => setPreviewSuspended(activeGraph.ctx.state === "suspended"))
+            .catch(error => {
+                setPreviewSuspended(true);
+                console.warn("AudioContext suspenso:", error);
+            });
         function level(buffer: Float32Array) {
             let sum = 0;
             let peak = 0;
@@ -122,32 +132,42 @@ export default function ProgramAudioMeters({
             });
         }, 100);
         return () => window.clearInterval(timer);
-    }, [isPlaying, nativeOutput]);
+    }, [isPlaying, mediaUrl]);
 
     useEffect(() => () => {
         const current = graph.current;
-        if (current) void current.ctx.close().catch(() => {});
+        if (current) {
+            current.ctx.onstatechange = null;
+            void current.ctx.close().catch(() => {});
+        }
         graph.current = null;
     }, []);
 
-    const reading: StereoValues = nativeOutput
-        ? audio.state === "FLOWING" && audio.active !== false
-            ? {
-                l: audio.leftDb ?? -60, r: audio.rightDb ?? -60,
-                pl: audio.peakLeftDb ?? -60, pr: audio.peakRightDb ?? -60
-              }
-            : SILENT
+    const pcmAvailable = nativeOutput &&
+        audio.state === "FLOWING" && audio.active === true;
+    // Na saída nativa, os níveis PCM são prioritários. Quando o encoder
+    // está antigo/desconectado, mostrar a prévia como PRÉVIA, jamais como
+    // prova de que o áudio está chegando ao NDI ou ao receiver.
+    const reading: StereoValues = pcmAvailable
+        ? {
+            l: audio.leftDb ?? -60, r: audio.rightDb ?? -60,
+            pl: audio.peakLeftDb ?? -60, pr: audio.peakRightDb ?? -60
+          }
         : isPlaying ? preview : SILENT;
 
-    const label = nativeOutput
-        ? audio.state === "FLOWING" ? "NDI PCM"
-          : audio.state === "NO_TRACK" ? "SEM FAIXA"
-          : audio.state === "REBUILD_REQUIRED" ? "NDI ANTIGO"
-          : audio.state === "ERROR" ? "ÁUDIO ERRO"
-          : audio.state === "PIPE_NOT_READY" ? "PIPE OFF"
-          : audio.state === "STARTING" ? "CARREGANDO"
-          : "NDI ÁUDIO"
-        : "PRÉVIA";
+    const nativeIssue = nativeOutput && !pcmAvailable;
+    const nativeLabel =
+        audio.state === "REBUILD_REQUIRED" ? "NDI ANTIGO"
+        : audio.state === "NO_TRACK" ? "SEM FAIXA"
+        : audio.state === "PIPE_NOT_READY" ? "PIPE OFF"
+        : audio.state === "ERROR" ? "ÁUDIO ERRO"
+        : audio.state === "STARTING" ? "CARREGANDO"
+        : audio.state === "ENDED" ? "ÁUDIO FIM"
+        : "NDI SEM PCM";
+    const label = pcmAvailable ? "NDI PCM"
+        : nativeIssue
+            ? isPlaying ? "PRÉVIA · " + nativeLabel : nativeLabel
+            : "PRÉVIA";
 
     return (
         <aside className="program-audio-meters"
@@ -174,11 +194,23 @@ export default function ProgramAudioMeters({
                 ))}
             </div>
             <div className="audio-meter-source" title={audio.error || previewError || label}>
-                {previewError || label}
+                {previewError && !pcmAvailable ? previewError : label}
             </div>
+            {previewSuspended && isPlaying && !pcmAvailable && (
+                <button type="button" className="audio-meter-activate"
+                    title="O Chromium suspendeu o medidor. Clique para ativar a prévia de áudio."
+                    onClick={() => {
+                        void graph.current?.ctx.resume()
+                            .then(() => setPreviewSuspended(false))
+                            .catch(() => setPreviewError("Sem acesso ao áudio da prévia."));
+                    }}
+                >
+                    ATIVAR
+                </button>
+            )}
             {nativeOutput && (
                 <div className="audio-meter-limitation" title="Mede fonte PCM, não o áudio recebido no vMix">
-                    FONTE
+                    {pcmAvailable ? "FONTE PCM" : "PRÉVIA ≠ NDI"}
                 </div>
             )}
         </aside>
