@@ -92,6 +92,7 @@ try {
         source.includes("audio.channel_stride_in_bytes") &&
         source.includes("NDI AUDIO PIPE READY:"),
         "O sender nativo deve aceitar PCM f32le estéreo e enviá-lo pelo SDK NDI.");
+
     assert(source.includes('arg == "--capabilities"') &&
         source.indexOf('arg == "--capabilities"') <
         source.indexOf("NDIlib_initialize()"),
