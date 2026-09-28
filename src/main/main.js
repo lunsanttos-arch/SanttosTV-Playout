@@ -855,31 +855,33 @@ function startNativePlayback(
     ndiFrameBusy = false;
 
     const selectedAudioIndex = programState.audioStreamIndex;
-    if (Number.isSafeInteger(selectedAudioIndex) && selectedAudioIndex >= 0) {
-        if (ndiAudioSupported && ndiAudioReady && ndiAudioPipe) {
-            try {
-                audioSource = new NdiAudioSource({
-                    pipePath: ndiAudioPipe,
-                    ffmpegPath,
-                    filePath,
-                    streamIndex: selectedAudioIndex,
-                    startSeconds: normalizedStartSeconds,
-                    durationSeconds: clipRemainingSeconds
-                }).start();
-                audioOutputStatus = "STARTING";
-            } catch (error) {
-                audioOutputStatus = "ERROR";
-                audioOutputError = String(error?.message || error);
-                console.error("Falha ao iniciar áudio NDI:", error);
-            }
-        } else {
-            audioOutputStatus = ndiAudioSupported ? "PIPE_NOT_READY" : "REBUILD_REQUIRED";
-            audioOutputError = ndiAudioSupported
-                ? "Canal de áudio ainda não foi aberto pelo sender NDI."
-                : "Atualize ndi_test.exe para o sender com áudio estéreo.";
+    if (ndiAudioSupported && ndiAudioReady && ndiAudioPipe) {
+        try {
+            audioSource = new NdiAudioSource({
+                pipePath: ndiAudioPipe,
+                ffmpegPath,
+                filePath,
+                // Midias importadas antes do suporte de áudio não possuem
+                // audioStreamIndex no banco. Nesse caso o FFmpeg usa 0:a:0.
+                streamIndex: Number.isSafeInteger(selectedAudioIndex) &&
+                    selectedAudioIndex >= 0
+                        ? selectedAudioIndex
+                        : null,
+                startSeconds: normalizedStartSeconds,
+                durationSeconds: clipRemainingSeconds
+            }).start();
+            audioOutputStatus = "STARTING";
+            audioOutputError = "";
+        } catch (error) {
+            audioOutputStatus = "ERROR";
+            audioOutputError = String(error?.message || error);
+            console.error("Falha ao iniciar áudio NDI:", error);
         }
     } else {
-        audioOutputStatus = "NO_TRACK";
+        audioOutputStatus = ndiAudioSupported ? "PIPE_NOT_READY" : "REBUILD_REQUIRED";
+        audioOutputError = ndiAudioSupported
+            ? "Canal de áudio ainda não foi aberto pelo sender NDI."
+            : "Atualize ndi_test.exe para o sender com áudio estéreo.";
     }
 
     // rawvideo is a byte stream without delimiters. Never pipe it
@@ -1591,8 +1593,16 @@ function registerIpcHandlers() {
             const pendingMedia =
                 media.filter(
                     (item) =>
-                        item.status ===
-                        "pending-metadata"
+                        item.status === "pending-metadata" ||
+                        (
+                            // Upgrade library items analyzed before we began
+                            // persisting stream indexes. If the old metadata
+                            // already says there is an audio codec, re-probe
+                            // once so future plays can select that track
+                            // explicitly instead of relying on 0:a:0.
+                            Boolean(item.audioCodec) &&
+                            !Number.isSafeInteger(item.audioStreamIndex)
+                        )
                 );
 
             if (pendingMedia.length > 0) {
