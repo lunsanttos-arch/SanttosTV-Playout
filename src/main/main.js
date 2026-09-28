@@ -1593,8 +1593,16 @@ function registerIpcHandlers() {
             const pendingMedia =
                 media.filter(
                     (item) =>
-                        item.status ===
-                        "pending-metadata"
+                        item.status === "pending-metadata" ||
+                        (
+                            // Upgrade library items analyzed before we began
+                            // persisting stream indexes. If the old metadata
+                            // already says there is an audio codec, re-probe
+                            // once so future plays can select that track
+                            // explicitly instead of relying on 0:a:0.
+                            Boolean(item.audioCodec) &&
+                            !Number.isSafeInteger(item.audioStreamIndex)
+                        )
                 );
 
             if (pendingMedia.length > 0) {
