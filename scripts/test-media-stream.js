@@ -35,6 +35,47 @@ async function main() {
         assert.equal(full.response.headers.get("content-length"), String(bytes.length));
         assert.deepEqual(full.body, bytes);
 
+        // A prévia só expõe amostras de áudio ao renderer autorizado;
+        // requisições de outros sites não recebem permissão CORS.
+        const approvedRequest = new Request(url, {
+            headers: {
+                Origin: "http://localhost:5173",
+                Range: "bytes=0-3"
+            }
+        });
+        const approved = serveImportedVideo(
+            approvedRequest, library, new Set(), "http://localhost:5173"
+        );
+        assert.equal(approved.status, 206);
+        assert.equal(approved.headers.get("access-control-allow-origin"),
+            "http://localhost:5173");
+        assert.equal(approved.headers.get("vary"), "Origin");
+        assert.equal(Buffer.from(await approved.arrayBuffer()).toString(), "0123");
+
+        const foreign = serveImportedVideo(
+            new Request(url, { headers: { Origin: "https://untrusted.invalid" } }),
+            library, new Set(), "http://localhost:5173"
+        );
+        assert.equal(foreign.headers.get("access-control-allow-origin"), null);
+        await foreign.arrayBuffer();
+
+        const packaged = serveImportedVideo(
+            new Request(url, { headers: { Origin: "null" } }),
+            library, new Set(), "null"
+        );
+        assert.equal(packaged.headers.get("access-control-allow-origin"), "null");
+        await packaged.arrayBuffer();
+
+        const forbiddenCors = serveImportedVideo(
+            new Request(buildMediaUrl(privatePath), {
+                headers: { Origin: "http://localhost:5173" }
+            }),
+            library, new Set(), "http://localhost:5173"
+        );
+        assert.equal(forbiddenCors.status, 404);
+        assert.equal(forbiddenCors.headers.get("access-control-allow-origin"), null);
+
+
         const partial = await read("bytes=5-9");
         assert.equal(partial.response.status, 206);
         assert.equal(partial.response.headers.get("content-range"),
