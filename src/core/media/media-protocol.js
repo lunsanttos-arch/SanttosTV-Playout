@@ -98,7 +98,9 @@ function parseByteRange(rangeHeader, size) {
     return { start, end, partial: true };
 }
 
-function serveImportedVideo(request, mediaItems, authorizedProxies = new Set()) {
+function serveImportedVideo(
+    request, mediaItems, authorizedProxies = new Set(), trustedCorsOrigin = null
+) {
     const allowedPath = resolveMediaRequest(request.url, mediaItems, authorizedProxies);
     if (!allowedPath) return new Response("Midia nao autorizada ou ausente", { status: 404 });
     let stat;
@@ -109,8 +111,16 @@ function serveImportedVideo(request, mediaItems, authorizedProxies = new Set()) 
         "Accept-Ranges": "bytes",
         "Cache-Control": "no-store",
         "Content-Type": MEDIA_TYPES[path.extname(allowedPath).toLowerCase()] || "application/octet-stream",
-        "X-Content-Type-Options": "nosniff"
+        "X-Content-Type-Options": "nosniff",
+        "Vary": "Origin"
     });
+    // Web Audio MUST silence MediaElementAudioSourceNode for a cross-origin
+    // media response without CORS permission. The video would play normally,
+    // but the PROGRAM L/R meters would remain at -60 dB. Only our own
+    // renderer origin is allowed to inspect approved media samples.
+    if (trustedCorsOrigin && request.headers.get("origin") === trustedCorsOrigin) {
+        headers.set("Access-Control-Allow-Origin", trustedCorsOrigin);
+    }
     if (!range) {
         headers.set("Content-Range", `bytes */${stat.size}`);
         return new Response(null, { status: 416, headers });
