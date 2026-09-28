@@ -35,9 +35,11 @@ assert.equal(meter.snapshot().active, false);
 assert.equal(meter.snapshot().leftDb, -60);
 meter.reset();
 assert.equal(meter.snapshot().audioFrames, 0);
-assert.throws(
-    () => audioFfmpegArgs("file.mp4", null, 0, null), /faixa/,
-    "Não se deve inventar a faixa de áudio de arquivos sem áudio."
+const fallbackArgs = audioFfmpegArgs("file.mp4", null, 0, null);
+assert.deepEqual(
+    fallbackArgs.slice(fallbackArgs.indexOf("-map"), fallbackArgs.indexOf("-map") + 2),
+    ["-map", "0:a:0"],
+    "Mídias antigas sem audioStreamIndex devem usar a primeira faixa de áudio."
 );
 
 const args = audioFfmpegArgs("filme.mp4", 2, 11, 50);
@@ -80,6 +82,11 @@ try {
     const pcm = execFileSync(ffmpeg,
         audioFfmpegArgs(input, 0, 0, null),
         { windowsHide: true, timeout: 30000, maxBuffer: 1048576 });
+    const fallbackPcm = execFileSync(ffmpeg,
+        audioFfmpegArgs(input, null, 0, null),
+        { windowsHide: true, timeout: 30000, maxBuffer: 1048576 });
+    assert.equal(fallbackPcm.length, pcm.length,
+        "Fallback 0:a:0 deve decodificar a mesma faixa de uma mídia antiga.");
     assert.equal(pcm.length % 8, 0, "Audio PCM intercalado deve conter quadros L/R completos.");
     assert(pcm.length >= 10000, "FFmpeg precisa decodificar áudio real.");
     const decoded = new StereoPcmMeter();
