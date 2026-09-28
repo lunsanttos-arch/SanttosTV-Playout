@@ -170,6 +170,7 @@ let playoutLastError = "";
 let ndiAudioPipe = "";
 let ndiAudioReady = false;
 let ndiAudioSupported = false;
+let ndiAudioNativeActive = false;
 let audioSource = null;
 let audioOutputStatus = "IDLE";
 let audioOutputError = "";
@@ -1088,10 +1089,12 @@ function registerIpcHandlers() {
             ndiTestMode: isNdiTestBench,
             audio: audioSource
                 ? { ...audioSource.snapshot(), route: ndiSourceName,
+                    nativeActive: ndiAudioNativeActive,
                     receiverVerified: false }
                 : { state: audioOutputStatus, error: audioOutputError || null,
                     active: false, leftDb: -60, rightDb: -60,
                     peakLeftDb: -60, peakRightDb: -60,
+                    nativeActive: ndiAudioNativeActive,
                     receiverVerified: false, route: ndiSourceName },
             nativePlaybackActive,
             playoutError: playoutLastError || null,
@@ -1662,6 +1665,7 @@ function startNdiSender() {
 
     ndiAudioSupported = Boolean(runtime.modern);
     ndiAudioReady = false;
+    ndiAudioNativeActive = false;
     ndiAudioPipe = runtime.modern
         ? "\\\\.\\pipe\\SanttosAudio-" + process.pid + "-" +
           crypto.randomBytes(6).toString("hex")
@@ -1686,6 +1690,7 @@ function startNdiSender() {
             ndiReady = false;
             ndiFrameBusy = false;
             ndiAudioReady = false;
+            ndiAudioNativeActive = false;
             ndiAudioPipe = "";
             ndiProcess = null;
             scheduleNdiRestart();
@@ -1705,6 +1710,9 @@ function startNdiSender() {
                 pendingOutput = pendingOutput.slice(newline + 1);
                 if (ndiAudioPipe && line === "NDI AUDIO PIPE READY:" + ndiAudioPipe) {
                     ndiAudioReady = true;
+                }
+                if (line === "NDI AUDIO ACTIVE: FLTP 48000Hz 2ch") {
+                    ndiAudioNativeActive = true;
                 }
                 if (line.startsWith("NDI ONLINE:")) {
                     if (line === "NDI ONLINE: " + ndiSourceName) {
@@ -1752,6 +1760,7 @@ function stopNdiSender() {
     ndiFrameBusy = false;
     ndiReady = false;
     ndiAudioReady = false;
+    ndiAudioNativeActive = false;
     ndiAudioPipe = "";
     const processRef = ndiProcess;
     ndiProcess = null;
