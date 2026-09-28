@@ -9,6 +9,7 @@ export interface NativeAudioStatus {
     rightDb?: number;
     peakLeftDb?: number;
     peakRightDb?: number;
+    nativeActive?: boolean;
     receiverVerified?: boolean;
 }
 
@@ -144,7 +145,9 @@ export default function ProgramAudioMeters({
     }, []);
 
     const pcmAvailable = nativeOutput &&
-        audio.state === "FLOWING" && audio.active === true;
+        audio.state === "FLOWING" &&
+        audio.active === true &&
+        audio.nativeActive === true;
     // Na saída nativa, os níveis PCM são prioritários. Quando o encoder
     // está antigo/desconectado, mostrar a prévia como PRÉVIA, jamais como
     // prova de que o áudio está chegando ao NDI ou ao receiver.
@@ -163,6 +166,8 @@ export default function ProgramAudioMeters({
         : audio.state === "ERROR" ? "ÁUDIO ERRO"
         : audio.state === "STARTING" ? "CARREGANDO"
         : audio.state === "ENDED" ? "ÁUDIO FIM"
+        : audio.state === "FLOWING" && audio.nativeActive !== true
+            ? "NDI SEM ACK"
         : "NDI SEM PCM";
     const label = pcmAvailable ? "NDI PCM"
         : nativeIssue
