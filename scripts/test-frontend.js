@@ -26,6 +26,17 @@ const meter = fs.readFileSync(
 assert(meter.includes("createMediaElementSource") &&
     meter.includes("audio.leftDb") && meter.includes("audio.rightDb"),
     "Áudio da prévia e áudio PCM nativo precisam ter canais L/R independentes.");
+assert(meter.includes("if (!mediaUrl) return;") &&
+    !meter.includes("if (nativeOutput || !mediaUrl) return;"),
+    "O monitor da prévia deve continuar funcionando mesmo com NDI ativo/antigo.");
+assert(meter.includes("const pcmAvailable = nativeOutput &&") &&
+    meter.includes("PRÉVIA · ") && meter.includes("NDI ANTIGO") &&
+    meter.includes("PRÉVIA ≠ NDI"),
+    "Ao faltar PCM, exibir níveis de prévia sem alegar que o NDI recebeu áudio.");
+assert(meter.includes('audio.state === "NO_TRACK"') &&
+    meter.includes('audio.state === "ERROR"'),
+    "Falta de faixa e falha no encoder devem ser visíveis junto dos medidores.");
+
 assert(!app.includes("DIAGNÓSTICO DO PLAYOUT") &&
     !app.includes("Exportar diagnóstico"),
     "Painel de diagnóstico deve ser removido conforme solicitação.");
