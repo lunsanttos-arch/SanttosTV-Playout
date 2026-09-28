@@ -17,6 +17,7 @@ const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay
 const { spawn } = require("child_process");
 const crypto = require("node:crypto");
 const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
+const { RawVideoFrameAligner, PROGRAM_FRAME_BYTES } = require("../core/ndi/raw-frame-aligner");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
@@ -130,6 +131,9 @@ const NDI_FRAME_SIZE =
     NDI_FRAME_WIDTH *
     NDI_FRAME_HEIGHT *
     NDI_BYTES_PER_PIXEL;
+if (NDI_FRAME_SIZE !== PROGRAM_FRAME_BYTES) {
+    throw new Error("FFmpeg and NDI sender BGRA frame sizes do not match.");
+}
 
 const FONT_FILES = {
     "Arial": {
@@ -157,6 +161,7 @@ const FONT_FILES = {
 let mainWindow = null;
 let ndiProcess = null;
 let ffmpegProcess = null;
+let activeVideoFrameAligner = null;
 
 let ndiReady = false;
 let ndiFrameBusy = false;
@@ -635,6 +640,18 @@ function buildProgramFilterGraph(
     return chains.join(";");
 }
 
+function detachNdiVideoFeed(processRef, aligner) {
+    if (!aligner) return;
+    // A persistent sender is NOT restarted on each clip. Destroy the old
+    // frame assembler before a new file/seek to discard its partial tail.
+    processRef?.stdout?.unpipe(aligner);
+    if (ndiProcess?.stdin) aligner.unpipe(ndiProcess.stdin);
+    if (activeVideoFrameAligner === aligner) {
+        activeVideoFrameAligner = null;
+    }
+    if (!aligner.destroyed) aligner.destroy();
+}
+
 function stopNativePlayback() {
     if (audioSource) {
         audioSource.stop();
@@ -648,20 +665,12 @@ function stopNativePlayback() {
     }
 
     const processToStop = ffmpegProcess;
+    const alignerToStop = activeVideoFrameAligner;
+    detachNdiVideoFeed(processToStop, alignerToStop);
 
     console.log(
         "Encerrando playout FFmpeg..."
     );
-
-    if (
-        processToStop.stdout &&
-        ndiProcess &&
-        ndiProcess.stdin
-    ) {
-        processToStop.stdout.unpipe(
-            ndiProcess.stdin
-        );
-    }
 
     ffmpegProcess = null;
     nativePlaybackActive = false;
@@ -875,7 +884,21 @@ function startNativePlayback(
         audioOutputStatus = "NO_TRACK";
     }
 
-    processRef.stdout.pipe(
+    // Never pipe arbitrary FFmpeg chunks directly to a persistent
+    // rawvideo stdin: a cut/seek can leave HALF A FRAME behind and
+    // join it with the next clip, shifting the entire NDI raster.
+    const videoFrames = new RawVideoFrameAligner({
+        frameBytes: NDI_FRAME_SIZE
+    });
+    activeVideoFrameAligner = videoFrames;
+    videoFrames.on("error", (error) => {
+        if (ffmpegProcess === processRef) {
+            detachNdiVideoFeed(processRef, videoFrames);
+            processRef.kill();
+            onPlayoutFault("Falha ao montar quadros completos NDI: " + error.message);
+        }
+    });
+    processRef.stdout.pipe(videoFrames).pipe(
         ndiProcess.stdin,
         { end: false }
     );
@@ -903,6 +926,7 @@ function startNativePlayback(
             );
 
             if (ffmpegProcess === processRef) {
+                detachNdiVideoFeed(processRef, videoFrames);
                 ffmpegProcess = null;
                 onPlayoutFault("Erro no decodificador FFmpeg: " + error.message);
             }
@@ -912,15 +936,7 @@ function startNativePlayback(
     processRef.on(
         "exit",
         (code, signal) => {
-            if (
-                ndiProcess &&
-                ndiProcess.stdin &&
-                processRef.stdout
-            ) {
-                processRef.stdout.unpipe(
-                    ndiProcess.stdin
-                );
-            }
+            detachNdiVideoFeed(processRef, videoFrames);
 
             console.log(
                 `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`
