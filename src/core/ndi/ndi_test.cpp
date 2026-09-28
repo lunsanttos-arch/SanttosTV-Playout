@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <cstring>
 #include <iostream>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
@@ -48,7 +47,7 @@ bool readExactly(HANDLE pipe, unsigned char* buffer, DWORD bytes) {
 }
 
 void receiveAudio(HANDLE pipe, NDIlib_send_instance_t sender,
-                  std::atomic<bool>& running, std::mutex& sendMutex) {
+                  std::atomic<bool>& running) {
     constexpr DWORD bytesPerPacket =
         audioSamplesPerPacket * audioChannels * sizeof(float);
     std::vector<unsigned char> packed(bytesPerPacket);
@@ -80,10 +79,7 @@ void receiveAudio(HANDLE pipe, NDIlib_send_instance_t sender,
                     &planar[audioSamplesPerPacket + sample],
                     packed.data() + sample * 8 + 4, sizeof(float));
             }
-            {
-                std::lock_guard<std::mutex> lock(sendMutex);
-                NDIlib_send_send_audio_v2(sender, &audio);
-            }
+            NDIlib_send_send_audio_v2(sender, &audio);
         }
         DisconnectNamedPipe(pipe);
     }
@@ -139,10 +135,6 @@ int main(int argc, char** argv) {
 
     HANDLE audioHandle = INVALID_HANDLE_VALUE;
     std::atomic<bool> audioRunning{true};
-    // NDI send calls share one instance. Keep audio/video submissions
-    // serialized so the SDK never sees two threads mutating sender state
-    // concurrently (observed as half-frame tearing on receiver).
-    std::mutex sendMutex;
     std::thread audioThread;
     if (!audioPipe.empty()) {
         audioHandle = CreateNamedPipeA(
@@ -158,7 +150,7 @@ int main(int argc, char** argv) {
             return 1;
         }
         audioThread = std::thread([&]() {
-            receiveAudio(audioHandle, sender, audioRunning, sendMutex);
+            receiveAudio(audioHandle, sender, audioRunning);
         });
         std::cout << "NDI AUDIO PIPE READY:" << audioPipe << std::endl;
     }
@@ -185,18 +177,12 @@ int main(int argc, char** argv) {
     if (!audioPipe.empty()) {
         std::cout << "NDI AUDIO: PCM f32le 48kHz stereo" << std::endl;
     }
-    {
-        std::lock_guard<std::mutex> lock(sendMutex);
-        NDIlib_send_send_video_v2(sender, &video); // black until PLAY
-    }
+    NDIlib_send_send_video_v2(sender, &video); // black until PLAY
 
     while (std::cin.read(reinterpret_cast<char*>(frame.data()),
                          static_cast<std::streamsize>(frameSize))) {
         video.p_data = frame.data();
-        {
-            std::lock_guard<std::mutex> lock(sendMutex);
-            NDIlib_send_send_video_v2(sender, &video);
-        }
+        NDIlib_send_send_video_v2(sender, &video);
     }
 
     if (audioThread.joinable()) {
