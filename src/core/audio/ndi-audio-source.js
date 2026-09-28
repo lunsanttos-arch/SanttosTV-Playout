@@ -6,9 +6,8 @@ const { StereoPcmMeter } = require("./stereo-meter");
 
 function audioFfmpegArgs(filePath, streamIndex, startSeconds, durationSeconds) {
     if (typeof filePath !== "string" || !filePath) throw new Error("Mídia de áudio inválida.");
-    if (!Number.isSafeInteger(streamIndex) || streamIndex < 0 || streamIndex > 255) {
-        throw new Error("Selecione uma faixa de áudio analisada.");
-    }
+    const explicitStream = Number.isSafeInteger(streamIndex) &&
+        streamIndex >= 0 && streamIndex <= 255;
     const args = [
         "-hide_banner", "-loglevel", "warning", "-nostdin",
         "-fflags", "+genpts",
@@ -23,7 +22,7 @@ function audioFfmpegArgs(filePath, streamIndex, startSeconds, durationSeconds) {
         args.push("-t", durationSeconds.toFixed(3));
     }
     args.push(
-        "-map", "0:" + streamIndex, "-vn", "-sn", "-dn",
+        "-map", explicitStream ? "0:" + streamIndex : "0:a:0", "-vn", "-sn", "-dn",
         "-ac", "2", "-ar", "48000", "-c:a", "pcm_f32le",
         "-f", "f32le", "pipe:1"
     );
