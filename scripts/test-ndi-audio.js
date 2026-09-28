@@ -106,6 +106,14 @@ try {
         source.indexOf('arg == "--capabilities"') <
         source.indexOf("NDIlib_initialize()"),
         "Verificação de recursos não pode criar uma fonte NDI por acidente.");
+    const mainSource = fs.readFileSync(
+        path.join(__dirname, "../src/main/main.js"), "utf8"
+    );
+    assert(mainSource.includes("streamIndex: Number.isSafeInteger(selectedAudioIndex)") &&
+        mainSource.includes("audioStreamIndex") &&
+        mainSource.includes("Boolean(item.audioCodec)"),
+        "Playout deve recuperar áudio de mídias antigas sem índice salvo e reanalisá-las.");
+
     console.log("NDI AUDIO QA: APROVADO — FFmpeg 48kHz stereo, meter L/R, cortes e contrato do sender.");
 } finally {
     fs.rmSync(root, { recursive: true, force: true });
