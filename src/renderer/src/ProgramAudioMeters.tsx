@@ -42,6 +42,7 @@ export default function ProgramAudioMeters({
 }: Props) {
     const [preview, setPreview] = useState<StereoValues>(SILENT);
     const [previewError, setPreviewError] = useState("");
+    const [previewSuspended, setPreviewSuspended] = useState(false);
     const graph = useRef<{
         element: HTMLVideoElement;
         ctx: AudioContext;
@@ -78,6 +79,10 @@ export default function ProgramAudioMeters({
                 bufferR: new Float32Array(new ArrayBuffer(4096)),
                 peakL: -60, peakR: -60
             };
+            ctx.onstatechange = () => {
+                setPreviewSuspended(ctx.state === "suspended");
+            };
+            setPreviewSuspended(ctx.state === "suspended");
             setPreviewError("");
         } catch (error) {
             setPreviewError("Monitor de prévia indisponível");
@@ -92,9 +97,12 @@ export default function ProgramAudioMeters({
         }
         const activeGraph = graph.current;
         if (!activeGraph) return;
-        void activeGraph.ctx.resume().catch(error =>
-            console.warn("AudioContext suspenso:", error)
-        );
+        void activeGraph.ctx.resume()
+            .then(() => setPreviewSuspended(activeGraph.ctx.state === "suspended"))
+            .catch(error => {
+                setPreviewSuspended(true);
+                console.warn("AudioContext suspenso:", error);
+            });
         function level(buffer: Float32Array) {
             let sum = 0;
             let peak = 0;
@@ -128,7 +136,10 @@ export default function ProgramAudioMeters({
 
     useEffect(() => () => {
         const current = graph.current;
-        if (current) void current.ctx.close().catch(() => {});
+        if (current) {
+            current.ctx.onstatechange = null;
+            void current.ctx.close().catch(() => {});
+        }
         graph.current = null;
     }, []);
 
@@ -185,6 +196,18 @@ export default function ProgramAudioMeters({
             <div className="audio-meter-source" title={audio.error || previewError || label}>
                 {previewError && !pcmAvailable ? previewError : label}
             </div>
+            {previewSuspended && isPlaying && !pcmAvailable && (
+                <button type="button" className="audio-meter-activate"
+                    title="O Chromium suspendeu o medidor. Clique para ativar a prévia de áudio."
+                    onClick={() => {
+                        void graph.current?.ctx.resume()
+                            .then(() => setPreviewSuspended(false))
+                            .catch(() => setPreviewError("Sem acesso ao áudio da prévia."));
+                    }}
+                >
+                    ATIVAR
+                </button>
+            )}
             {nativeOutput && (
                 <div className="audio-meter-limitation" title="Mede fonte PCM, não o áudio recebido no vMix">
                     {pcmAvailable ? "FONTE PCM" : "PRÉVIA ≠ NDI"}
