@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
     std::thread audioThread;
     if (!audioPipe.empty()) {
         audioHandle = CreateNamedPipeA(
-            audioPipe.c_str(), PIPE_ACCESS_INBOUND,
+            audioPipe.c_str(), PIPE_ACCESS_DUPLEX,
             PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
             1, 65536, 65536, 0, nullptr
         );
