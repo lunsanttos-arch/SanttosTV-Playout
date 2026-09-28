@@ -2718,14 +2718,23 @@ interface FilmBlockEditorProps {
     ) => void;
 }
 
-type BlockRangeText = { inText: string; outText: string };
+type BlockRangeText = {
+    inText: string;
+    outText: string;
+    durationText: string;
+};
 
 function distributeParts(inPoint: number, outPoint: number, partCount: number): BlockRangeText[] {
     const duration = Math.max(0, outPoint - inPoint);
-    return Array.from({ length: partCount }, (_, index) => ({
-        inText: formatEditorTime(inPoint + (duration * index) / partCount),
-        outText: formatEditorTime(inPoint + (duration * (index + 1)) / partCount)
-    }));
+    return Array.from({ length: partCount }, (_, index) => {
+        const start = inPoint + (duration * index) / partCount;
+        const end = inPoint + (duration * (index + 1)) / partCount;
+        return {
+            inText: formatEditorTime(start),
+            outText: formatEditorTime(end),
+            durationText: formatEditorTime(end - start)
+        };
+    });
 }
 
 function FilmBlockEditor({
@@ -2772,9 +2781,65 @@ function FilmBlockEditor({
     }
 
     function updatePart(index: number, field: keyof BlockRangeText, value: string) {
-        setParts((current) => current.map((part, position) =>
-            position === index ? { ...part, [field]: value } : part
-        ));
+        setParts((current) => {
+            const updated = current.map((part) => ({ ...part }));
+            const selected = updated[index];
+            if (!selected) return current;
+
+            selected[field] = value;
+
+            if (field === "durationText") {
+                const start = parseEditorTime(selected.inText);
+                const customDuration = parseEditorTime(value);
+
+                if (
+                    start !== null &&
+                    customDuration !== null &&
+                    customDuration > 0
+                ) {
+                    const end = start + customDuration;
+                    selected.outText = formatEditorTime(end);
+
+                    // Ao personalizar a duração, manter os blocos seguintes
+                    // encadeados. Cada duração seguinte é preservada.
+                    let cursor = end;
+                    for (let position = index + 1; position < updated.length; position++) {
+                        const next = updated[position];
+                        const nextDuration =
+                            parseEditorTime(next.durationText) ??
+                            Math.max(
+                                0,
+                                (parseEditorTime(next.outText) ?? cursor) -
+                                (parseEditorTime(next.inText) ?? cursor)
+                            );
+
+                        next.inText = formatEditorTime(cursor);
+                        if (nextDuration > 0) {
+                            cursor += nextDuration;
+                            next.outText = formatEditorTime(cursor);
+                        }
+                    }
+                }
+            }
+
+            if (field === "inText") {
+                const start = parseEditorTime(value);
+                const customDuration = parseEditorTime(selected.durationText);
+                if (start !== null && customDuration !== null && customDuration > 0) {
+                    selected.outText = formatEditorTime(start + customDuration);
+                }
+            }
+
+            if (field === "outText") {
+                const start = parseEditorTime(selected.inText);
+                const end = parseEditorTime(value);
+                if (start !== null && end !== null && end > start) {
+                    selected.durationText = formatEditorTime(end - start);
+                }
+            }
+
+            return updated;
+        });
     }
 
     return (
@@ -2826,7 +2891,7 @@ function FilmBlockEditor({
                     <button type="button" onClick={() => redistribute()}>
                         Distribuir igualmente
                     </button>
-                    <span>Edite o IN/OUT de cada parte. Pode deixar trechos de fora entre blocos.</span>
+                    <span>Personalize a DURAÇÃO de cada bloco ou edite IN/OUT. Ao mudar a duração, os próximos blocos são encadeados automaticamente; ainda é possível criar intervalos alterando o IN.</span>
                 </div>
 
                 <div className="film-editor-block-list">
@@ -2842,6 +2907,11 @@ function FilmBlockEditor({
                                 label="OUT"
                                 value={part.outText}
                                 onChange={(value) => updatePart(index, "outText", value)}
+                            />
+                            <TimecodeField
+                                label="DURAÇÃO"
+                                value={part.durationText}
+                                onChange={(value) => updatePart(index, "durationText", value)}
                             />
                             <small>{formatRange(ranges[index].inPoint, ranges[index].outPoint)}</small>
                         </div>
