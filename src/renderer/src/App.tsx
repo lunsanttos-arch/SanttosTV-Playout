@@ -2388,8 +2388,14 @@ function PlayoutPanel({
                         <span className="program-status">
                             {testBench && !ndiTestMode && isPlaying
                                 ? "● PRÉVIA DE TESTE (SEM NDI)"
-                                : isPlaying && ndiOnline && nativePlaybackActive
-                                  ? "● SENDER NDI ATIVO"
+                                : nativePlayout.state === "PLAYING" &&
+                                  ndiOnline &&
+                                  nativePlaybackActive
+                                  ? "● MOTOR SANTTOS · NDI ATIVO"
+                                : nativePlayout.state === "PAUSED"
+                                  ? "● MOTOR SANTTOS · PAUSADO"
+                                : nativePlayout.state === "FAULT"
+                                  ? "● FALHA NO MOTOR SANTTOS"
                                 : isPlaying
                                   ? "● SEM SINAL DE PROGRAMA"
                                   : playoutError
