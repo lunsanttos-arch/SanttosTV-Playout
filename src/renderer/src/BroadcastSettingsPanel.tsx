@@ -654,12 +654,6 @@ function OutputTab({
                     }
                 />
 
-                <div className="output-state online">
-                    <strong>Engine atual</strong>
-                    <span>
-                        1920×1080 · 29.97p · BGRA
-                    </span>
-                </div>
             </SettingsCard>
 
             <SettingsCard
