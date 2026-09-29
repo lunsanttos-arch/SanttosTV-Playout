@@ -109,11 +109,27 @@ interface RemoveResult {
     timeline?: MediaItem[];
 }
 
+interface NativePlayoutStatus {
+    generation: number;
+    state: "IDLE" | "PLAYING" | "PAUSED" | "ENDED" | "FAULT";
+    filePath: string | null;
+    itemId: string | null;
+    inPointSeconds: number;
+    outPointSeconds: number | null;
+    positionSeconds: number;
+    remainingSeconds: number | null;
+    active: boolean;
+    paused: boolean;
+    ended: boolean;
+    error: string | null;
+}
+
 interface NdiCommandResult {
     ok: boolean;
     error?: string;
     filePath?: string;
     startSeconds?: number;
+    playout?: NativePlayoutStatus;
 }
 
 interface SaveHashtagStyleResult {
@@ -239,6 +255,7 @@ declare global {
                 testBench?: boolean;
                 ndiTestMode?: boolean;
                 audio?: NativeAudioStatus;
+                playout?: NativePlayoutStatus;
             }>;
             playNdiFile: (
                 filePath: string,
@@ -265,7 +282,14 @@ declare global {
                 dataUrl?: string;
                 error?: string;
             }>;
+            pauseNdiFile: () => Promise<NdiCommandResult>;
+            seekNdiFile: (
+                positionSeconds: number
+            ) => Promise<NdiCommandResult>;
             stopNdiFile: () => Promise<NdiCommandResult>;
+            onNativePlayoutEnded: (
+                callback: (status: NativePlayoutStatus) => void
+            ) => () => void;
             startPlayoutReport: (
                 mediaItem: MediaItem & {
                     plannedDurationSeconds: number;
@@ -307,6 +331,20 @@ export default function App() {
     const [ndiTestMode, setNdiTestMode] = useState(false);
     const [audioStatus, setAudioStatus] = useState<NativeAudioStatus>({ state: "IDLE" });
     const [nativePlaybackActive, setNativePlaybackActive] = useState(false);
+    const [nativePlayout, setNativePlayout] = useState<NativePlayoutStatus>({
+        generation: 0,
+        state: "IDLE",
+        filePath: null,
+        itemId: null,
+        inPointSeconds: 0,
+        outPointSeconds: null,
+        positionSeconds: 0,
+        remainingSeconds: null,
+        active: false,
+        paused: false,
+        ended: false,
+        error: null
+    });
     const [playoutError, setPlayoutError] = useState<string | null>(null);
     const [activePanel, setActivePanel] =
         useState<Panel>("playout");
@@ -380,6 +418,9 @@ export default function App() {
                 setAudioStatus(status.audio ?? { state: "IDLE" });
                 setNdiError(status.error ?? null);
                 setNativePlaybackActive(Boolean(status.nativePlaybackActive));
+                if (status.playout) {
+                    setNativePlayout(status.playout);
+                }
                 setPlayoutError(status.playoutError ?? null);
             } catch {
                 setNdiOnline(false);
@@ -392,7 +433,7 @@ export default function App() {
         updateNdiStatus();
         const timer = window.setInterval(
             updateNdiStatus,
-            1000
+            250
         );
 
         return () =>
@@ -638,6 +679,7 @@ export default function App() {
                             audioStatus={audioStatus}
                             ndiOnline={ndiOnline}
                             nativePlaybackActive={nativePlaybackActive}
+                            nativePlayout={nativePlayout}
                             playoutError={playoutError}
                             media={media}
                             isLoading={isLoading}
@@ -748,6 +790,7 @@ interface PlayoutPanelProps {
     audioStatus: NativeAudioStatus;
     ndiOnline: boolean;
     nativePlaybackActive: boolean;
+    nativePlayout: NativePlayoutStatus;
     playoutError: string | null;
     media: MediaItem[];
     isLoading: boolean;
@@ -783,6 +826,7 @@ function PlayoutPanel({
     audioStatus,
     ndiOnline,
     nativePlaybackActive,
+    nativePlayout,
     playoutError,
     media,
     isLoading,
