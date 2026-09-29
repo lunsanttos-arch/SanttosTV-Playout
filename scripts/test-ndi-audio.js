@@ -111,6 +111,11 @@ try {
     assert(decoded.snapshot().rightDb > -55);
     const source = fs.readFileSync(
         path.join(__dirname, "../src/core/ndi/ndi_test.cpp"), "utf8");
+    const buildScript = fs.readFileSync(
+        path.join(__dirname, "build-ndi.cmd"), "utf8");
+    assert(buildScript.includes("/MT") &&
+        buildScript.includes("/D NOMINMAX"),
+        "Sender NDI distribuível deve usar runtime MSVC estático.");
     assert(source.includes("NDIlib_send_send_audio_v3") &&
         source.includes("NDIlib_FourCC_audio_type_FLTP") &&
         source.includes("audio.channel_stride_in_bytes") &&
