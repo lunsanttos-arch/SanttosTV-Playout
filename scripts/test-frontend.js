@@ -6,12 +6,14 @@ const root = path.resolve(__dirname, "..");
 const appPath = path.join(root, "src", "renderer", "src", "App.tsx");
 const mainPath = path.join(root, "src", "renderer", "src", "main.tsx");
 const settingsPath = path.join(root, "src", "renderer", "src", "BroadcastSettingsPanel.tsx");
+const librarySettingsPath = path.join(root, "src", "renderer", "src", "LibraryFolderSettingsTab.tsx");
 const distIndex = path.join(root, "dist", "index.html");
 const distAssets = path.join(root, "dist", "assets");
 
 const app = fs.readFileSync(appPath, "utf8");
 const main = fs.readFileSync(mainPath, "utf8");
 const settings = fs.readFileSync(settingsPath, "utf8");
+const librarySettings = fs.readFileSync(librarySettingsPath, "utf8");
 assert(!settings.includes("Engine atual") &&
     !settings.includes("1920×1080 · 29.97p · BGRA"),
     "Configurações não devem exibir um perfil NDI hardcoded.");
@@ -136,6 +138,14 @@ assert(opec.includes("exhibitionType"), "Roteiro diário deve permitir marcaçã
 assert(app.includes("+ Nova aba"), "Biblioteca deve oferecer criação de sub-aba.");
 assert(app.includes("selectLibraryFolder"), "Criação/configuração deve usar seletor de pasta.");
 assert(app.includes("scanLibraryCategory"), "Biblioteca deve conseguir atualizar a pasta ativa.");
+assert(app.includes("result.category ?? activeCategory") &&
+    app.includes("item.id === result.category!.id"),
+    "Atualizar a Biblioteca deve sincronizar o folderPath devolvido pelo backend antes de filtrar as mídias.");
+assert(app.includes('"santtos:library-categories-updated"') &&
+    librarySettings.includes('"santtos:library-categories-updated"'),
+    "Salvar pastas deve sincronizar imediatamente a Biblioteca persistente.");
+assert(librarySettings.includes("Pastas da Biblioteca salvas e sincronizadas."),
+    "Configurações devem confirmar que a sincronização da Biblioteca foi disparada.");
 
 const createStart = app.indexOf("async function createCategory()");
 assert(createStart >= 0, "Função createCategory não encontrada.");
