@@ -53,6 +53,15 @@ assert(appCss.includes(".program-media-row") &&
 
 assert(app.includes("prepareBrowserPreview"), "Prévia compatível por FFmpeg deve estar disponível.");
 assert(app.includes("onError={(event) =>"), "Falha de reprodução precisa ser visível ao operador.");
+assert(app.includes("nativePlayout.state === \"PLAYING\"") &&
+    app.includes("onNativePlayoutEnded") &&
+    app.includes("pauseNdiFile"),
+    "PROGRAM deve ser controlado pelo motor nativo, incluindo pausa e fim de bloco.");
+assert(app.includes("PROGRAM nasce no motor nativo") &&
+    !app.includes("Verificar primeiro se o Chromium consegue reproduzir a fonte."),
+    "Chromium deve ser somente prévia; não pode autorizar o PROGRAM.");
+assert(!app.includes('src={selectedMediaUrl}\n                                    controls'),
+    "Monitor Chromium não deve expor controles próprios concorrendo com o motor Santtos.");
 assert(app.includes("distributeParts"), "Editor de filmes deve oferecer número variável de blocos.");
 assert(app.includes("partCount"), "Editor de filmes deve permitir seleção de 1 a 6 blocos.");
 assert(app.includes("durationText") && app.includes('label="DURAÇÃO"'),
