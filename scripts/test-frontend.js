@@ -55,6 +55,15 @@ assert(appCss.includes(".program-media-row") &&
     appCss.includes(".program-audio-meters") &&
     appCss.includes(".compact-status-card"),
     "Medidores ao lado da tela e NO AR/PRÓXIMO compactos são necessários.");
+assert(appCss.includes("minmax(260px, .72fr)") &&
+    appCss.includes("minmax(320px, 1.28fr)"),
+    "Preview do PROGRAM deve ocupar aproximadamente metade da largura anterior.");
+assert(appCss.includes(".timeline-item {") &&
+    appCss.includes("padding: 6px 8px") &&
+    appCss.includes(".timeline-meta-row"),
+    "Itens da Timeline devem permanecer compactos.");
+assert(!app.includes("timeline-time-legend"),
+    "A faixa informativa azul acima da Timeline deve permanecer removida.");
 
 assert(app.includes("prepareBrowserPreview"), "Prévia compatível por FFmpeg deve estar disponível.");
 assert(app.includes("onError={(event) =>"), "Falha de reprodução precisa ser visível ao operador.");
@@ -111,6 +120,14 @@ assert(opecEta.includes("buildPlannedSchedule") && opecEta.includes("Início pro
     "OPEC deve distinguir horário programado de previsão real.");
 
 assert(app.includes("EXHIBITION_OPTIONS"), "Timeline deve sinalizar inédito/reprise/estreia.");
+const timelineControlsStart = app.indexOf('className="timeline-gc-controls"');
+const timelineControlsEnd = app.indexOf('className="timeline-actions"', timelineControlsStart);
+const timelineControlsBlock = app.slice(timelineControlsStart, timelineControlsEnd);
+assert(timelineControlsBlock.includes("timeline-watermark-toggle") &&
+    timelineControlsBlock.includes("timeline-exhibition") &&
+    timelineControlsBlock.indexOf("timeline-watermark-toggle") <
+        timelineControlsBlock.indexOf("timeline-exhibition"),
+    "Modo de exibição deve ficar na Timeline imediatamente ao lado do Logo.");
 assert(app.includes('className="program-exhibition-overlay"'),
     "O identificador editorial deve aparecer sobre a imagem do PROGRAM.");
 assert(app.includes("exhibitionType:") && app.includes("normalizeExhibitionType(mediaItem.exhibitionType)"),
