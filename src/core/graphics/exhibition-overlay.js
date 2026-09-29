@@ -92,16 +92,68 @@ function normalizeExhibitionStyle(raw = {}) {
     };
 }
 
-function getExhibitionOverlay(type, watermarkStyle = {}, style = undefined) {
+function getExhibitionOverlay(
+    type,
+    watermarkStyle = {},
+    style = undefined,
+    canvas = undefined
+) {
     if (!Object.hasOwn(LABELS, type)) return null;
     const cfg = normalizeExhibitionStyle(style);
     if (!cfg.enabled) return null;
-    const logoX = clamp(watermarkStyle.x, 1680, 0, WIDTH);
-    const logoY = clamp(watermarkStyle.y, 40, 0, HEIGHT);
-    const logoWidth = clamp(watermarkStyle.widthPx, 180, 1, WIDTH);
-    const right = clamp(logoX + logoWidth + cfg.rightOffsetPx, 1860, 8 + cfg.backgroundPadding, WIDTH - 8 - cfg.backgroundPadding);
-    const top = clamp(logoY - cfg.fontSize - cfg.backgroundPadding * 2 - cfg.gapPx + cfg.yOffsetPx, 8, 8, HEIGHT - cfg.fontSize);
-    return { text: cfg.labels[type], right, top, fontSize: cfg.fontSize, padding: cfg.backgroundPadding };
+
+    const canvasWidth = clamp(canvas?.width, WIDTH, 320, 8192);
+    const canvasHeight = clamp(canvas?.height, HEIGHT, 240, 4320);
+    const scaleX = canvasWidth / WIDTH;
+    const scaleY = canvasHeight / HEIGHT;
+    const fontScale = Math.min(scaleX, scaleY);
+
+    const padding = Math.max(0, Math.round(cfg.backgroundPadding * fontScale));
+    const fontSize = Math.max(1, Math.round(cfg.fontSize * fontScale));
+    const gap = Math.round(cfg.gapPx * scaleY);
+    const rightOffset = Math.round(cfg.rightOffsetPx * scaleX);
+    const yOffset = Math.round(cfg.yOffsetPx * scaleY);
+    const logoX = clamp(
+        Number(watermarkStyle.x) * scaleX,
+        1680 * scaleX,
+        0,
+        canvasWidth
+    );
+    const logoY = clamp(
+        Number(watermarkStyle.y) * scaleY,
+        40 * scaleY,
+        0,
+        canvasHeight
+    );
+    const logoWidth = clamp(
+        Number(watermarkStyle.widthPx) * scaleX,
+        180 * scaleX,
+        1,
+        canvasWidth
+    );
+    const right = clamp(
+        logoX + logoWidth + rightOffset,
+        1860 * scaleX,
+        8 + padding,
+        canvasWidth - 8 - padding
+    );
+    const top = clamp(
+        logoY - fontSize - padding * 2 - gap + yOffset,
+        8,
+        8,
+        canvasHeight - fontSize
+    );
+
+    return {
+        text: cfg.labels[type],
+        right,
+        top,
+        fontSize,
+        padding,
+        scaleX,
+        scaleY,
+        fontScale
+    };
 }
 
 function ffmpegColor(hex, opacity) {
@@ -119,9 +171,21 @@ function escapeText(text) {
         .replaceAll("]", "\\]");
 }
 
-function buildExhibitionDrawtext(inputLabel, type, watermarkStyle, fontFile, style = undefined) {
+function buildExhibitionDrawtext(
+    inputLabel,
+    type,
+    watermarkStyle,
+    fontFile,
+    style = undefined,
+    canvas = undefined
+) {
     const cfg = normalizeExhibitionStyle(style);
-    const overlay = getExhibitionOverlay(type, watermarkStyle, cfg);
+    const overlay = getExhibitionOverlay(
+        type,
+        watermarkStyle,
+        cfg,
+        canvas
+    );
     if (!overlay) return null;
     if (typeof inputLabel !== "string" || !/^[a-zA-Z][a-zA-Z0-9_]*$/.test(inputLabel)) {
         throw new TypeError("Invalid FFmpeg input label.");
@@ -135,7 +199,7 @@ function buildExhibitionDrawtext(inputLabel, type, watermarkStyle, fontFile, sty
         `text='${escapeText(overlay.text)}'`,
         `fontsize=${overlay.fontSize}`,
         `fontcolor=${ffmpegColor(cfg.color, cfg.opacity)}`,
-        `borderw=${cfg.outlineWidth}`,
+        `borderw=${Math.max(0, Math.round(cfg.outlineWidth * overlay.fontScale))}`,
         `bordercolor=${ffmpegColor(cfg.outlineColor, cfg.outlineOpacity)}`,
         `x='max(8\\,min(w-text_w-8\\,${overlay.right}-text_w))'`,
         `y=${overlay.top}`
@@ -143,13 +207,13 @@ function buildExhibitionDrawtext(inputLabel, type, watermarkStyle, fontFile, sty
     if (cfg.backgroundEnabled) {
         options.push("box=1",
             `boxcolor=${ffmpegColor(cfg.backgroundColor, cfg.backgroundOpacity)}`,
-            `boxborderw=${cfg.backgroundPadding}`);
+            `boxborderw=${overlay.padding}`);
     }
     if (cfg.shadowEnabled) {
         options.push(
             `shadowcolor=${ffmpegColor(cfg.shadowColor, cfg.shadowOpacity)}`,
-            `shadowx=${cfg.shadowX}`,
-            `shadowy=${cfg.shadowY}`
+            `shadowx=${Math.round(cfg.shadowX * overlay.scaleX)}`,
+            `shadowy=${Math.round(cfg.shadowY * overlay.scaleY)}`
         );
     }
     return `[${inputLabel}]drawtext=${options.join(":")}[exhibition]`;
