@@ -65,8 +65,15 @@ export default function LibraryFolderSettingsTab() {
         try {
             const result = await (window as any).santtosAPI.saveLibraryCategories(categories);
             if (!result?.ok) throw new Error(result?.error ?? "Falha ao salvar");
-            setCategories(result.categories ?? categories);
-            setStatus("Pastas da Biblioteca salvas.");
+            const saved = result.categories ?? categories;
+            setCategories(saved);
+            window.dispatchEvent(
+                new CustomEvent(
+                    "santtos:library-categories-updated",
+                    { detail: saved }
+                )
+            );
+            setStatus("Pastas da Biblioteca salvas e sincronizadas.");
         } catch (error) {
             console.error(error);
             setStatus("Não foi possível salvar as pastas da Biblioteca.");
