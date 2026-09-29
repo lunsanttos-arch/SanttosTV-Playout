@@ -19,6 +19,7 @@ const crypto = require("node:crypto");
 const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
+const { NativePlayoutEngine } = require("../core/playout/native-playout-engine");
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
 
@@ -175,9 +176,11 @@ let audioSource = null;
 let audioOutputStatus = "IDLE";
 let audioOutputError = "";
 let stopNdiFrameFeed = null;
+const playoutEngine = new NativePlayoutEngine();
 function onPlayoutFault(message) {
     playoutLastError = message;
     nativePlaybackActive = false;
+    playoutEngine.fault(message);
 
     // Em falha inesperada, enviar um frame preto valido ao sender:
     // evita que o ultimo frame do comercial congele sem aviso.
@@ -638,7 +641,13 @@ function buildProgramFilterGraph(
     return chains.join(";");
 }
 
-function stopNativePlayback() {
+function stopNativePlayback({ engineAction = "stop" } = {}) {
+    if (engineAction === "pause") {
+        playoutEngine.pause();
+    } else if (engineAction === "stop") {
+        playoutEngine.stop();
+    }
+
     if (stopNdiFrameFeed) {
         stopNdiFrameFeed();
         stopNdiFrameFeed = null;
@@ -649,9 +658,10 @@ function stopNativePlayback() {
     }
     audioOutputStatus = "IDLE";
     audioOutputError = "";
+
     if (!ffmpegProcess) {
         nativePlaybackActive = false;
-        return;
+        return playoutEngine.snapshot();
     }
 
     const processToStop = ffmpegProcess;
@@ -676,6 +686,8 @@ function stopNativePlayback() {
     if (!processToStop.killed) {
         processToStop.kill();
     }
+
+    return playoutEngine.snapshot();
 }
 
 function startNativePlayback(
@@ -720,7 +732,7 @@ function startNativePlayback(
         );
     }
 
-    stopNativePlayback();
+    stopNativePlayback({ engineAction: "preserve" });
     playoutLastError = "";
 
     const ffmpegPath = resolveFfmpegPath();
@@ -740,6 +752,10 @@ function startNativePlayback(
         startSeconds:
             normalizedStartSeconds
     };
+    const normalizedInPoint =
+        Number.isFinite(Number(programState.inPointSeconds))
+            ? Math.max(0, Number(programState.inPointSeconds))
+            : normalizedStartSeconds;
     const normalizedOutPoint =
         Number.isFinite(Number(programState.outPointSeconds))
             ? Math.max(
@@ -853,6 +869,16 @@ function startNativePlayback(
     ffmpegProcess = processRef;
     nativePlaybackActive = true;
     ndiFrameBusy = false;
+    playoutEngine.start({
+        filePath,
+        itemId:
+            typeof programState.itemId === "string"
+                ? programState.itemId
+                : null,
+        inPointSeconds: normalizedInPoint,
+        startSeconds: normalizedStartSeconds,
+        outPointSeconds: normalizedOutPoint
+    });
 
     const selectedAudioIndex = programState.audioStreamIndex;
     if (ndiAudioSupported && ndiAudioReady && ndiAudioPipe) {
@@ -978,15 +1004,22 @@ function startNativePlayback(
             if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
                 if (code === 0 && !signal) {
-                    // An FFmpeg EOF with code 0 is a normal clip completion,
-                    // not an operational incident. The renderer advances
-                    // to the next occurrence using the clip OUT/ended event.
                     nativePlaybackActive = false;
                     if (audioSource) {
                         audioSource.stop();
                         audioSource = null;
                     }
                     audioOutputStatus = "IDLE";
+                    const ended = playoutEngine.complete();
+
+                    // O motor nativo, e não o elemento <video> do Chromium,
+                    // determina o fim real do bloco.
+                    if (mainWindow && !mainWindow.isDestroyed()) {
+                        mainWindow.webContents.send(
+                            "playout:native-ended",
+                            ended
+                        );
+                    }
                 } else {
                     onPlayoutFault(
                         `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`
@@ -1099,6 +1132,7 @@ function registerIpcHandlers() {
                     nativeActive: ndiAudioNativeActive,
                     receiverVerified: false, route: ndiSourceName },
             nativePlaybackActive,
+            playout: playoutEngine.snapshot(),
             playoutError: playoutLastError || null,
             error: ndiLastError || null,
             restarting: Boolean(ndiRestartTimer),
@@ -1138,10 +1172,30 @@ function registerIpcHandlers() {
     );
 
     registerTrustedHandle(
+        "playout:pause",
+        async () => {
+            const playout = stopNativePlayback({
+                engineAction: "pause"
+            });
+            return { ok: true, playout };
+        }
+    );
+
+    registerTrustedHandle(
+        "playout:seek",
+        async (_event, positionSeconds) => {
+            const playout = playoutEngine.seek(positionSeconds);
+            return { ok: true, playout };
+        }
+    );
+
+    registerTrustedHandle(
         "ndi:stop-file",
         async () => {
-            stopNativePlayback();
-            return { ok: true };
+            const playout = stopNativePlayback({
+                engineAction: "stop"
+            });
+            return { ok: true, playout };
         }
     );
 
@@ -1696,7 +1750,7 @@ function startNdiSender() {
             if (ndiProcess !== processRef) return;
             ndiLastError = reason;
             console.error("Sender NDI interrompido:", reason);
-            stopNativePlayback();
+            stopNativePlayback({ engineAction: "pause" });
             ndiReady = false;
             ndiFrameBusy = false;
             ndiAudioReady = false;
