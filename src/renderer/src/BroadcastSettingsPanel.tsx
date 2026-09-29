@@ -272,7 +272,9 @@ export default function BroadcastSettingsPanel({
 
             setOutput(result.output);
             setStatus(
-                "Perfil de saída salvo. O NDI atual permanece em 1080p29.97 até a migração do sender dinâmico."
+                output.ndi.enabled
+                    ? "Perfil salvo e aplicado. O sender NDI está reiniciando com estas configurações."
+                    : "Perfil salvo. A saída NDI foi desativada."
             );
         } catch (error) {
             console.error(error);
@@ -545,7 +547,7 @@ function OutputTab({
                 />
 
                 <div className="settings-info warning">
-                    O sender NDI compilado hoje continua em 1920×1080 29.97p BGRA. Estes valores já ficam salvos para a próxima versão dinâmica e para o SRT.
+                    Resolução, FPS, varredura, aspect ratio e pixel format são aplicados ao PROGRAM NDI ao salvar.
                 </div>
             </SettingsCard>
 
@@ -625,7 +627,7 @@ function OutputTab({
                 />
 
                 <div className="settings-info">
-                    Recomendação padrão: 48 kHz, stereo, AAC 192 kbps para SRT. Para NDI nativo, áudio PCM será adicionado no engine.
+                    No NDI, Sample rate e Canais são aplicados ao PCM nativo. Codec e bitrate AAC continuam sendo usados apenas nas saídas comprimidas, como SRT.
                 </div>
             </SettingsCard>
 
