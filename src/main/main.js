@@ -201,6 +201,19 @@ function onPlayoutFault(message) {
 const analysesInProgress = new Map();
 const approvedPreviewPaths = new Set();
 
+function resolveAppIcon() {
+    const candidate = app.isPackaged
+        ? path.join(process.resourcesPath, "icon.ico")
+        : path.join(
+              __dirname,
+              "../../build-resources/icon.ico"
+          );
+
+    return fs.existsSync(candidate)
+        ? candidate
+        : undefined;
+}
+
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 1500,
@@ -208,6 +221,7 @@ function createWindow() {
         minWidth: 1100,
         minHeight: 700,
         backgroundColor: "#0b0b0b",
+        icon: resolveAppIcon(),
         title: isNdiTestBench ? "Santtos TV Automation — TESTE NDI (FONTE QA)"
             : isTestBench ? "Santtos TV Automation — BANCADA"
             : "Santtos TV Automation",
