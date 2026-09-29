@@ -57,8 +57,15 @@ assert(app.includes("distributeParts"), "Editor de filmes deve oferecer número 
 assert(app.includes("partCount"), "Editor de filmes deve permitir seleção de 1 a 6 blocos.");
 assert(app.includes("durationText") && app.includes('label="DURAÇÃO"'),
     "Editor de filmes deve permitir personalizar a duração de cada bloco.");
-assert(app.includes('field === "durationText"') && app.includes("next.inText = formatEditorTime(cursor)"),
-    "Ao alterar a duração, os blocos seguintes devem ser encadeados automaticamente.");
+assert(app.includes("compensateFollowingBlocks") &&
+    app.includes("remainingSeconds * (weight / Math.max(1, remainingWeight))"),
+    "Ao alterar um bloco, o tempo restante deve ser redistribuído para caber no FINAL GERAL.");
+assert(app.includes('field === "inText"') &&
+    app.includes("selected.durationText = formatEditorTime(end - start)"),
+    "Alterar IN/OUT deve atualizar a duração imediatamente.");
+assert(app.includes("compensateLastBlock") &&
+    app.includes("o bloco anterior absorve a diferença"),
+    "O último bloco deve compensar para trás e manter o FINAL GERAL.");
 assert(app.includes("describeForecast"), "Timeline deve exibir tempo restante e horário previsto.");
 assert(app.includes("buildTimelineForecast") && app.includes("forecastRunning"),
     "A previsão deve depender do PROGRAM em execução.");
