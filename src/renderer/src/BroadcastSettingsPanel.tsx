@@ -266,6 +266,7 @@ export default function BroadcastSettingsPanel({
 
             if (!result?.ok) {
                 throw new Error(
+                    result?.error ??
                     "Falha ao salvar perfil de saída."
                 );
             }
@@ -279,7 +280,9 @@ export default function BroadcastSettingsPanel({
         } catch (error) {
             console.error(error);
             setStatus(
-                "Não foi possível salvar o perfil de saída."
+                error instanceof Error
+                    ? error.message
+                    : "Não foi possível salvar o perfil de saída."
             );
         } finally {
             setIsSaving(false);
