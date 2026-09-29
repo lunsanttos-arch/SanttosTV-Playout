@@ -51,6 +51,22 @@ assert(args.includes("pipe:1"));
 assert(args.includes("50.000"));
 assert(args.includes("11.000"));
 
+const mono441 = audioFfmpegArgs("filme.mp4", 2, 0, null, 44100, 1);
+assert(mono441.includes("44100"));
+assert.deepEqual(
+    mono441.slice(mono441.indexOf("-ac"), mono441.indexOf("-ac") + 2),
+    ["-ac", "1"],
+    "Perfil NDI mono deve alterar o PCM entregue ao sender."
+);
+const monoMeter = new StereoPcmMeter(() => now, 1);
+const monoSamples = Buffer.alloc(40);
+for (let i = 0; i < 10; i++) {
+    monoSamples.writeFloatLE(0.25, i * 4);
+}
+monoMeter.write(monoSamples);
+assert.equal(monoMeter.snapshot().channels, 1);
+assert.equal(monoMeter.snapshot().leftDb, monoMeter.snapshot().rightDb);
+
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-ndi-audio-"));
 try {
     if (process.platform === "win32") {
@@ -99,8 +115,11 @@ try {
         source.includes("NDIlib_FourCC_audio_type_FLTP") &&
         source.includes("audio.channel_stride_in_bytes") &&
         source.includes("NDI AUDIO PIPE READY:") &&
-        source.includes("NDI AUDIO ACTIVE: FLTP 48000Hz 2ch"),
-        "O sender nativo deve enviar FLTP v3 estéreo e confirmar o primeiro pacote PCM.");
+        source.includes('"NDI AUDIO ACTIVE: FLTP "') &&
+        source.includes("--audio-rate") &&
+        source.includes("--audio-channels") &&
+        source.includes("DYNAMIC_PROFILE_V1"),
+        "O sender nativo deve enviar FLTP v3 com sample rate/canais do perfil e confirmar o primeiro PCM.");
 
     assert(source.includes('arg == "--capabilities"') &&
         source.indexOf('arg == "--capabilities"') <
@@ -114,7 +133,7 @@ try {
         mainSource.includes("Boolean(item.audioCodec)"),
         "Playout deve recuperar áudio de mídias antigas sem índice salvo e reanalisá-las.");
 
-    console.log("NDI AUDIO QA: APROVADO — FFmpeg 48kHz stereo, meter L/R, cortes e contrato do sender.");
+    console.log("NDI AUDIO QA: APROVADO — PCM dinâmico 44.1/48 kHz, mono/stereo, cortes e contrato do sender.");
 } finally {
     fs.rmSync(root, { recursive: true, force: true });
 }
