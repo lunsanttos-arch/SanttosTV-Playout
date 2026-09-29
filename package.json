@@ -85,7 +85,7 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "build-resources/icon.ico",
+      "icon": "icon.ico",
       "executableName": "SanttosTVAutomation",
       "artifactName": "Santtos-Playout-Setup-${version}.${ext}"
     },
