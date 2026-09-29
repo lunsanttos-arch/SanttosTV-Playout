@@ -263,6 +263,8 @@ declare global {
                 hashtag?: string,
                 overlayState?: {
                     durationSeconds?: number;
+                    inPointSeconds?: number;
+                    itemId?: string;
                     watermarkEnabled?: boolean;
                     exhibitionType?: ExhibitionType;
                     watermarkFadeIn?: boolean;
@@ -1184,19 +1186,27 @@ function PlayoutPanel({
               )
             : 0;
 
-    // O relógio do PROGRAM é o cursor REAL do elemento de vídeo.
-    // Nunca extrapolar entradas quando o player/NDI está parado,
-    // carregando, buscando ou sem duração válida.
     const programVideo = videoRef.current;
-    const forecastRunning = Boolean(
-        isPlaying &&
-        programVideo &&
-        !programVideo.paused &&
-        !programVideo.seeking &&
-        programVideo.readyState >= 2 &&
-        Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000 &&
-        (!nativeOutputEnabled || (ndiOnline && nativePlaybackActive))
+    const nativeEngineOwnsProgram = Boolean(
+        nativeOutputEnabled &&
+        selectedMedia &&
+        nativePlayout.itemId === selectedMedia.id
     );
+    const forecastRunning = nativeOutputEnabled
+        ? Boolean(
+              nativeEngineOwnsProgram &&
+              nativePlayout.state === "PLAYING" &&
+              ndiOnline &&
+              nativePlaybackActive
+          )
+        : Boolean(
+              isPlaying &&
+              programVideo &&
+              !programVideo.paused &&
+              !programVideo.seeking &&
+              programVideo.readyState >= 2 &&
+              Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000
+          );
     const timelineForecast = buildTimelineForecast(
         timelineQueue,
         selectedMedia?.id ?? null,
@@ -1230,6 +1240,67 @@ function PlayoutPanel({
         timelineForecast.endsAtMs,
         timelineForecast.isLive,
         onScheduleSummary
+    ]);
+
+    useEffect(() => {
+        if (
+            !nativeOutputEnabled ||
+            !selectedMedia ||
+            nativePlayout.itemId !== selectedMedia.id
+        ) {
+            return;
+        }
+
+        const inPoint = getClipIn(selectedMedia);
+        const outPoint = getClipOut(selectedMedia);
+        const position = Math.min(
+            outPoint,
+            Math.max(inPoint, nativePlayout.positionSeconds)
+        );
+        const sampledAtMs = Date.now();
+
+        setCurrentTime(position);
+        setTimelineClock(sampledAtMs);
+        lastProgressRef.current = {
+            position,
+            atMs: sampledAtMs
+        };
+
+        const video = videoRef.current;
+        if (!video) return;
+
+        if (
+            nativePlayout.state === "PLAYING" &&
+            video.paused
+        ) {
+            if (
+                Number.isFinite(position) &&
+                Math.abs(video.currentTime - position) > 0.5
+            ) {
+                video.currentTime = position;
+            }
+
+            void video.play().catch(() => {
+                // A prévia Chromium é auxiliar. Falha nela não derruba PROGRAM.
+            });
+        } else if (nativePlayout.state !== "PLAYING") {
+            video.pause();
+            if (
+                Number.isFinite(position) &&
+                Math.abs(video.currentTime - position) > 0.5
+            ) {
+                video.currentTime = position;
+            }
+        }
+
+        setIsPlaying(nativePlayout.state === "PLAYING");
+    }, [
+        nativeOutputEnabled,
+        nativePlayout.generation,
+        nativePlayout.state,
+        nativePlayout.positionSeconds,
+        nativePlayout.itemId,
+        selectedMedia?.id
     ]);
 
     useEffect(() => {
@@ -1311,6 +1382,10 @@ function PlayoutPanel({
         return {
             durationSeconds:
                 getClipOut(mediaItem),
+            inPointSeconds:
+                getClipIn(mediaItem),
+            itemId:
+                mediaItem.id,
             outPointSeconds:
                 getClipOut(mediaItem),
             watermarkEnabled:
@@ -1381,10 +1456,15 @@ function PlayoutPanel({
 
         activeReportIdRef.current = null;
 
-        const videoTime = videoRef.current?.currentTime ?? currentTime;
+        const authoritativeTime =
+            nativeOutputEnabled &&
+            mediaItem &&
+            nativePlayout.itemId === mediaItem.id
+                ? nativePlayout.positionSeconds
+                : videoRef.current?.currentTime ?? currentTime;
         const playedSeconds = forcedPlayedSeconds ?? Math.max(
             0,
-            videoTime - getClipIn(mediaItem)
+            authoritativeTime - getClipIn(mediaItem)
         );
 
         try {
@@ -1476,8 +1556,12 @@ function PlayoutPanel({
 
         resumeAfterNdiLossRef.current = false;
         void (async () => {
-            await startNativeNdi(selectedMedia, video.currentTime);
-            await video.play();
+            const resumeAt =
+                nativePlayout.itemId === selectedMedia.id
+                    ? nativePlayout.positionSeconds
+                    : currentTime;
+            await startNativeNdi(selectedMedia, resumeAt);
+            await video.play().catch(() => undefined);
         })().catch((error) => {
             console.error("Falha ao retomar sinal NDI:", error);
             video.pause();
@@ -1505,8 +1589,10 @@ function PlayoutPanel({
         ) {
             startNativeNdi(
                 selectedMedia,
-                videoRef.current?.currentTime ??
-                    currentTime
+                nativeOutputEnabled &&
+                nativePlayout.itemId === selectedMedia.id
+                    ? nativePlayout.positionSeconds
+                    : currentTime
             ).catch((error) =>
                 console.error(
                     "Erro ao aplicar estilo do GC no NDI:",
@@ -1534,13 +1620,50 @@ function PlayoutPanel({
         }
 
         const video = videoRef.current;
-        if (!video) {
-            return;
-        }
+        const clipIn = getClipIn(mediaToPlay);
+        const clipOut = getClipOut(mediaToPlay);
+        const resumeAt =
+            nativeOutputEnabled &&
+            nativePlayout.itemId === mediaToPlay.id &&
+            nativePlayout.state === "PAUSED"
+                ? nativePlayout.positionSeconds
+                : Number.isFinite(currentTime) &&
+                  currentTime >= clipIn &&
+                  currentTime < clipOut
+                    ? currentTime
+                    : clipIn;
 
         try {
-            const clipIn = getClipIn(mediaToPlay);
-            const clipOut = getClipOut(mediaToPlay);
+            if (nativeOutputEnabled) {
+                // PROGRAM nasce no motor nativo. O Chromium é apenas preview.
+                await startNativeNdi(
+                    mediaToPlay,
+                    resumeAt
+                );
+                setCurrentTime(resumeAt);
+                lastProgressRef.current = {
+                    position: resumeAt,
+                    atMs: Date.now()
+                };
+                setIsPlaying(true);
+                setPreviewError("");
+                await startExecutionReport(mediaToPlay);
+
+                if (video) {
+                    try {
+                        video.currentTime = resumeAt;
+                        await video.play();
+                    } catch {
+                        setPreviewError(
+                            "A prévia Chromium não conseguiu acompanhar o PROGRAM. " +
+                            "O motor nativo continua no ar normalmente."
+                        );
+                    }
+                }
+                return;
+            }
+
+            if (!video) return;
             if (
                 !Number.isFinite(video.currentTime) ||
                 video.currentTime < clipIn ||
@@ -1548,62 +1671,62 @@ function PlayoutPanel({
             ) {
                 video.currentTime = clipIn;
             }
-            // Verificar primeiro se o Chromium consegue reproduzir a fonte.
-            // Nunca deixar o NDI disparado se a previa falhar.
             await video.play();
-            try {
-                await startNativeNdi(
-                    mediaToPlay,
-                    video.currentTime || clipIn
-                );
-            } catch (error) {
-                video.pause();
-                throw error;
-            }
             setPreviewError("");
-            // Resume and starts are NEW clock anchors, even after a short pause.
             markPlaybackSample(video);
             setIsPlaying(true);
             await startExecutionReport(mediaToPlay);
         } catch (error) {
             console.error("Falha ao iniciar vídeo:", error);
-            video.pause();
+            video?.pause();
             setIsPlaying(false);
             if (nativeOutputEnabled) {
                 try { await window.santtosAPI.stopNdiFile(); }
                 catch (stopError) { console.error(stopError); }
             }
-            if (video.error) {
-                setPreviewError(
-                    "O Chromium não conseguiu reproduzir a mídia. " +
-                    "Use Prévia MP4 compatível; o arquivo original não será alterado."
-                );
-            } else {
-                window.alert(
-                    `Não foi possível reproduzir o vídeo.\n\n${String(error)}`
-                );
-            }
+            window.alert(
+                `Não foi possível iniciar o PROGRAM.\n\n${String(error)}`
+            );
         }
     }
 
     async function pauseVideo() {
-        videoRef.current?.pause();
+        const video = videoRef.current;
+        video?.pause();
+
+        if (nativeOutputEnabled) {
+            const result = await window.santtosAPI.pauseNdiFile();
+            if (result.playout) {
+                setCurrentTime(result.playout.positionSeconds);
+                lastProgressRef.current = {
+                    position: result.playout.positionSeconds,
+                    atMs: Date.now()
+                };
+            }
+        }
+
         setIsPlaying(false);
-        await window.santtosAPI.stopNdiFile();
     }
 
     async function stopVideo() {
         await finishExecutionReport("PULADO");
-        await window.santtosAPI.stopNdiFile();
+        if (nativeOutputEnabled) {
+            await window.santtosAPI.stopNdiFile();
+        }
+
         const video = videoRef.current;
+        const inPoint = getClipIn(selectedMedia);
 
         if (video) {
             video.pause();
-            const inPoint = getClipIn(selectedMedia);
             video.currentTime = inPoint;
         }
 
-        setCurrentTime(getClipIn(selectedMedia));
+        setCurrentTime(inPoint);
+        lastProgressRef.current = {
+            position: inPoint,
+            atMs: Date.now()
+        };
         setIsPlaying(false);
     }
 
@@ -1619,20 +1742,26 @@ function PlayoutPanel({
         );
 
         if (selectedMedia?.loop) {
-            const video = videoRef.current;
-            if (!video) {
-                return;
+            const clipIn = getClipIn(selectedMedia);
+            if (nativeOutputEnabled) {
+                await startNativeNdi(
+                    selectedMedia,
+                    clipIn,
+                    true
+                );
             }
 
-            const clipIn = getClipIn(selectedMedia);
-            video.currentTime = clipIn;
-            await startNativeNdi(
-                selectedMedia,
-                clipIn,
-                true
-            );
-            await video.play();
-            markPlaybackSample(video);
+            const video = videoRef.current;
+            if (video) {
+                video.currentTime = clipIn;
+                void video.play().catch(() => undefined);
+            }
+
+            setCurrentTime(clipIn);
+            lastProgressRef.current = {
+                position: clipIn,
+                atMs: Date.now()
+            };
             setIsPlaying(true);
             clipAdvanceGuardRef.current = false;
             await startExecutionReport(selectedMedia);
@@ -1641,50 +1770,100 @@ function PlayoutPanel({
 
         if (!nextMedia) {
             setIsPlaying(false);
-            await window.santtosAPI.stopNdiFile();
+            if (nativeOutputEnabled) {
+                await window.santtosAPI.stopNdiFile();
+            }
             return;
         }
 
         onSelectMedia(nextMedia);
-        setCurrentTime(getClipIn(nextMedia));
+        const nextIn = getClipIn(nextMedia);
+        setCurrentTime(nextIn);
         setDuration(getClipDuration(nextMedia));
         clipAdvanceGuardRef.current = false;
         await delay(120);
 
-        const video = videoRef.current;
-        if (!video) {
-            return;
+        if (nativeOutputEnabled) {
+            await startNativeNdi(nextMedia, nextIn);
         }
 
-        const nextIn = getClipIn(nextMedia);
-        video.currentTime = nextIn;
-        await startNativeNdi(nextMedia, nextIn);
-        await video.play();
-        markPlaybackSample(video);
+        const video = videoRef.current;
+        if (video) {
+            video.currentTime = nextIn;
+            if (!nativeOutputEnabled) {
+                await video.play();
+            } else {
+                void video.play().catch(() => undefined);
+            }
+        }
+
+        lastProgressRef.current = {
+            position: nextIn,
+            atMs: Date.now()
+        };
         setIsPlaying(true);
         await startExecutionReport(nextMedia);
     }
 
+    useEffect(() => {
+        if (!nativeOutputEnabled) return;
+
+        const unsubscribe =
+            window.santtosAPI.onNativePlayoutEnded(
+                (status) => {
+                    if (
+                        !selectedMedia ||
+                        status.itemId !== selectedMedia.id ||
+                        clipAdvanceGuardRef.current
+                    ) {
+                        return;
+                    }
+
+                    clipAdvanceGuardRef.current = true;
+                    void playNextMedia("completed").catch(
+                        (error) => {
+                            console.error(
+                                "Falha ao avançar o motor nativo:",
+                                error
+                            );
+                            setIsPlaying(false);
+                        }
+                    );
+                }
+            );
+
+        return unsubscribe;
+    }, [
+        nativeOutputEnabled,
+        selectedMedia?.id,
+        nextMedia?.id,
+        selectedMedia?.loop
+    ]);
+
     async function handleProgramTimeUpdate(
         video: HTMLVideoElement
     ) {
+        // Em produção, o relógio vem do NativePlayoutEngine.
+        if (nativeOutputEnabled) {
+            return;
+        }
+
         const position = video.currentTime;
         const sampledAtMs = Date.now();
-        // Detect a stalled preview or sender: stale cursors cannot be used
-        // to present a supposedly precise future wall-clock time.
         if (Number.isFinite(position) && (
             !Number.isFinite(lastProgressRef.current.position) ||
             position > lastProgressRef.current.position + 0.015 ||
             position < lastProgressRef.current.position - 0.1
         )) {
-            lastProgressRef.current = { position, atMs: sampledAtMs };
+            lastProgressRef.current = {
+                position,
+                atMs: sampledAtMs
+            };
         }
         setCurrentTime(position);
         setTimelineClock(sampledAtMs);
 
-        if (!selectedMedia) {
-            return;
-        }
+        if (!selectedMedia) return;
 
         const outPoint = getClipOut(selectedMedia);
         if (
@@ -1702,36 +1881,45 @@ function PlayoutPanel({
     async function handleSeeked(
         video: HTMLVideoElement
     ) {
-        if (selectedMedia) {
-            const inPoint = getClipIn(selectedMedia);
-            const outPoint = getClipOut(selectedMedia);
-            if (video.currentTime < inPoint) {
-                video.currentTime = inPoint;
-                return;
-            }
-            if (video.currentTime >= outPoint) {
-                video.currentTime = Math.max(
-                    inPoint,
-                    outPoint - 0.04
-                );
-                return;
-            }
-        }
+        if (!selectedMedia) return;
 
-        markPlaybackSample(video);
+        const inPoint = getClipIn(selectedMedia);
+        const outPoint = getClipOut(selectedMedia);
+        const target = Math.min(
+            Math.max(video.currentTime, inPoint),
+            Math.max(inPoint, outPoint - 0.04)
+        );
 
-        if (!isPlaying || !selectedMedia) {
+        if (Math.abs(video.currentTime - target) > 0.001) {
+            video.currentTime = target;
             return;
         }
 
+        if (!nativeOutputEnabled) {
+            markPlaybackSample(video);
+            return;
+        }
+
+        setCurrentTime(target);
+        lastProgressRef.current = {
+            position: target,
+            atMs: Date.now()
+        };
+
         try {
-            await startNativeNdi(
-                selectedMedia,
-                video.currentTime
-            );
+            if (isPlaying) {
+                await startNativeNdi(
+                    selectedMedia,
+                    target
+                );
+            } else {
+                await window.santtosAPI.seekNdiFile(
+                    target
+                );
+            }
         } catch (error) {
             console.error(
-                "Erro ao sincronizar seek NDI:",
+                "Erro ao sincronizar seek do motor nativo:",
                 error
             );
         }
