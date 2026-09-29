@@ -67,8 +67,8 @@ assert(main.includes("new FixedFrameAssembler(") &&
     "Native playout must frame-align FFmpeg stdout before NDI stdin.");
 assert(!main.includes("processRef.stdout.pipe(\n        ndiProcess.stdin"),
     "Raw FFmpeg stdout must never be directly piped to the persistent NDI sender.");
-assert(main.includes("Frame BGRA parcial descartado na troca"),
-    "Clip interruption must explicitly drop incomplete raw frames.");
+assert(main.includes("Frame ${profile.ndiPixelFormat} parcial descartado na troca"),
+    "Clip interruption must explicitly drop incomplete raw frames for any configured pixel format.");
 
 console.log(
     "NDI FRAME QA: APROVADO — chunks arbitrários, STOP no meio do frame, troca de clipe e burst preservam limites."
