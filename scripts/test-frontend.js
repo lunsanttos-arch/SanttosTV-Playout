@@ -59,9 +59,13 @@ assert(appCss.includes("minmax(260px, .72fr)") &&
     appCss.includes("minmax(320px, 1.28fr)"),
     "Preview do PROGRAM deve ocupar aproximadamente metade da largura anterior.");
 assert(appCss.includes(".timeline-item {") &&
-    appCss.includes("padding: 6px 8px") &&
+    appCss.includes("padding: 9px 12px") &&
     appCss.includes(".timeline-meta-row"),
-    "Itens da Timeline devem permanecer compactos.");
+    "Itens da Timeline devem permanecer compactos, mas com área operacional maior.");
+assert(app.includes('className="timeline-clip-time"') &&
+    app.includes('className="timeline-air-time"') &&
+    appCss.includes("color: #ff4f68 !important"),
+    "Previsão de tempo da Timeline deve ficar em vermelho na linha inferior.");
 assert(!app.includes("timeline-time-legend"),
     "A faixa informativa azul acima da Timeline deve permanecer removida.");
 
