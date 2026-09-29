@@ -1514,23 +1514,35 @@ function PlayoutPanel({
         }
     }
 
-    // Um FFmpeg travado nao pode deixar a interface anunciando ON AIR,
-    // enquanto o sender NDI permanece com o ultimo frame congelado.
+    // Só FAULT real do motor derruba o PROGRAM. PAUSED pode ser uma
+    // interrupção recuperável do NDI e não deve marcar o conteúdo como pulado.
     useEffect(() => {
         if (!nativeOutputEnabled) return;
+
         if (nativePlaybackActive) {
             nativePlaybackWasActiveRef.current = true;
-            return;
         }
-        if (nativePlaybackWasActiveRef.current && ndiOnline && isPlaying) {
+
+        if (
+            nativePlayout.state === "FAULT" &&
+            isPlaying
+        ) {
             const video = videoRef.current;
             video?.pause();
             setIsPlaying(false);
             nativePlaybackWasActiveRef.current = false;
             void finishExecutionReport("PULADO", selectedMedia);
-            console.error("Falha no playout nativo:", playoutError);
+            console.error(
+                "Falha no motor de playout:",
+                nativePlayout.error ?? playoutError
+            );
         }
-    }, [nativePlaybackActive, testBench]);
+    }, [
+        nativePlaybackActive,
+        nativePlayout.state,
+        nativePlayout.error,
+        testBench
+    ]);
 
     // Nao deixa o monitor continuar consumindo comerciais enquanto o sinal
     // NDI esta fora do ar. Quando o sender retorna, resincroniza no timecode
@@ -1549,8 +1561,7 @@ function PlayoutPanel({
 
         ndiWasOnlineRef.current = true;
         if (!resumeAfterNdiLossRef.current) return;
-        if (!isPlaying || !selectedMedia || !video) {
-            resumeAfterNdiLossRef.current = false;
+        if (!selectedMedia || !video) {
             return;
         }
 
@@ -1561,13 +1572,15 @@ function PlayoutPanel({
                     ? nativePlayout.positionSeconds
                     : currentTime;
             await startNativeNdi(selectedMedia, resumeAt);
+            setCurrentTime(resumeAt);
+            setIsPlaying(true);
             await video.play().catch(() => undefined);
         })().catch((error) => {
             console.error("Falha ao retomar sinal NDI:", error);
             video.pause();
             setIsPlaying(false);
             void finishExecutionReport("PULADO", selectedMedia);
-            window.alert("O NDI foi restabelecido, mas nao foi possivel retomar o video. Verifique o sinal e reinicie o PROGRAM.");
+            window.alert("O NDI foi restabelecido, mas nao foi possivel retomar o PROGRAM. Verifique o sinal e reinicie o motor.");
         });
     }, [ndiOnline, testBench]);
 
