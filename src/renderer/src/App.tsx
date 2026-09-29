@@ -863,6 +863,8 @@ function PlayoutPanel({
         useState(0);
     const [isPlaying, setIsPlaying] =
         useState(false);
+    const [pendingSeek, setPendingSeek] =
+        useState<number | null>(null);
     const ndiWasOnlineRef = useRef(false);
     const nativePlaybackWasActiveRef = useRef(false);
     const resumeAfterNdiLossRef = useRef(false);
@@ -893,7 +895,9 @@ function PlayoutPanel({
         const sampledAtMs = Date.now();
         const position = video.currentTime;
         lastProgressRef.current = { position, atMs: sampledAtMs };
-        setCurrentTime(position);
+        if (pendingSeek === null) {
+            setCurrentTime(position);
+        }
         setTimelineClock(sampledAtMs);
     }
 
@@ -1743,6 +1747,45 @@ function PlayoutPanel({
         setIsPlaying(false);
     }
 
+    async function seekProgram(relativeSeconds: number) {
+        if (!selectedMedia) return;
+
+        const clipIn = getClipIn(selectedMedia);
+        const clipDuration = getClipDuration(selectedMedia);
+        const relative = Math.min(
+            clipDuration,
+            Math.max(0, relativeSeconds)
+        );
+        const absolute = clipIn + relative;
+        const video = videoRef.current;
+
+        setPendingSeek(null);
+        setCurrentTime(absolute);
+        lastProgressRef.current = {
+            position: absolute,
+            atMs: Date.now()
+        };
+
+        if (video) {
+            video.currentTime = absolute;
+        }
+
+        if (!nativeOutputEnabled) {
+            return;
+        }
+
+        if (isPlaying) {
+            await startNativeNdi(
+                selectedMedia,
+                absolute
+            );
+        } else {
+            await window.santtosAPI.seekNdiFile(
+                absolute
+            );
+        }
+    }
+
     async function playNextMedia(
         reason: "completed" | "skipped" = "skipped"
     ) {
@@ -1888,53 +1931,6 @@ function PlayoutPanel({
         ) {
             clipAdvanceGuardRef.current = true;
             await playNextMedia("completed");
-        }
-    }
-
-    async function handleSeeked(
-        video: HTMLVideoElement
-    ) {
-        if (!selectedMedia) return;
-
-        const inPoint = getClipIn(selectedMedia);
-        const outPoint = getClipOut(selectedMedia);
-        const target = Math.min(
-            Math.max(video.currentTime, inPoint),
-            Math.max(inPoint, outPoint - 0.04)
-        );
-
-        if (Math.abs(video.currentTime - target) > 0.001) {
-            video.currentTime = target;
-            return;
-        }
-
-        if (!nativeOutputEnabled) {
-            markPlaybackSample(video);
-            return;
-        }
-
-        setCurrentTime(target);
-        lastProgressRef.current = {
-            position: target,
-            atMs: Date.now()
-        };
-
-        try {
-            if (isPlaying) {
-                await startNativeNdi(
-                    selectedMedia,
-                    target
-                );
-            } else {
-                await window.santtosAPI.seekNdiFile(
-                    target
-                );
-            }
-        } catch (error) {
-            console.error(
-                "Erro ao sincronizar seek do motor nativo:",
-                error
-            );
         }
     }
 
@@ -2444,11 +2440,6 @@ function PlayoutPanel({
                                             getClipDuration(selectedMedia)
                                         )
                                     }
-                                    onSeeked={(event) =>
-                                        handleSeeked(
-                                            event.currentTarget
-                                        )
-                                    }
                                     onEnded={() => {
                                         if (!nativeOutputEnabled) {
                                             void playNextMedia("completed");
@@ -2568,12 +2559,49 @@ function PlayoutPanel({
                         </div>
                     </div>
 
-                    <div className="program-progress">
-                        <div
-                            style={{
-                                width: `${progressPercent}%`
+                    <div className="program-progress-shell">
+                        <input
+                            className="program-progress-slider"
+                            type="range"
+                            min={0}
+                            max={Math.max(0.1, selectedClipDuration)}
+                            step={0.1}
+                            value={Math.min(
+                                selectedClipDuration,
+                                Math.max(
+                                    0,
+                                    pendingSeek ?? selectedClipCurrent
+                                )
+                            )}
+                            disabled={!selectedMedia || selectedClipDuration <= 0}
+                            aria-label="Posição do PROGRAM"
+                            onChange={(event) => {
+                                const relative = Number(event.currentTarget.value);
+                                setPendingSeek(relative);
+                                const video = videoRef.current;
+                                if (video && selectedMedia) {
+                                    video.currentTime =
+                                        getClipIn(selectedMedia) + relative;
+                                }
                             }}
+                            onPointerUp={(event) =>
+                                void seekProgram(
+                                    Number(event.currentTarget.value)
+                                )
+                            }
+                            onKeyUp={(event) =>
+                                void seekProgram(
+                                    Number(event.currentTarget.value)
+                                )
+                            }
                         />
+                        <div className="program-progress-readout">
+                            <span
+                                style={{
+                                    width: `${progressPercent}%`
+                                }}
+                            />
+                        </div>
                     </div>
                 </section>
 
