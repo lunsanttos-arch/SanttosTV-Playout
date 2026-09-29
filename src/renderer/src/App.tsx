@@ -2809,7 +2809,7 @@ function PlayoutPanel({
                                                 </strong>
 
                                                 <div className="timeline-meta-row">
-                                                    <span>
+                                                    <span className="timeline-clip-time">
                                                         {isCurrent
                                                             ? `${formatDuration(
                                                                   selectedClipCurrent
