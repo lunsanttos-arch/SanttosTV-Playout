@@ -6,7 +6,7 @@ const { spawnSync } = require("node:child_process");
 const nativeFolder = __dirname;
 const executable = path.join(nativeFolder, "ndi_test.exe");
 const dll = path.join(nativeFolder, "Processing.NDI.Lib.x64.dll");
-const CAPS = "SANTTOS_NDI_CAPS: AUDIO_PIPE_V1 NAME_ARGUMENT_V1 AUDIO_FLTP_V3";
+const CAPS = "SANTTOS_NDI_CAPS: AUDIO_PIPE_V1 NAME_ARGUMENT_V1 AUDIO_FLTP_V3 DYNAMIC_PROFILE_V1";
 
 function checkNdiRuntime({ requireModern = true, executablePath = executable,
     dllPath = dll } = {}) {
@@ -43,14 +43,14 @@ function checkNdiRuntime({ requireModern = true, executablePath = executable,
     return {
         ok: modern || !requireModern,
         modern,
-        error: modern ? null : "O sender NDI não confirmou AUDIO_PIPE_V1 e NAME_ARGUMENT_V1."
+        error: modern ? null : "O sender NDI não confirmou AUDIO_PIPE_V1, NAME_ARGUMENT_V1 e DYNAMIC_PROFILE_V1."
     };
 }
 
 if (require.main === module) {
     const result = checkNdiRuntime();
     if (result.ok) {
-        console.log("NDI x64 PRONTO — AUDIO_PIPE_V1, fonte QA separada e áudio PCM estéreo.");
+        console.log("NDI x64 PRONTO — perfil dinâmico, fonte QA separada e áudio PCM.");
     } else {
         console.error("NDI indisponível:", result.error);
         process.exitCode = 1;
