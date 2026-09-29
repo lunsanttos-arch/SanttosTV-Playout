@@ -6,7 +6,7 @@ const { checkNdiRuntime } = require("../src/core/ndi/ndi-capabilities");
 if (require.main === module) {
     const result = checkNdiRuntime();
     if (result.ok) {
-        console.log("NDI x64 PRONTO — AUDIO_FLTP_V3, fonte QA separada e áudio estéreo 48 kHz.");
+        console.log("NDI x64 PRONTO — perfil dinâmico e áudio FLTP configurável.");
     } else {
         console.error("NDI indisponível:", result.error);
         process.exitCode = 1;
