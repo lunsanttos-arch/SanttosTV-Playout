@@ -7,8 +7,9 @@
  * Supports arbitrary stdout chunk boundaries without inventing samples.
  */
 class StereoPcmMeter {
-    constructor(now = Date.now) {
+    constructor(now = Date.now, channels = 2) {
         this.now = now;
+        this.channels = channels === 1 ? 1 : 2;
         this.tail = Buffer.alloc(0);
         this.left = -60;
         this.right = -60;
@@ -28,17 +29,20 @@ class StereoPcmMeter {
     write(chunk) {
         if (!Buffer.isBuffer(chunk) || chunk.length === 0) return this.snapshot();
         const buffer = this.tail.length ? Buffer.concat([this.tail, chunk]) : chunk;
-        const complete = buffer.length - (buffer.length % 8);
+        const frameBytes = this.channels * 4;
+        const complete = buffer.length - (buffer.length % frameBytes);
         this.tail = complete < buffer.length
             ? Buffer.from(buffer.subarray(complete)) : Buffer.alloc(0);
         if (!complete) return this.snapshot();
 
         let energyL = 0, energyR = 0;
         let peakL = 0, peakR = 0;
-        const count = complete / 8;
-        for (let i = 0; i < complete; i += 8) {
+        const count = complete / frameBytes;
+        for (let i = 0; i < complete; i += frameBytes) {
             const left = buffer.readFloatLE(i);
-            const right = buffer.readFloatLE(i + 4);
+            const right = this.channels === 1
+                ? left
+                : buffer.readFloatLE(i + 4);
             const l = Number.isFinite(left) ? Math.min(2, Math.abs(left)) : 0;
             const r = Number.isFinite(right) ? Math.min(2, Math.abs(right)) : 0;
             energyL += l * l;
@@ -64,7 +68,8 @@ class StereoPcmMeter {
             peakLeftDb: fresh ? this.peakLeft : -60,
             peakRightDb: fresh ? this.peakRight : -60,
             audioFrames: this.frames,
-            active: fresh
+            active: fresh,
+            channels: this.channels
         };
     }
 }
