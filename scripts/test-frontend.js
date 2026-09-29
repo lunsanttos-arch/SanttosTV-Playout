@@ -7,6 +7,10 @@ const appPath = path.join(root, "src", "renderer", "src", "App.tsx");
 const mainPath = path.join(root, "src", "renderer", "src", "main.tsx");
 const settingsPath = path.join(root, "src", "renderer", "src", "BroadcastSettingsPanel.tsx");
 const librarySettingsPath = path.join(root, "src", "renderer", "src", "LibraryFolderSettingsTab.tsx");
+const electronMainPath = path.join(root, "src", "main", "main.js");
+const packagePath = path.join(root, "package.json");
+const appIconPath = path.join(root, "build-resources", "icon.ico");
+const brandDir = path.join(root, "src", "renderer", "public", "brand");
 const distIndex = path.join(root, "dist", "index.html");
 const distAssets = path.join(root, "dist", "assets");
 
@@ -14,6 +18,32 @@ const app = fs.readFileSync(appPath, "utf8");
 const main = fs.readFileSync(mainPath, "utf8");
 const settings = fs.readFileSync(settingsPath, "utf8");
 const librarySettings = fs.readFileSync(librarySettingsPath, "utf8");
+const electronMain = fs.readFileSync(electronMainPath, "utf8");
+const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+
+assert(fs.existsSync(appIconPath), "Ícone oficial do Santtos Playout deve existir para o build Windows.");
+assert(fs.existsSync(path.join(brandDir, "logo-horizontal.webp")),
+    "Logo horizontal oficial deve existir no renderer.");
+assert(fs.existsSync(path.join(brandDir, "logo-symbol.webp")),
+    "Símbolo oficial deve permanecer disponível como asset.");
+assert(fs.existsSync(path.join(brandDir, "logo-vertical.webp")),
+    "Logo vertical oficial deve permanecer disponível como asset.");
+assert(app.includes('src="./brand/logo-horizontal.webp"') &&
+    app.includes('alt="Santtos Playout"'),
+    "Cabeçalho deve usar o logo oficial Santtos Playout.");
+assert(packageConfig.build?.directories?.buildResources === "build-resources" &&
+    packageConfig.build?.win?.icon === "icon.ico" &&
+    packageConfig.build?.win?.executableName === "SanttosTVAutomation",
+    "Build Windows deve usar o ícone oficial e nome estável do executável.");
+assert(packageConfig.build?.nsis?.oneClick === false &&
+    packageConfig.build?.nsis?.createDesktopShortcut === true &&
+    packageConfig.build?.nsis?.createStartMenuShortcut === true,
+    "Instalador NSIS deve criar atalhos e permitir instalação assistida.");
+assert(electronMain.includes("resolveAppIcon") &&
+    electronMain.includes('"../../build-resources/icon.ico"') &&
+    electronMain.includes("process.resourcesPath"),
+    "Janela Electron deve usar o ícone oficial em desenvolvimento e empacotado.");
+
 assert(!settings.includes("Engine atual") &&
     !settings.includes("1920×1080 · 29.97p · BGRA"),
     "Configurações não devem exibir um perfil NDI hardcoded.");
