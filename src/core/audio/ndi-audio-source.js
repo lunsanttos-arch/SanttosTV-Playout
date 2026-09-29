@@ -4,10 +4,20 @@ const { spawn } = require("node:child_process");
 const net = require("node:net");
 const { StereoPcmMeter } = require("./stereo-meter");
 
-function audioFfmpegArgs(filePath, streamIndex, startSeconds, durationSeconds) {
+function audioFfmpegArgs(
+    filePath,
+    streamIndex,
+    startSeconds,
+    durationSeconds,
+    sampleRate = 48000,
+    channels = 2
+) {
     if (typeof filePath !== "string" || !filePath) throw new Error("Mídia de áudio inválida.");
     const explicitStream = Number.isSafeInteger(streamIndex) &&
         streamIndex >= 0 && streamIndex <= 255;
+    const normalizedRate = [44100, 48000].includes(Number(sampleRate))
+        ? Number(sampleRate) : 48000;
+    const normalizedChannels = Number(channels) === 1 ? 1 : 2;
     const args = [
         "-hide_banner", "-loglevel", "warning", "-nostdin",
         "-fflags", "+genpts",
@@ -23,7 +33,8 @@ function audioFfmpegArgs(filePath, streamIndex, startSeconds, durationSeconds) {
     }
     args.push(
         "-map", explicitStream ? "0:" + streamIndex : "0:a:0", "-vn", "-sn", "-dn",
-        "-ac", "2", "-ar", "48000", "-c:a", "pcm_f32le",
+        "-ac", String(normalizedChannels), "-ar", String(normalizedRate),
+        "-c:a", "pcm_f32le",
         "-f", "f32le", "pipe:1"
     );
     return args;
@@ -32,7 +43,10 @@ function audioFfmpegArgs(filePath, streamIndex, startSeconds, durationSeconds) {
 class NdiAudioSource {
     constructor(options) {
         this.options = options;
-        this.meter = new StereoPcmMeter();
+        this.sampleRate = [44100, 48000].includes(Number(options.sampleRate))
+            ? Number(options.sampleRate) : 48000;
+        this.channels = Number(options.channels) === 1 ? 1 : 2;
+        this.meter = new StereoPcmMeter(Date.now, this.channels);
         this.status = "STARTING";
         this.error = "";
         this.stopped = false;
@@ -48,7 +62,14 @@ class NdiAudioSource {
         if (!pipePath || !pipePath.startsWith("\\\\.\\pipe\\SanttosAudio-")) {
             throw new Error("Canal NDI de áudio não autorizado.");
         }
-        const args = audioFfmpegArgs(filePath, streamIndex, startSeconds, durationSeconds);
+        const args = audioFfmpegArgs(
+            filePath,
+            streamIndex,
+            startSeconds,
+            durationSeconds,
+            this.sampleRate,
+            this.channels
+        );
         const socket = net.createConnection(pipePath);
         this.socket = socket;
         socket.on("connect", () => {
@@ -117,6 +138,8 @@ class NdiAudioSource {
             error: this.error || null,
             connected: this.connected,
             bytesSent: this.audioBytesSent,
+            sampleRate: this.sampleRate,
+            channels: this.channels,
             ...this.meter.snapshot()
         };
     }
