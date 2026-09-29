@@ -2780,6 +2780,106 @@ function FilmBlockEditor({
         setParts(distributeParts(parsedIn ?? initialIn, parsedOut ?? initialOut, count));
     }
 
+    function partDuration(part: BlockRangeText) {
+        const start = parseEditorTime(part.inText);
+        const end = parseEditorTime(part.outText);
+        if (start !== null && end !== null && end > start) {
+            return end - start;
+        }
+        const entered = parseEditorTime(part.durationText);
+        return entered !== null && entered > 0 ? entered : 0;
+    }
+
+    function compensateFollowingBlocks(
+        updated: BlockRangeText[],
+        changedIndex: number,
+        changedEnd: number,
+        overallEnd: number
+    ) {
+        const following = updated.slice(changedIndex + 1);
+        if (following.length === 0) return;
+
+        const available = Math.floor(overallEnd) - Math.floor(changedEnd);
+        if (available <= 0) return;
+
+        const weights = following.map((part) => Math.max(1, partDuration(part)));
+        const totalWeight = weights.reduce((sum, value) => sum + value, 0);
+        let cursor = Math.floor(changedEnd);
+        let remainingSeconds = available;
+        let remainingWeight = totalWeight;
+
+        following.forEach((part, offset) => {
+            const position = changedIndex + 1 + offset;
+            const isLast = offset === following.length - 1;
+            const weight = weights[offset];
+
+            const seconds = isLast
+                ? remainingSeconds
+                : Math.max(
+                      1,
+                      Math.round(
+                          remainingSeconds * (weight / Math.max(1, remainingWeight))
+                      )
+                  );
+
+            const safeSeconds = Math.min(
+                seconds,
+                Math.max(1, remainingSeconds - (following.length - offset - 1))
+            );
+            const end = isLast
+                ? Math.floor(overallEnd)
+                : cursor + safeSeconds;
+
+            updated[position] = {
+                ...part,
+                inText: formatEditorTime(cursor),
+                outText: formatEditorTime(end),
+                durationText: formatEditorTime(end - cursor)
+            };
+
+            remainingSeconds -= end - cursor;
+            remainingWeight -= weight;
+            cursor = end;
+        });
+    }
+
+    function compensateLastBlock(
+        updated: BlockRangeText[],
+        index: number,
+        customDuration: number,
+        overallStart: number,
+        overallEnd: number
+    ) {
+        if (index !== updated.length - 1) return false;
+
+        const end = Math.floor(overallEnd);
+        const start = end - Math.floor(customDuration);
+        if (start < Math.floor(overallStart)) return false;
+
+        const selected = updated[index];
+        updated[index] = {
+            ...selected,
+            inText: formatEditorTime(start),
+            outText: formatEditorTime(end),
+            durationText: formatEditorTime(end - start)
+        };
+
+        // O último bloco também precisa caber. Se ele crescer ou encolher,
+        // o bloco anterior absorve a diferença para manter o FINAL GERAL.
+        if (index > 0) {
+            const previous = updated[index - 1];
+            const previousStart = parseEditorTime(previous.inText);
+            if (previousStart !== null && start > previousStart) {
+                updated[index - 1] = {
+                    ...previous,
+                    outText: formatEditorTime(start),
+                    durationText: formatEditorTime(start - previousStart)
+                };
+            }
+        }
+        return true;
+    }
+
     function updatePart(index: number, field: keyof BlockRangeText, value: string) {
         setParts((current) => {
             const updated = current.map((part) => ({ ...part }));
@@ -2788,54 +2888,80 @@ function FilmBlockEditor({
 
             selected[field] = value;
 
-            if (field === "durationText") {
-                const start = parseEditorTime(selected.inText);
-                const customDuration = parseEditorTime(value);
-
-                if (
-                    start !== null &&
-                    customDuration !== null &&
-                    customDuration > 0
-                ) {
-                    const end = start + customDuration;
-                    selected.outText = formatEditorTime(end);
-
-                    // Ao personalizar a duração, manter os blocos seguintes
-                    // encadeados. Cada duração seguinte é preservada.
-                    let cursor = end;
-                    for (let position = index + 1; position < updated.length; position++) {
-                        const next = updated[position];
-                        const nextDuration =
-                            parseEditorTime(next.durationText) ??
-                            Math.max(
-                                0,
-                                (parseEditorTime(next.outText) ?? cursor) -
-                                (parseEditorTime(next.inText) ?? cursor)
-                            );
-
-                        next.inText = formatEditorTime(cursor);
-                        if (nextDuration > 0) {
-                            cursor += nextDuration;
-                            next.outText = formatEditorTime(cursor);
-                        }
-                    }
-                }
-            }
+            const overallStart = parsedIn ?? initialIn;
+            const overallEnd = parsedOut ?? initialOut;
 
             if (field === "inText") {
                 const start = parseEditorTime(value);
-                const customDuration = parseEditorTime(selected.durationText);
-                if (start !== null && customDuration !== null && customDuration > 0) {
-                    selected.outText = formatEditorTime(start + customDuration);
+                const end = parseEditorTime(selected.outText);
+
+                // IN e OUT são as referências. Ao alterar IN, DURAÇÃO
+                // precisa refletir imediatamente o novo intervalo.
+                if (start !== null && end !== null && end > start) {
+                    selected.durationText = formatEditorTime(end - start);
                 }
+                return updated;
             }
 
             if (field === "outText") {
                 const start = parseEditorTime(selected.inText);
                 const end = parseEditorTime(value);
+
                 if (start !== null && end !== null && end > start) {
                     selected.durationText = formatEditorTime(end - start);
+
+                    // A alteração de OUT consome ou devolve tempo. Os blocos
+                    // posteriores compensam automaticamente até FINAL GERAL.
+                    if (end <= overallEnd) {
+                        compensateFollowingBlocks(
+                            updated,
+                            index,
+                            end,
+                            overallEnd
+                        );
+                    }
                 }
+                return updated;
+            }
+
+            const start = parseEditorTime(selected.inText);
+            const customDuration = parseEditorTime(value);
+            if (
+                start === null ||
+                customDuration === null ||
+                customDuration <= 0
+            ) {
+                return updated;
+            }
+
+            // No último bloco a compensação acontece para trás, mantendo
+            // exatamente o FINAL GERAL definido pelo operador.
+            if (
+                compensateLastBlock(
+                    updated,
+                    index,
+                    customDuration,
+                    overallStart,
+                    overallEnd
+                )
+            ) {
+                return updated;
+            }
+
+            const end = start + customDuration;
+            selected.outText = formatEditorTime(end);
+            selected.durationText = value;
+
+            // Ex.: um bloco passa para 10 s. O tempo que sobrar até
+            // FINAL GERAL é redistribuído proporcionalmente nos próximos,
+            // mantendo toda a sequência encaixada e funcional.
+            if (end <= overallEnd) {
+                compensateFollowingBlocks(
+                    updated,
+                    index,
+                    end,
+                    overallEnd
+                );
             }
 
             return updated;
@@ -2891,7 +3017,7 @@ function FilmBlockEditor({
                     <button type="button" onClick={() => redistribute()}>
                         Distribuir igualmente
                     </button>
-                    <span>Personalize a DURAÇÃO de cada bloco ou edite IN/OUT. Ao mudar a duração, os próximos blocos são encadeados automaticamente; ainda é possível criar intervalos alterando o IN.</span>
+                    <span>IN, OUT e DURAÇÃO trabalham juntos. Ao alterar um tempo, a duração é atualizada e o restante dos blocos compensa automaticamente para continuar encaixado no FINAL GERAL.</span>
                 </div>
 
                 <div className="film-editor-block-list">
