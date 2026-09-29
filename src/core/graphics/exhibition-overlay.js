@@ -149,10 +149,7 @@ function getExhibitionOverlay(
         right,
         top,
         fontSize,
-        padding,
-        scaleX,
-        scaleY,
-        fontScale
+        padding
     };
 }
 
@@ -180,6 +177,11 @@ function buildExhibitionDrawtext(
     canvas = undefined
 ) {
     const cfg = normalizeExhibitionStyle(style);
+    const canvasWidth = clamp(canvas?.width, WIDTH, 320, 8192);
+    const canvasHeight = clamp(canvas?.height, HEIGHT, 240, 4320);
+    const scaleX = canvasWidth / WIDTH;
+    const scaleY = canvasHeight / HEIGHT;
+    const fontScale = Math.min(scaleX, scaleY);
     const overlay = getExhibitionOverlay(
         type,
         watermarkStyle,
@@ -199,7 +201,7 @@ function buildExhibitionDrawtext(
         `text='${escapeText(overlay.text)}'`,
         `fontsize=${overlay.fontSize}`,
         `fontcolor=${ffmpegColor(cfg.color, cfg.opacity)}`,
-        `borderw=${Math.max(0, Math.round(cfg.outlineWidth * overlay.fontScale))}`,
+        `borderw=${Math.max(0, Math.round(cfg.outlineWidth * fontScale))}`,
         `bordercolor=${ffmpegColor(cfg.outlineColor, cfg.outlineOpacity)}`,
         `x='max(8\\,min(w-text_w-8\\,${overlay.right}-text_w))'`,
         `y=${overlay.top}`
@@ -212,8 +214,8 @@ function buildExhibitionDrawtext(
     if (cfg.shadowEnabled) {
         options.push(
             `shadowcolor=${ffmpegColor(cfg.shadowColor, cfg.shadowOpacity)}`,
-            `shadowx=${Math.round(cfg.shadowX * overlay.scaleX)}`,
-            `shadowy=${Math.round(cfg.shadowY * overlay.scaleY)}`
+            `shadowx=${Math.round(cfg.shadowX * scaleX)}`,
+            `shadowy=${Math.round(cfg.shadowY * scaleY)}`
         );
     }
     return `[${inputLabel}]drawtext=${options.join(":")}[exhibition]`;
