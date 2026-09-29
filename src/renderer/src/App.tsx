@@ -617,8 +617,11 @@ export default function App() {
         <div className="app-shell">
             <header className="topbar">
                 <div className="brand">
-                    <strong>Santtos TV</strong>
-                    <span>Automation</span>
+                    <img
+                        className="brand-logo"
+                        src="./brand/logo-horizontal.webp"
+                        alt="Santtos Playout"
+                    />
                 </div>
 
                 <div className="header-time-center">
