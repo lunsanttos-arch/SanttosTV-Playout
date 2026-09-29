@@ -12,6 +12,9 @@ const distAssets = path.join(root, "dist", "assets");
 const app = fs.readFileSync(appPath, "utf8");
 const main = fs.readFileSync(mainPath, "utf8");
 const settings = fs.readFileSync(settingsPath, "utf8");
+assert(!settings.includes("Engine atual") &&
+    !settings.includes("1920×1080 · 29.97p · BGRA"),
+    "Configurações não devem exibir um perfil NDI hardcoded.");
 
 assert(!app.includes('{ panel: "library"'), "Biblioteca não deve voltar ao menu lateral.");
 assert(app.includes("persistent-playout-view"), "Playout persistente deve continuar montado na navegação.");
