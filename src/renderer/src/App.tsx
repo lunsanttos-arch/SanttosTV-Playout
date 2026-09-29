@@ -2397,7 +2397,6 @@ function PlayoutPanel({
                                     ref={videoRef}
                                     className="program-video"
                                     src={selectedMediaUrl}
-                                    controls
                                     preload="auto"
                                     onTimeUpdate={(event) =>
                                         handleProgramTimeUpdate(
@@ -2437,7 +2436,11 @@ function PlayoutPanel({
                                             event.currentTarget
                                         )
                                     }
-                                    onEnded={() => playNextMedia("completed")}
+                                    onEnded={() => {
+                                        if (!nativeOutputEnabled) {
+                                            void playNextMedia("completed");
+                                        }
+                                    }}
                                 />
 
                                 {previewError && (
