@@ -3430,15 +3430,78 @@ function LibraryPanel({
                   ? activeCategoryId
                   : loaded[0]?.id ?? "";
             setActiveCategoryId(nextId);
+            return { loaded, nextId };
         } catch (error) {
             console.error(error);
             setCategoryStatus("Não foi possível carregar as abas da Biblioteca.");
+            return null;
         }
     }
 
     useEffect(() => {
         void loadCategories();
     }, []);
+
+    useEffect(() => {
+        const handleCategoriesUpdated = () => {
+            void (async () => {
+                const synced = await loadCategories(activeCategoryId);
+                const categoryId = synced?.nextId;
+                if (!categoryId) return;
+
+                const result = await window.santtosAPI.scanLibraryCategory(categoryId);
+                if (!result.ok) {
+                    setCategoryStatus(result.error ?? "Não foi possível atualizar esta pasta.");
+                    return;
+                }
+
+                if (result.category) {
+                    setCategories((current) =>
+                        current.map((item) =>
+                            item.id === result.category!.id
+                                ? result.category!
+                                : item
+                        )
+                    );
+                }
+
+                if (result.unconfigured) {
+                    setCategoryStatus("Configure a pasta desta aba em Configurações → Biblioteca.");
+                    return;
+                }
+
+                if (result.folderMissing) {
+                    setCategoryStatus("A pasta configurada não foi encontrada no Windows.");
+                    return;
+                }
+
+                const paths = result.filePaths ?? [];
+                if (paths.length > 0) {
+                    await onImportDroppedFiles(paths);
+                }
+
+                const categoryName =
+                    result.category?.name ??
+                    synced?.loaded.find((item) => item.id === categoryId)?.name ??
+                    "Biblioteca";
+                setCategoryStatus(`${paths.length} arquivo(s) encontrado(s) em ${categoryName}.`);
+            })().catch((error) => {
+                console.error(error);
+                setCategoryStatus("Não foi possível sincronizar a Biblioteca.");
+            });
+        };
+
+        window.addEventListener(
+            "santtos:library-categories-updated",
+            handleCategoriesUpdated
+        );
+
+        return () =>
+            window.removeEventListener(
+                "santtos:library-categories-updated",
+                handleCategoriesUpdated
+            );
+    }, [activeCategoryId]);
 
     const activeCategory = categories.find((item) => item.id === activeCategoryId) ?? null;
 
@@ -3468,6 +3531,20 @@ function LibraryPanel({
         try {
             const result = await window.santtosAPI.scanLibraryCategory(activeCategory.id);
             if (!result.ok) throw new Error(result.error ?? "Falha ao atualizar");
+
+            // A configuração pode ter sido alterada enquanto o Playout ficou
+            // montado em segundo plano. O backend é a fonte de verdade.
+            const refreshedCategory = result.category ?? activeCategory;
+            if (result.category) {
+                setCategories((current) =>
+                    current.map((item) =>
+                        item.id === result.category!.id
+                            ? result.category!
+                            : item
+                    )
+                );
+            }
+
             if (result.unconfigured) {
                 setCategoryStatus("Configure a pasta desta aba em Configurações → Biblioteca.");
                 return;
@@ -3476,11 +3553,12 @@ function LibraryPanel({
                 setCategoryStatus("A pasta configurada não foi encontrada no Windows.");
                 return;
             }
+
             const paths = result.filePaths ?? [];
             if (paths.length > 0) {
                 await onImportDroppedFiles(paths);
             }
-            setCategoryStatus(`${paths.length} arquivo(s) encontrado(s) em ${activeCategory.name}.`);
+            setCategoryStatus(`${paths.length} arquivo(s) encontrado(s) em ${refreshedCategory.name}.`);
         } catch (error) {
             console.error(error);
             setCategoryStatus("Não foi possível atualizar esta pasta.");
