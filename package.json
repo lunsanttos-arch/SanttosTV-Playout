@@ -58,7 +58,14 @@
       {
         "from": "src/core/ndi",
         "to": "ndi",
-        "filter": ["ndi_test.exe", "Processing.NDI.Lib.x64.dll"]
+        "filter": [
+          "ndi_test.exe",
+          "Processing.NDI.Lib.x64.dll"
+        ]
+      },
+      {
+        "from": "build-resources/icon.ico",
+        "to": "icon.ico"
       }
     ],
     "asarUnpack": [
@@ -66,7 +73,8 @@
       "node_modules/ffmpeg-static/**/*"
     ],
     "directories": {
-      "output": "build"
+      "output": "build",
+      "buildResources": "build-resources"
     },
     "files": [
       "dist/**/*",
@@ -76,7 +84,18 @@
       "package.json"
     ],
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build-resources/icon.ico",
+      "executableName": "SanttosTVAutomation",
+      "artifactName": "Santtos-Playout-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Santtos Playout"
     }
   }
 }
