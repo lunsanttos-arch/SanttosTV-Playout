@@ -20,6 +20,10 @@ const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
 const { NativePlayoutEngine } = require("../core/playout/native-playout-engine");
+const {
+    outputProfile,
+    profileSignature
+} = require("../core/playout/output-profile");
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
 
@@ -78,7 +82,7 @@ const testBenchConfig = configureTestBench(app);
 const isTestBench = testBenchConfig.enabled;
 const isNdiTestBench = testBenchConfig.ndiEnabled;
 const nativeOutputAllowed = !isTestBench || isNdiTestBench;
-const ndiSourceName = isNdiTestBench ? "Santtos TV - QA" : "Santtos TV - PROGRAM";
+let ndiSourceName = isNdiTestBench ? "Santtos TV - QA" : "Santtos TV - PROGRAM";
 const isDevelopment = !app.isPackaged;
 
 // Um protocolo exclusivo permite reproduzir midias com webSecurity habilitado.
@@ -125,13 +129,6 @@ function registerTrustedOn(channel, listener) {
     });
 }
 
-const NDI_FRAME_WIDTH = 1920;
-const NDI_FRAME_HEIGHT = 1080;
-const NDI_BYTES_PER_PIXEL = 4;
-const NDI_FRAME_SIZE =
-    NDI_FRAME_WIDTH *
-    NDI_FRAME_HEIGHT *
-    NDI_BYTES_PER_PIXEL;
 
 const FONT_FILES = {
     "Arial": {
@@ -176,6 +173,8 @@ let audioSource = null;
 let audioOutputStatus = "IDLE";
 let audioOutputError = "";
 let stopNdiFrameFeed = null;
+let activeOutputProfile = outputProfile({});
+let activeOutputSignature = profileSignature(activeOutputProfile);
 const playoutEngine = new NativePlayoutEngine();
 function onPlayoutFault(message) {
     playoutLastError = message;
@@ -185,9 +184,17 @@ function onPlayoutFault(message) {
     // Em falha inesperada, enviar um frame preto valido ao sender:
     // evita que o ultimo frame do comercial congele sem aviso.
     if (ndiReady && ndiProcess?.stdin && !ndiProcess.stdin.destroyed) {
-        ndiProcess.stdin.write(Buffer.alloc(NDI_FRAME_SIZE), (error) => {
-            if (error) console.error("Nao foi possivel limpar o PROGRAM NDI:", error);
-        });
+        ndiProcess.stdin.write(
+            Buffer.alloc(activeOutputProfile.frameSize),
+            (error) => {
+                if (error) {
+                    console.error(
+                        "Nao foi possivel limpar o PROGRAM NDI:",
+                        error
+                    );
+                }
+            }
+        );
     }
 }
 
