@@ -2699,11 +2699,6 @@ function PlayoutPanel({
                     <div className="panel-title">
                         TIMELINE
                     </div>
-                    <div className="timeline-time-legend">
-                        ENTRA EST. = previsão pelo PROGRAM em reprodução; não é horário fixo do roteiro.
-                        Ao pausar, perder sinal ou encontrar duração desconhecida, a previsão é suspensa.
-                    </div>
-
                     {timelineMedia.length > 0 ? (
                         <div className="timeline-list">
                             {timelineMedia.map(
@@ -2812,33 +2807,31 @@ function PlayoutPanel({
                                                         ? `${item.name} — ${item.blockLabel}`
                                                         : item.name}
                                                 </strong>
-                                                {normalizeExhibitionType(item.exhibitionType) !== "NORMAL" && (
-                                                    <span className={`exhibition-badge badge-${normalizeExhibitionType(item.exhibitionType).toLowerCase()}`}>
-                                                        {exhibitionLabel(item.exhibitionType)}
-                                                    </span>
-                                                )}
-                                                <span>
-                                                    {isCurrent
-                                                        ? `${formatDuration(
-                                                              selectedClipCurrent
-                                                          )} / ${formatDuration(
-                                                              selectedClipDuration
-                                                          )}`
-                                                        : formatDuration(
-                                                              getClipDuration(item)
-                                                          )}
-                                                    {item.inPoint || item.outPoint != null
-                                                        ? ` • IN ${formatDuration(
-                                                              getClipIn(item)
-                                                          )} • OUT ${formatDuration(
-                                                              getClipOut(item)
-                                                          )}`
-                                                        : ""}
-                                                </span>
 
-                                                <span className="timeline-air-time">
-                                                    {describeForecast(item, isCurrent)}
-                                                </span>
+                                                <div className="timeline-meta-row">
+                                                    <span>
+                                                        {isCurrent
+                                                            ? `${formatDuration(
+                                                                  selectedClipCurrent
+                                                              )} / ${formatDuration(
+                                                                  selectedClipDuration
+                                                              )}`
+                                                            : formatDuration(
+                                                                  getClipDuration(item)
+                                                              )}
+                                                        {item.inPoint || item.outPoint != null
+                                                            ? ` • IN ${formatDuration(
+                                                                  getClipIn(item)
+                                                              )} • OUT ${formatDuration(
+                                                                  getClipOut(item)
+                                                              )}`
+                                                            : ""}
+                                                    </span>
+
+                                                    <span className="timeline-air-time">
+                                                        {describeForecast(item, isCurrent)}
+                                                    </span>
+                                                </div>
                                             </div>
 
                                             <div
@@ -2850,25 +2843,6 @@ function PlayoutPanel({
                                                     event.stopPropagation()
                                                 }
                                             >
-                                                <div className="timeline-exhibition">
-                                                    <label htmlFor={`exhibition-${item.id}`}>Exibição</label>
-                                                    <select
-                                                        id={`exhibition-${item.id}`}
-                                                        value={normalizeExhibitionType(item.exhibitionType)}
-                                                        onChange={(event) =>
-                                                            changeExhibitionType(
-                                                                item.id,
-                                                                event.currentTarget.value as ExhibitionType
-                                                            )
-                                                        }
-                                                    >
-                                                        {EXHIBITION_OPTIONS.map((option) => (
-                                                            <option key={option.value} value={option.value}>
-                                                                {option.label}
-                                                            </option>
-                                                        ))}
-                                                    </select>
-                                                </div>
                                                 <div className="timeline-gc-controls">
                                                     <label
                                                         className="timeline-watermark-toggle"
@@ -2887,6 +2861,27 @@ function PlayoutPanel({
                                                         />
                                                         <span>Logo</span>
                                                     </label>
+
+                                                    <div className="timeline-exhibition">
+                                                        <select
+                                                            id={`exhibition-${item.id}`}
+                                                            aria-label="Modo de exibição"
+                                                            title="Modo de exibição"
+                                                            value={normalizeExhibitionType(item.exhibitionType)}
+                                                            onChange={(event) =>
+                                                                changeExhibitionType(
+                                                                    item.id,
+                                                                    event.currentTarget.value as ExhibitionType
+                                                                )
+                                                            }
+                                                        >
+                                                            {EXHIBITION_OPTIONS.map((option) => (
+                                                                <option key={option.value} value={option.value}>
+                                                                    {option.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
 
                                                     <div className="timeline-hashtag-editor">
                                                         <span>#</span>
