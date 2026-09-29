@@ -895,9 +895,7 @@ function PlayoutPanel({
         const sampledAtMs = Date.now();
         const position = video.currentTime;
         lastProgressRef.current = { position, atMs: sampledAtMs };
-        if (pendingSeek === null) {
-            setCurrentTime(position);
-        }
+        setCurrentTime(position);
         setTimelineClock(sampledAtMs);
     }
 
@@ -1263,7 +1261,9 @@ function PlayoutPanel({
         );
         const sampledAtMs = Date.now();
 
-        setCurrentTime(position);
+        if (pendingSeek === null) {
+            setCurrentTime(position);
+        }
         setTimelineClock(sampledAtMs);
         lastProgressRef.current = {
             position,
@@ -1304,7 +1304,8 @@ function PlayoutPanel({
         nativePlayout.state,
         nativePlayout.positionSeconds,
         nativePlayout.itemId,
-        selectedMedia?.id
+        selectedMedia?.id,
+        pendingSeek
     ]);
 
     useEffect(() => {
