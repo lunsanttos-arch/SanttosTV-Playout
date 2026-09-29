@@ -12,6 +12,7 @@ on:
       - "scripts/test-preview-proxy.js"
       - "scripts/test-exhibition-output.js"
       - "scripts/test-timeline-forecast.js"
+      - "scripts/test-output-profile.js"
       - "scripts/test-playout-engine.js"
       - "scripts/test-ndi-audio.js"
       - "scripts/test-ndi-pipe.js"
@@ -32,6 +33,7 @@ on:
       - "scripts/test-preview-proxy.js"
       - "scripts/test-exhibition-output.js"
       - "scripts/test-timeline-forecast.js"
+      - "scripts/test-output-profile.js"
       - "scripts/test-playout-engine.js"
       - "scripts/test-ndi-audio.js"
       - "scripts/test-ndi-pipe.js"
@@ -72,6 +74,7 @@ jobs:
           node --check src/core/ndi/ndi-capabilities.js
           node --check src/core/ndi/frame-aligner.js
           node --check src/core/playout/native-playout-engine.js
+          node --check src/core/playout/output-profile.js
 
       - name: Production dependency audit
         run: npm audit --omit=dev --audit-level=high
@@ -93,6 +96,9 @@ jobs:
 
       - name: Live entry-time forecasting regression
         run: npm run test:timeline-forecast
+
+      - name: Dynamic PROGRAM output profile regression
+        run: npm run test:output-profile
 
       - name: Native playout engine state regression
         run: npm run test:playout-engine
