@@ -81,18 +81,18 @@ button {
 }
 
 .brand {
+    min-width: 190px;
     display: flex;
-    align-items: baseline;
-    gap: 10px;
+    align-items: center;
 }
 
-.brand strong {
-    font-size: 25px;
-    letter-spacing: 0.5px;
-}
-
-.brand span {
-    color: #888888;
+.brand-logo {
+    display: block;
+    width: 190px;
+    height: auto;
+    max-height: 54px;
+    object-fit: contain;
+    object-position: left center;
 }
 
 .master-clock {
