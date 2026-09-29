@@ -1,3 +1,4 @@
+#define NOMINMAX
 #include <Processing.NDI.Lib.h>
 
 #include <algorithm>
@@ -83,7 +84,7 @@ void receiveAudio(
     int audioRate,
     int audioChannels
 ) {
-    const int audioSamplesPerPacket = std::max(1, audioRate / 50); // 20 ms
+    const int audioSamplesPerPacket = (std::max)(1, audioRate / 50); // 20 ms
     const DWORD bytesPerPacket =
         static_cast<DWORD>(
             audioSamplesPerPacket * audioChannels * sizeof(float)
