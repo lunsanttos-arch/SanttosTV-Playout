@@ -1158,6 +1158,10 @@ function registerIpcHandlers() {
                 Boolean(ndiProcess) &&
                 !ndiProcess.killed,
             source: ndiSourceName,
+            profile: {
+                ...activeOutputProfile,
+                signature: activeOutputSignature
+            },
             ndiTestMode: isNdiTestBench,
             audio: audioSource
                 ? { ...audioSource.snapshot(), route: ndiSourceName,
@@ -1167,6 +1171,8 @@ function registerIpcHandlers() {
                     active: false, leftDb: -60, rightDb: -60,
                     peakLeftDb: -60, peakRightDb: -60,
                     nativeActive: ndiAudioNativeActive,
+                    sampleRate: activeOutputProfile.sampleRate,
+                    channels: activeOutputProfile.channels,
                     receiverVerified: false, route: ndiSourceName },
             nativePlaybackActive,
             playout: playoutEngine.snapshot(),
@@ -1305,11 +1311,42 @@ function registerIpcHandlers() {
 
     registerTrustedHandle(
         "settings:set-output",
-        async (_event, output) => ({
-            ok: true,
-            output:
-                updateOutputSettings(output)
-        })
+        async (_event, output) => {
+            try {
+                const saved =
+                    updateOutputSettings(output);
+
+                // O sender carrega resolução/FPS/scan/pixel/audio/nome
+                // na inicialização. Aplicar o perfil salvo imediatamente.
+                if (nativeOutputAllowed) {
+                    restartNdiSenderForProfile();
+                }
+
+                return {
+                    ok: true,
+                    output: saved,
+                    profile:
+                        configuredOutputProfile(),
+                    restarting:
+                        Boolean(
+                            configuredOutputProfile()
+                                .ndiEnabled
+                        )
+                };
+            } catch (error) {
+                console.error(
+                    "Falha ao aplicar perfil de saída:",
+                    error
+                );
+                return {
+                    ok: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Não foi possível aplicar o perfil de saída."
+                };
+            }
+        }
     );
 
     registerTrustedHandle(
@@ -1567,15 +1604,15 @@ function registerIpcHandlers() {
             }
 
             if (!(frameData instanceof Uint8Array) ||
-                frameData.byteLength !== NDI_FRAME_SIZE) return;
+                frameData.byteLength !== activeOutputProfile.frameSize) return;
             const frameBuffer = Buffer.from(frameData);
 
             if (
                 frameBuffer.length !==
-                NDI_FRAME_SIZE
+                activeOutputProfile.frameSize
             ) {
                 console.warn(
-                    `Frame NDI ignorado: ${frameBuffer.length} bytes recebidos, ${NDI_FRAME_SIZE} esperados.`
+                    `Frame NDI ignorado: ${frameBuffer.length} bytes recebidos, ${activeOutputProfile.frameSize} esperados.`
                 );
                 return;
             }
