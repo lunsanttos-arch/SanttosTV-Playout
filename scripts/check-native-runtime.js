@@ -20,4 +20,4 @@ if (!native.ok || !native.modern) {
     console.error(native.error || "Recompile src/core/ndi/ndi_test.cpp com o SDK NDI x64.");
     process.exit(1);
 }
-console.log("NDI runtime: sender x64 atualizado, vídeo 1080p29.97 e áudio PCM 48k estéreo.");
+console.log("NDI runtime: sender x64 atualizado, perfil PROGRAM dinâmico e áudio PCM configurável.");
