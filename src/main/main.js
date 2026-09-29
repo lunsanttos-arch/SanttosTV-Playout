@@ -765,6 +765,7 @@ function startNativePlayback(
     playoutLastError = "";
 
     const ffmpegPath = resolveFfmpegPath();
+    const profile = activeOutputProfile;
     const watermarkStyle =
         getSettings().watermarkStyle;
     const watermarkEnabled = Boolean(
@@ -852,7 +853,9 @@ function startNativePlayback(
             "-loop",
             "1",
             "-framerate",
-            "30000/1001",
+            profile.scanMode === "interlaced"
+                ? `${profile.fpsN * 2}/${profile.fpsD}`
+                : profile.fpsExpression,
             "-i",
             watermarkStyle.filePath
         );
@@ -864,7 +867,8 @@ function startNativePlayback(
             hashtag,
             programState,
             watermarkEnabled,
-            programState.videoStreamIndex
+            programState.videoStreamIndex,
+            profile
         ),
         "-map",
         "[program]",
@@ -872,14 +876,16 @@ function startNativePlayback(
         "-sn",
         "-dn",
         "-pix_fmt",
-        "bgra",
+        profile.ffmpegPixelFormat,
         "-f",
         "rawvideo",
         "pipe:1"
     );
 
     console.log(
-        `Iniciando playout FFmpeg: ${path.basename(filePath)} @ ${normalizedStartSeconds.toFixed(3)}s${hashtag ? ` | ${hashtag}` : ""}`
+        `Iniciando playout FFmpeg: ${path.basename(filePath)} @ ${normalizedStartSeconds.toFixed(3)}s` +
+        ` | ${profile.resolution} ${profile.fpsText} ${profile.scanMode} ${profile.pixelFormat}` +
+        `${hashtag ? ` | ${hashtag}` : ""}`
     );
 
     const processRef = spawn(
@@ -923,7 +929,9 @@ function startNativePlayback(
                         ? selectedAudioIndex
                         : null,
                 startSeconds: normalizedStartSeconds,
-                durationSeconds: clipRemainingSeconds
+                durationSeconds: clipRemainingSeconds,
+                sampleRate: profile.sampleRate,
+                channels: profile.channels
             }).start();
             audioOutputStatus = "STARTING";
             audioOutputError = "";
@@ -936,7 +944,7 @@ function startNativePlayback(
         audioOutputStatus = ndiAudioSupported ? "PIPE_NOT_READY" : "REBUILD_REQUIRED";
         audioOutputError = ndiAudioSupported
             ? "Canal de áudio ainda não foi aberto pelo sender NDI."
-            : "Atualize ndi_test.exe para o sender com áudio estéreo.";
+            : "Atualize ndi_test.exe para o sender NDI com perfil dinâmico.";
     }
 
     // rawvideo is a byte stream without delimiters. Never pipe it
@@ -945,7 +953,7 @@ function startNativePlayback(
     // producing a picture made from two different frames.
     let feedActive = true;
     const assembler = new FixedFrameAssembler(
-        NDI_FRAME_SIZE,
+        profile.frameSize,
         (completeFrame) => {
             if (
                 !feedActive ||
@@ -983,7 +991,7 @@ function startNativePlayback(
         const result = assembler.stop();
         if (result.droppedBytes > 0) {
             console.log(
-                `Frame BGRA parcial descartado na troca: ${result.droppedBytes} bytes.`
+                `Frame ${profile.ndiPixelFormat} parcial descartado na troca: ${result.droppedBytes} bytes.`
             );
         }
     };
