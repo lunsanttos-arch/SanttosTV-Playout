@@ -507,7 +507,8 @@ function buildProgramFilterGraph(
     hashtag,
     overlayState,
     hasWatermarkInput,
-    videoStreamIndex = null
+    videoStreamIndex = null,
+    profile = activeOutputProfile
 ) {
     const state =
         overlayState &&
@@ -526,8 +527,18 @@ function buildProgramFilterGraph(
             ? `[0:${Number(videoStreamIndex)}]`
             : "[0:v:0]";
 
+    const scaleX = profile.width / 1920;
+    const scaleY = profile.height / 1080;
+    const fontScale = Math.min(scaleX, scaleY);
+    const workingFpsN =
+        profile.scanMode === "interlaced"
+            ? profile.fpsN * 2
+            : profile.fpsN;
+
     const chains = [
-        `${sourceVideo}scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30000/1001[base]`
+        `${sourceVideo}scale=${profile.width}:${profile.height}:force_original_aspect_ratio=decrease,` +
+        `pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black,` +
+        `setsar=${profile.sar.toFixed(6)},fps=${workingFpsN}/${profile.fpsD}[base]`
     ];
 
     let current = "base";
@@ -539,7 +550,7 @@ function buildProgramFilterGraph(
             Number(wm.fadeMs) / 1000
         );
         const filters = [
-            `scale=${Math.round(wm.widthPx)}:-1`,
+            `scale=${Math.max(1, Math.round(wm.widthPx * scaleX))}:-1`,
             "format=rgba",
             `colorchannelmixer=aa=${Math.max(
                 0,
@@ -577,9 +588,9 @@ function buildProgramFilterGraph(
         );
         chains.push(
             `[${current}][wm]overlay=x=${Math.round(
-                wm.x
+                wm.x * scaleX
             )}:y=${Math.round(
-                wm.y
+                wm.y * scaleY
             )}:shortest=1:repeatlast=1[watermarked]`
         );
         current = "watermarked";
@@ -603,11 +614,11 @@ function buildProgramFilterGraph(
         const options = [
             `fontfile='${resolveHashtagFont(style)}'`,
             `text='${escapeDrawtextText(text)}'`,
-            `x=${Math.round(style.x)}`,
-            `y=${Math.round(style.y)}`,
-            `fontsize=${Math.round(style.fontSize)}`,
+            `x=${Math.round(style.x * scaleX)}`,
+            `y=${Math.round(style.y * scaleY)}`,
+            `fontsize=${Math.max(1, Math.round(style.fontSize * fontScale))}`,
             `fontcolor=${toFfmpegColor(style.color, style.opacity)}`,
-            `borderw=${Math.round(style.outlineWidth)}`,
+            `borderw=${Math.max(0, Math.round(style.outlineWidth * fontScale))}`,
             `bordercolor=${toFfmpegColor(style.outlineColor, style.outlineOpacity)}`,
             `alpha='${alpha}'`
         ];
@@ -615,8 +626,8 @@ function buildProgramFilterGraph(
         if (style.shadowEnabled) {
             options.push(
                 `shadowcolor=${toFfmpegColor(style.shadowColor, style.shadowOpacity)}`,
-                `shadowx=${Math.round(style.shadowX)}`,
-                `shadowy=${Math.round(style.shadowY)}`
+                `shadowx=${Math.round(style.shadowX * scaleX)}`,
+                `shadowy=${Math.round(style.shadowY * scaleY)}`
             );
         }
 
@@ -626,8 +637,6 @@ function buildProgramFilterGraph(
         current = "withHashtag";
     }
 
-    // Editorial identification belongs to the encoded PROGRAM picture.
-    // Draw it after both the watermark and hashtag so it remains legible.
     if (state.exhibitionType && state.exhibitionType !== "NORMAL") {
         const graphics = getSettings();
         const identification = buildExhibitionDrawtext(
@@ -636,7 +645,11 @@ function buildProgramFilterGraph(
             graphics.watermarkStyle,
             resolveHashtagFont(graphics.exhibitionStyle)
                 .replaceAll("\\\\", "/"),
-            graphics.exhibitionStyle
+            graphics.exhibitionStyle,
+            {
+                width: profile.width,
+                height: profile.height
+            }
         );
         if (identification) {
             chains.push(identification);
@@ -644,7 +657,16 @@ function buildProgramFilterGraph(
         }
     }
 
-    chains.push(`[${current}]null[program]`);
+    if (profile.scanMode === "interlaced") {
+        chains.push(
+            `[${current}]tinterlace=mode=interleave_top,format=${profile.ffmpegPixelFormat}[program]`
+        );
+    } else {
+        chains.push(
+            `[${current}]format=${profile.ffmpegPixelFormat}[program]`
+        );
+    }
+
     return chains.join(";");
 }
 
