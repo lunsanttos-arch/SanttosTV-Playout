@@ -40,10 +40,31 @@ function checkNdiRuntime({ requireModern = true, executablePath = executable,
         input: ""
     });
     const modern = probe.status === 0 && probe.stdout?.includes(CAPS);
+    let error = null;
+
+    if (!modern) {
+        if (probe.error) {
+            error =
+                "Não foi possível iniciar ndi_test.exe: " +
+                probe.error.message;
+        } else if (probe.status !== 0) {
+            const details = String(
+                probe.stderr || probe.stdout || ""
+            ).trim();
+            error =
+                "ndi_test.exe encerrou com código " +
+                String(probe.status) +
+                (details ? ": " + details.slice(0, 500) : ".");
+        } else {
+            error =
+                "O sender NDI não confirmou AUDIO_PIPE_V1, NAME_ARGUMENT_V1 e DYNAMIC_PROFILE_V1.";
+        }
+    }
+
     return {
         ok: modern || !requireModern,
         modern,
-        error: modern ? null : "O sender NDI não confirmou AUDIO_PIPE_V1, NAME_ARGUMENT_V1 e DYNAMIC_PROFILE_V1."
+        error
     };
 }
 
