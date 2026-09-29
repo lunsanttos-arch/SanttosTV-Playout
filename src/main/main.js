@@ -770,8 +770,12 @@ function startNativePlayback(
         !ndiProcess.stdin ||
         ndiProcess.stdin.destroyed
     ) {
+        const detail = ndiLastError
+            ? " " + ndiLastError
+            : "";
         throw new Error(
-            "Engine NDI ainda não está pronto."
+            "Engine NDI ainda não está pronto." +
+            detail
         );
     }
 
