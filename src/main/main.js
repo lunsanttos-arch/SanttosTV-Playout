@@ -1313,6 +1313,19 @@ function registerIpcHandlers() {
         "settings:set-output",
         async (_event, output) => {
             try {
+                const engineState =
+                    playoutEngine.snapshot().state;
+                if (
+                    engineState === "PLAYING" ||
+                    engineState === "PAUSED"
+                ) {
+                    return {
+                        ok: false,
+                        error:
+                            "Pare o PROGRAM antes de alterar o perfil técnico da saída NDI."
+                    };
+                }
+
                 const saved =
                     updateOutputSettings(output);
 
