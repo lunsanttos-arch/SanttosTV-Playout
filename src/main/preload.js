@@ -207,10 +207,41 @@ contextBridge.exposeInMainWorld(
                 overlayState
             ),
 
+        pauseNdiFile: () =>
+            ipcRenderer.invoke(
+                "playout:pause"
+            ),
+
+        seekNdiFile: (positionSeconds) =>
+            ipcRenderer.invoke(
+                "playout:seek",
+                positionSeconds
+            ),
+
         stopNdiFile: () =>
             ipcRenderer.invoke(
                 "ndi:stop-file"
             ),
+
+        onNativePlayoutEnded: (callback) => {
+            if (typeof callback !== "function") {
+                return () => {};
+            }
+
+            const listener = (_event, payload) =>
+                callback(payload);
+
+            ipcRenderer.on(
+                "playout:native-ended",
+                listener
+            );
+
+            return () =>
+                ipcRenderer.removeListener(
+                    "playout:native-ended",
+                    listener
+                );
+        },
 
         startPlayoutReport: (mediaItem) =>
             ipcRenderer.invoke(
