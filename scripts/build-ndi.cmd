@@ -28,7 +28,7 @@ if exist "src\core\ndi\ndi_test.exe" (
     )
 )
 
-cl /nologo /std:c++17 /EHsc /O2 /I "%NDI_SDK_DIR%\Include" ^
+cl /nologo /std:c++17 /EHsc /O2 /MT /D NOMINMAX /I "%NDI_SDK_DIR%\Include" ^
   /Fe:"src\core\ndi\ndi_test.exe" "src\core\ndi\ndi_test.cpp" ^
   /link /LIBPATH:"%NDI_SDK_DIR%\Lib\x64" Processing.NDI.Lib.x64.lib
 if errorlevel 1 (
