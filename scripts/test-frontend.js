@@ -57,6 +57,13 @@ assert(app.includes("nativePlayout.state === \"PLAYING\"") &&
     app.includes("onNativePlayoutEnded") &&
     app.includes("pauseNdiFile"),
     "PROGRAM deve ser controlado pelo motor nativo, incluindo pausa e fim de bloco.");
+assert(app.includes("program-progress-slider") &&
+    app.includes("seekProgram") &&
+    app.includes("seekNdiFile"),
+    "Player próprio deve oferecer seek ligado ao motor Santtos.");
+assert(app.includes("MOTOR SANTTOS · NDI ATIVO") &&
+    app.includes("MOTOR SANTTOS · PAUSADO"),
+    "Operador deve enxergar claramente o estado do motor nativo.");
 assert(app.includes("PROGRAM nasce no motor nativo") &&
     !app.includes("Verificar primeiro se o Chromium consegue reproduzir a fonte."),
     "Chromium deve ser somente prévia; não pode autorizar o PROGRAM.");
