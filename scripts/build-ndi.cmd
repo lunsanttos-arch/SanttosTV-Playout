@@ -10,8 +10,23 @@ if not exist "%NDI_SDK_DIR%\Include\Processing.NDI.Lib.h" (
 )
 where cl.exe >nul 2>&1
 if errorlevel 1 (
-    echo ERRO: abra o "x64 Native Tools Command Prompt for VS 2022".
-    echo Este projeto requer o compilador C++ MSVC para montar o sender NDI.
+    set "VSWHERE=%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+    if exist "%VSWHERE%" (
+        for /f "usebackq tokens=*" %%I in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do (
+            set "VSINSTALL=%%I"
+        )
+    )
+    if defined VSINSTALL if exist "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat" (
+        echo Carregando ambiente MSVC x64 automaticamente...
+        call "%VSINSTALL%\VC\Auxiliary\Build\vcvars64.bat" >nul
+    )
+)
+
+where cl.exe >nul 2>&1
+if errorlevel 1 (
+    echo ERRO: compilador C++ MSVC x64 nao encontrado.
+    echo Instale o Visual Studio 2022 Build Tools com "Desktop development with C++".
+    echo Depois execute novamente este comando.
     exit /b 1
 )
 if not exist "%NDI_SDK_DIR%\Lib\x64\Processing.NDI.Lib.x64.lib" (
