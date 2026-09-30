@@ -39,6 +39,10 @@ assert(packageConfig.build?.nsis?.oneClick === false &&
     packageConfig.build?.nsis?.createDesktopShortcut === true &&
     packageConfig.build?.nsis?.createStartMenuShortcut === true,
     "Instalador NSIS deve criar atalhos e permitir instalação assistida.");
+assert(packageConfig.build?.nsis?.installerIcon === "icon.ico" &&
+    packageConfig.build?.nsis?.uninstallerIcon === "icon.ico" &&
+    packageConfig.build?.nsis?.installerHeaderIcon === "icon.ico",
+    "Instalador, desinstalador e cabeçalho NSIS devem usar o ícone oficial.");
 assert(electronMain.includes("resolveAppIcon") &&
     electronMain.includes('"../../build-resources/icon.ico"') &&
     electronMain.includes("process.resourcesPath"),
