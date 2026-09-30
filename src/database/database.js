@@ -713,6 +713,7 @@ function getTimeline() {
                 sourceMediaId:
                     entry.sourceMediaId,
                 loop: Boolean(entry.loop),
+                freezeEnd: Boolean(entry.freezeEnd),
                 watermark: Boolean(entry.watermark),
                 inPoint: normalizeClipNumber(entry.inPoint, 0),
                 outPoint: normalizeClipNumber(
@@ -772,6 +773,7 @@ function saveTimeline(timelineItems) {
                 id: item.id,
                 sourceMediaId,
                 loop: Boolean(item.loop),
+                freezeEnd: Boolean(item.freezeEnd),
                 watermark: Boolean(item.watermark),
                 inPoint: normalizeClipNumber(item.inPoint, 0),
                 outPoint: normalizeClipNumber(
@@ -840,6 +842,7 @@ function getDailyRundown(dateValue) {
                   notes: normalizeText(entry.notes, "", 500),
                   exhibitionType: normalizeExhibitionType(entry.exhibitionType),
                   watermark: Boolean(entry.watermark),
+                  freezeEnd: Boolean(entry.freezeEnd),
                   hashtag: normalizeHashtag(entry.hashtag ?? ""),
                   inPoint: normalizeClipNumber(entry.inPoint, 0),
                   outPoint: normalizeClipNumber(
@@ -883,6 +886,7 @@ function saveDailyRundown(rundown) {
             notes: normalizeText(item.notes, "", 500),
             exhibitionType: normalizeExhibitionType(item.exhibitionType),
             watermark: Boolean(item.watermark),
+            freezeEnd: Boolean(item.freezeEnd),
             hashtag: normalizeHashtag(item.hashtag ?? ""),
             inPoint: normalizeClipNumber(item.inPoint, 0),
             outPoint: normalizeClipNumber(item.outPoint, item.duration ?? 0)
