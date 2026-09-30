@@ -145,6 +145,17 @@ assert(app.includes("programmedEndAtMs") &&
 assert(app.includes("timelineForecast.isLive") &&
     app.includes("Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000"),
     "Parada do PLAYER e dados obsoletos precisam invalidar previsão.");
+assert(app.includes("toggleTimelineFreeze") &&
+    app.includes("timeline-freeze-button") &&
+    app.includes("holdLastFrame") &&
+    app.includes("freezeHoldItemId"),
+    "Timeline deve oferecer FREEZE no último frame e manter estado operacional até liberação.");
+assert(app.includes("selectedMedia.freezeEnd") &&
+    app.includes('playNextMedia(\n                                    selectedMedia &&') &&
+    app.includes('"completed"'),
+    "NEXT deve liberar o FREEZE como conclusão normal, sem marcar o item como pulado.");
+assert(appCss.includes(".timeline-freeze-button.active"),
+    "Botão FREEZE ativo deve ser visível para o operador.");
 const etaCode = fs.readFileSync(
     path.join(root, "src", "renderer", "src", "timeline-forecast.ts"), "utf8"
 );
