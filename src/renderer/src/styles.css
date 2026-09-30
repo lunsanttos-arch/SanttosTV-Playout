@@ -1254,6 +1254,31 @@ button {
     background: #9b2840;
 }
 
+.timeline-freeze-button {
+    min-width: 38px !important;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.45px;
+}
+
+.timeline-freeze-button.active {
+    color: #ffffff;
+    background: #7d2133;
+    border-color: #b3344c;
+}
+
+.timeline-freeze-button.active:hover {
+    background: #9b2840;
+}
+
+.timeline-item.active .timeline-freeze-button {
+    opacity: 0.75;
+}
+
+.timeline-item.active .timeline-freeze-button.active {
+    opacity: 1;
+}
+
 .timeline-remove {
     color: #c8a7ad !important;
 }
