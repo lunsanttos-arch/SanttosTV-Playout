@@ -10,11 +10,14 @@ export interface ForecastMedia {
     inPoint?: number | null;
     outPoint?: number | null;
     loop?: boolean;
+    freezeEnd?: boolean;
 }
 
 export type ForecastState =
     | "current" | "upcoming" | "loop" | "paused" | "waiting"
-    | "unknown-duration" | "blocked-loop" | "blocked-duration";
+    | "current-freeze" | "upcoming-freeze" | "hold"
+    | "unknown-duration" | "blocked-loop" | "blocked-duration"
+    | "blocked-freeze";
 
 export interface ForecastEntry {
     state: ForecastState;
@@ -67,6 +70,8 @@ export function buildTimelineForecast(
         currentTime: number;
         /** Timestamp da última amostra válida do tempo do player. */
         sampledAtMs?: number;
+        /** Item já terminou e o PROGRAM está segurando o último frame. */
+        holdingAtEnd?: boolean;
     }
 ): ForecastResult {
     const entries = new Map<string, ForecastEntry>();
@@ -79,6 +84,30 @@ export function buildTimelineForecast(
     // Loops já executados não podem bloquear a previsão da fila atual.
     const hasLoop = queue.slice(Math.max(0, selectedIndex))
         .some(item => item.loop === true);
+
+    if (
+        selectedIndex >= 0 &&
+        options.holdingAtEnd === true &&
+        queue[selectedIndex]?.freezeEnd === true
+    ) {
+        queue.slice(selectedIndex).forEach((item, index) => {
+            entries.set(
+                item.id,
+                index === 0
+                    ? {
+                          state: "hold",
+                          remainingSeconds: 0,
+                          startsAtMs: null,
+                          endsAtMs: null
+                      }
+                    : unknown("blocked-freeze")
+            );
+        });
+        return {
+            entries, remainingSeconds: null, endsAtMs: null,
+            hasLoop, isLive: true
+        };
+    }
 
     if (selectedIndex < 0 || !options.isRunning ||
         !Number.isFinite(options.currentTime)) {
@@ -94,7 +123,11 @@ export function buildTimelineForecast(
     }
 
     let cumulative = 0;
-    let blocker: "blocked-loop" | "blocked-duration" | null = null;
+    let blocker:
+        | "blocked-loop"
+        | "blocked-duration"
+        | "blocked-freeze"
+        | null = null;
     const remainingItems = queue.slice(selectedIndex);
 
     remainingItems.forEach((item, index) => {
@@ -129,16 +162,22 @@ export function buildTimelineForecast(
 
         const startsAtMs = now + cumulative * 1000;
         const endsAtMs = startsAtMs + length * 1000;
-        const state: ForecastState = item.loop ? "loop"
-            : index === 0 ? "current" : "upcoming";
+        const state: ForecastState = item.loop
+            ? "loop"
+            : item.freezeEnd
+              ? index === 0 ? "current-freeze" : "upcoming-freeze"
+              : index === 0 ? "current" : "upcoming";
         entries.set(item.id, {
             state,
             remainingSeconds: cumulative,
             startsAtMs,
+            // Para FREEZE, este horário é quando o vídeo chega ao último frame.
+            // A saída real do PROGRAM depende da liberação manual.
             endsAtMs: item.loop ? null : endsAtMs
         });
         cumulative += length;
         if (item.loop) blocker = "blocked-loop";
+        else if (item.freezeEnd) blocker = "blocked-freeze";
     });
 
     const last = remainingItems[remainingItems.length - 1];
@@ -190,7 +229,11 @@ export function buildPlannedSchedule(
     }
     let cursor = match[0] * 3600 + match[1] * 60;
     let total = 0;
-    let blocked: "LOOP ANTERIOR" | "DURAÇÃO ANTERIOR DESCONHECIDA" | null = null;
+    let blocked:
+        | "LOOP ANTERIOR"
+        | "FREEZE ANTERIOR"
+        | "DURAÇÃO ANTERIOR DESCONHECIDA"
+        | null = null;
     for (const item of items) {
         if (blocked) {
             times.set(item.id, "SEM PREVISÃO — " + blocked);
@@ -208,6 +251,9 @@ export function buildPlannedSchedule(
         }
         cursor += clip.length;
         total += clip.length;
+        if (item.freezeEnd) {
+            blocked = "FREEZE ANTERIOR";
+        }
     }
     return {
         times,
@@ -257,6 +303,12 @@ export function describeForecastEntry(
         case "loop":
             if (isCurrent) return "EM LOOP • SEM HORÁRIO FINAL";
             return `FALTA ${formatRemaining(entry.remainingSeconds!)} • ENTRA EST. ${formatEstimatedClock(entry.startsAtMs!, nowMs)} • LOOP`;
+        case "current-freeze":
+            return `FREEZE EM ${formatRemaining((entry.endsAtMs! - nowMs) / 1000)} • ÚLTIMO FRAME ${formatEstimatedClock(entry.endsAtMs!, nowMs)} • SAÍDA MANUAL`;
+        case "upcoming-freeze":
+            return `FALTA ${formatRemaining(entry.remainingSeconds!)} • ENTRA EST. ${formatEstimatedClock(entry.startsAtMs!, nowMs)} • FREEZE AO FINAL`;
+        case "hold":
+            return "ÚLTIMO FRAME CONGELADO • AGUARDANDO LIBERAÇÃO";
         case "paused":
             return "PAUSADO • HORÁRIO DE ENTRADA INDEFINIDO";
         case "waiting":
@@ -267,5 +319,7 @@ export function describeForecastEntry(
             return "SEM PREVISÃO • DURAÇÃO ANTERIOR DESCONHECIDA";
         case "blocked-loop":
             return "SEM PREVISÃO • LOOP ANTERIOR";
+        case "blocked-freeze":
+            return "SEM PREVISÃO • AGUARDANDO LIBERAÇÃO DO FREEZE";
     }
 }
