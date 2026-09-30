@@ -134,6 +134,45 @@ assert.equal(previouslyLooped.entries.get("movie-block-2").remainingSeconds, 20)
 assert.notEqual(previouslyLooped.endsAtMs, null);
 
 
+const freezeQueue = [
+    { id: "clip-a", duration: 60, freezeEnd: true },
+    { id: "clip-b", duration: 30 }
+];
+const freezeRunning = plan(freezeQueue, "clip-a", {
+    currentTime: 10,
+    sampledAtMs: now
+});
+assert.equal(freezeRunning.entries.get("clip-a").state, "current-freeze");
+assert.equal(freezeRunning.entries.get("clip-b").state, "blocked-freeze");
+assert.equal(freezeRunning.entries.get("clip-b").startsAtMs, null);
+assert.equal(freezeRunning.endsAtMs, null);
+assert.match(
+    describeForecastEntry(freezeRunning.entries.get("clip-a"), now, true),
+    /SAÍDA MANUAL/
+);
+
+const freezeHeld = plan(freezeQueue, "clip-a", {
+    isRunning: false,
+    currentTime: 60,
+    holdingAtEnd: true
+});
+assert.equal(freezeHeld.entries.get("clip-a").state, "hold");
+assert.equal(freezeHeld.entries.get("clip-b").state, "blocked-freeze");
+assert.equal(freezeHeld.entries.get("clip-b").startsAtMs, null);
+assert.equal(freezeHeld.isLive, true);
+assert.match(
+    describeForecastEntry(freezeHeld.entries.get("clip-a"), now, true),
+    /ÚLTIMO FRAME CONGELADO/
+);
+
+const freezeReleased = plan(freezeQueue, "clip-b", {
+    nowMs: now + 120000,
+    currentTime: 0,
+    sampledAtMs: now + 120000
+});
+assert.equal(freezeReleased.entries.get("clip-b").state, "current");
+assert.equal(freezeReleased.entries.get("clip-b").startsAtMs, now + 120000);
+
 const unknown = plan([queue[0], { id: "missing", duration: null }, queue[2]]);
 assert.equal(unknown.entries.get("missing").state, "unknown-duration");
 assert.equal(unknown.entries.get("movie-block-2").state, "blocked-duration");
@@ -179,9 +218,15 @@ const plannedLoop = buildPlannedSchedule([
     { id: "next", duration: 20 }
 ], "08:00");
 assert.match(plannedLoop.times.get("next"), /LOOP ANTERIOR/);
+const plannedFreeze = buildPlannedSchedule([
+    { id: "freeze", duration: 20, freezeEnd: true },
+    { id: "next", duration: 20 }
+], "08:00");
+assert.match(plannedFreeze.times.get("next"), /FREEZE ANTERIOR/);
+assert.equal(plannedFreeze.end, "SEM PREVISÃO");
 const badStart = buildPlannedSchedule([{ id: "clip", duration: 20 }], "29:75");
 assert.equal(badStart.times.get("clip"), "SEM PREVISÃO — INÍCIO INVÁLIDO");
 
 console.log(
-    "TIMELINE ETA QA: APROVADO — cortes, countdown estável, pausa/retomada, seek, reordenação, loop, mídia sem duração e meia-noite."
+    "TIMELINE ETA QA: APROVADO — cortes, countdown estável, pausa/retomada, seek, reordenação, loop, freeze manual, mídia sem duração e meia-noite."
 );
