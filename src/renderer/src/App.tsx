@@ -25,6 +25,7 @@ export interface MediaItem {
     id: string;
     sourceMediaId?: string;
     loop?: boolean;
+    freezeEnd?: boolean;
     watermark?: boolean;
     hashtag?: string;
     inPoint?: number;
@@ -888,6 +889,8 @@ function PlayoutPanel({
     const [editingFilm, setEditingFilm] =
         useState<MediaItem | null>(null);
     const clipAdvanceGuardRef = useRef(false);
+    const [freezeHoldItemId, setFreezeHoldItemId] =
+        useState<string | null>(null);
     const activeReportIdRef = useRef<string | null>(null);
     const lastProgressRef = useRef({
         position: Number.NaN,
@@ -990,6 +993,7 @@ function PlayoutPanel({
                 id: `${sourceMediaId}-rundown-${rundownApplyRequest.key}-${index}`,
                 sourceMediaId,
                 loop: false,
+                freezeEnd: Boolean(item.freezeEnd),
                 watermark: Boolean(item.watermark),
                 hashtag: item.hashtag ?? "",
                 inPoint: getClipIn(item),
@@ -1068,6 +1072,7 @@ function PlayoutPanel({
                         id: entry.id,
                         sourceMediaId: sourceId,
                         loop: Boolean(entry.loop),
+                        freezeEnd: Boolean(entry.freezeEnd),
                         watermark: Boolean(entry.watermark),
                         hashtag: entry.hashtag ?? "",
                         inPoint: normalizeClipPoint(entry.inPoint, 0),
@@ -1219,7 +1224,13 @@ function PlayoutPanel({
             nowMs: timelineClock,
             isRunning: forecastRunning,
             currentTime,
-            sampledAtMs: lastProgressRef.current.atMs
+            sampledAtMs: lastProgressRef.current.atMs,
+            holdingAtEnd:
+                Boolean(
+                    selectedMedia &&
+                    selectedMedia.freezeEnd &&
+                    freezeHoldItemId === selectedMedia.id
+                )
         }
     );
 
@@ -1626,6 +1637,14 @@ function PlayoutPanel({
     async function playVideo() {
         let mediaToPlay = selectedMedia;
 
+        if (
+            mediaToPlay &&
+            freezeHoldItemId === mediaToPlay.id
+        ) {
+            setFreezeHoldItemId(null);
+            clipAdvanceGuardRef.current = false;
+        }
+
         if (!mediaToPlay) {
             mediaToPlay = timelineQueue[0] ?? null;
 
@@ -1730,7 +1749,21 @@ function PlayoutPanel({
     }
 
     async function stopVideo() {
-        await finishExecutionReport("PULADO");
+        const wasHolding =
+            Boolean(
+                selectedMedia &&
+                freezeHoldItemId === selectedMedia.id
+            );
+
+        await finishExecutionReport(
+            wasHolding ? "EXECUTADO" : "PULADO",
+            selectedMedia,
+            wasHolding
+                ? getClipDuration(selectedMedia)
+                : undefined
+        );
+        setFreezeHoldItemId(null);
+
         if (nativeOutputEnabled) {
             await window.santtosAPI.stopNdiFile();
         }
@@ -1790,9 +1823,40 @@ function PlayoutPanel({
         }
     }
 
+    function holdLastFrame(mediaItem: MediaItem) {
+        const outPoint = getClipOut(mediaItem);
+        const sampledAtMs = Date.now();
+        const video = videoRef.current;
+
+        if (video) {
+            video.pause();
+            if (Number.isFinite(outPoint)) {
+                try {
+                    video.currentTime = Math.max(
+                        getClipIn(mediaItem),
+                        outPoint - 0.001
+                    );
+                } catch {
+                    // O frame nativo já permanece no PROGRAM/NDI.
+                }
+            }
+        }
+
+        setFreezeHoldItemId(mediaItem.id);
+        setCurrentTime(outPoint);
+        lastProgressRef.current = {
+            position: outPoint,
+            atMs: sampledAtMs
+        };
+        setTimelineClock(sampledAtMs);
+        setIsPlaying(false);
+    }
+
     async function playNextMedia(
         reason: "completed" | "skipped" = "skipped"
     ) {
+        setFreezeHoldItemId(null);
+
         await finishExecutionReport(
             reason === "completed" ? "EXECUTADO" : "PULADO",
             selectedMedia,
@@ -1880,6 +1944,12 @@ function PlayoutPanel({
                     }
 
                     clipAdvanceGuardRef.current = true;
+
+                    if (selectedMedia.freezeEnd) {
+                        holdLastFrame(selectedMedia);
+                        return;
+                    }
+
                     void playNextMedia("completed").catch(
                         (error) => {
                             console.error(
@@ -1897,7 +1967,8 @@ function PlayoutPanel({
         nativeOutputEnabled,
         selectedMedia?.id,
         nextMedia?.id,
-        selectedMedia?.loop
+        selectedMedia?.loop,
+        selectedMedia?.freezeEnd
     ]);
 
     async function handleProgramTimeUpdate(
@@ -1934,6 +2005,12 @@ function PlayoutPanel({
             !clipAdvanceGuardRef.current
         ) {
             clipAdvanceGuardRef.current = true;
+
+            if (selectedMedia.freezeEnd) {
+                holdLastFrame(selectedMedia);
+                return;
+            }
+
             await playNextMedia("completed");
         }
     }
@@ -1953,6 +2030,7 @@ function PlayoutPanel({
                 .slice(2)}`,
             sourceMediaId,
             loop: false,
+            freezeEnd: false,
             watermark: false,
             hashtag: "",
             inPoint: 0,
@@ -2004,12 +2082,23 @@ function PlayoutPanel({
     }
 
     function toggleTimelineLoop(mediaId: string) {
+        const enabling =
+            !Boolean(
+                timelineQueue.find(
+                    (item) => item.id === mediaId
+                )?.loop
+            );
+
         setTimelineQueue((current) =>
             current.map((item) =>
                 item.id === mediaId
                     ? {
                           ...item,
-                          loop: !item.loop
+                          loop: enabling,
+                          freezeEnd:
+                              enabling
+                                  ? false
+                                  : Boolean(item.freezeEnd)
                       }
                     : item
             )
@@ -2018,7 +2107,46 @@ function PlayoutPanel({
         if (selectedMedia?.id === mediaId) {
             onSelectMedia({
                 ...selectedMedia,
-                loop: !selectedMedia.loop
+                loop: enabling,
+                freezeEnd:
+                    enabling
+                        ? false
+                        : Boolean(selectedMedia.freezeEnd)
+            });
+        }
+    }
+
+    function toggleTimelineFreeze(mediaId: string) {
+        const enabling =
+            !Boolean(
+                timelineQueue.find(
+                    (item) => item.id === mediaId
+                )?.freezeEnd
+            );
+
+        setTimelineQueue((current) =>
+            current.map((item) =>
+                item.id === mediaId
+                    ? {
+                          ...item,
+                          freezeEnd: enabling,
+                          loop:
+                              enabling
+                                  ? false
+                                  : Boolean(item.loop)
+                      }
+                    : item
+            )
+        );
+
+        if (selectedMedia?.id === mediaId) {
+            onSelectMedia({
+                ...selectedMedia,
+                freezeEnd: enabling,
+                loop:
+                    enabling
+                        ? false
+                        : Boolean(selectedMedia.loop)
             });
         }
     }
@@ -2196,7 +2324,10 @@ function PlayoutPanel({
             inPoint: range.inPoint,
             outPoint: range.outPoint,
             blockLabel: `Bloco ${index + 1}`,
-            loop: false
+            loop: false,
+            freezeEnd:
+                Boolean(source.freezeEnd) &&
+                index === ranges.length - 1
         }));
 
         setTimelineQueue((current) => {
@@ -2451,8 +2582,13 @@ function PlayoutPanel({
                                         )
                                     }
                                     onEnded={() => {
-                                        if (!nativeOutputEnabled) {
-                                            void playNextMedia("completed");
+                                        if (!nativeOutputEnabled && selectedMedia) {
+                                            if (selectedMedia.freezeEnd) {
+                                                clipAdvanceGuardRef.current = true;
+                                                holdLastFrame(selectedMedia);
+                                            } else {
+                                                void playNextMedia("completed");
+                                            }
                                         }
                                     }}
                                 />
@@ -2544,7 +2680,14 @@ function PlayoutPanel({
                         >■</button>
                         <button
                             title="Próximo vídeo"
-                            onClick={() => playNextMedia("skipped")}
+                            onClick={() =>
+                                playNextMedia(
+                                    selectedMedia &&
+                                    freezeHoldItemId === selectedMedia.id
+                                        ? "completed"
+                                        : "skipped"
+                                )
+                            }
                             disabled={!nextMedia}
                         >⏭</button>
 
@@ -2939,6 +3082,19 @@ function PlayoutPanel({
                                                             )
                                                         }
                                                     >↻</button>
+                                                    <button
+                                                        className={
+                                                            item.freezeEnd
+                                                                ? "timeline-freeze-button active"
+                                                                : "timeline-freeze-button"
+                                                        }
+                                                        title="Congelar o último frame ao final"
+                                                        onClick={() =>
+                                                            toggleTimelineFreeze(
+                                                                item.id
+                                                            )
+                                                        }
+                                                    >FRZ</button>
                                                     {!isCurrent && (
                                                         <button
                                                             className="timeline-remove"
