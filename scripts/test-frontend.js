@@ -83,6 +83,10 @@ assert(app.includes("Somente o item que está efetivamente NO AR é preservado."
 
 assert(app.includes("OpecSchedulerPanel") && app.includes('label: "Programação"'),
     "Programação diária deve permanecer integrada ao Playout.");
+assert(app.includes("buildPlannedSchedule") &&
+    app.includes("programmedStartTime"),
+    "Tela principal deve manter horários programados independentemente do estado do player.");
+
 assert(app.includes("ProgramAudioMeters") &&
     app.includes("nativeOutputEnabled") &&
     app.includes("audioStatus={audioStatus}"),
@@ -240,7 +244,10 @@ assert(exhibition.includes("exhibitionPreviewAnchor"),
 
 const opecPath = path.join(root, "src", "renderer", "src", "OpecSchedulerPanel.tsx");
 const opec = fs.readFileSync(opecPath, "utf8");
-assert(opec.includes("exhibitionType"), "Roteiro diário deve permitir marcação editorial.");
+assert(opec.includes("exhibitionType"), "Programação diária deve permitir marcação editorial.");
+assert(opec.includes('useState("00:00")') &&
+    opec.includes('saved.startTime || "00:00"'),
+    "Programação deve começar às 00:00 por padrão.");
 assert(app.includes("+ Nova aba"), "Biblioteca deve oferecer criação de sub-aba.");
 assert(app.includes("selectLibraryFolder"), "Criação/configuração deve usar seletor de pasta.");
 assert(app.includes("scanLibraryCategory"), "Biblioteca deve conseguir atualizar a pasta ativa.");
@@ -261,6 +268,36 @@ assert(watermarkSettings.includes('label="Tamanho"') &&
     watermarkSettings.includes('label="Posição X"') &&
     watermarkSettings.includes('label="Fade"'),
     "Marca d'água deve usar sliders para tamanho, posição e fade.");
+const webInputs = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "WebInputsPanel.tsx"),
+    "utf8"
+);
+assert(app.includes("<WebInputsPanel") &&
+    webInputs.includes("MÓDULO PREMIUM") &&
+    webInputs.includes('value="srt"') &&
+    webInputs.includes("HLS / M3U8") &&
+    webInputs.includes("sizePercent") &&
+    webInputs.includes('type="range"'),
+    "Biblioteca deve oferecer Inputs premium com HTTP/HLS/SRT, duração/horário e tamanho.");
+assert(app.includes('sourceType !== "input"') &&
+    app.includes("program-live-input-preview"),
+    "Input remoto não deve ser tratado como arquivo local no preview.");
+
+const reportingSettings = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "ReportingSettingsTab.tsx"),
+    "utf8"
+);
+assert(settings.includes('tab === "reporting"') &&
+    settings.includes("ReportingSettingsTab") &&
+    reportingSettings.includes("Escolher pasta") &&
+    reportingSettings.includes("Relatorio_Exibicao_AAAA-MM-DD.xml"),
+    "Configurações devem permitir escolher a pasta dos relatórios XML.");
+
+assert(app.includes("operation-status-card") &&
+    app.includes("SERVIDOR DE ARQUIVOS") &&
+    app.includes("INPUT EXTERNO"),
+    "Tela principal deve usar o espaço operacional para status da origem e horários.");
+
 
 
 const createStart = app.indexOf("async function createCategory()");
