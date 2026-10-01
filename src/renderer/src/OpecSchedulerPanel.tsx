@@ -75,7 +75,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
             })
             .catch((error: unknown) => {
                 console.error(error);
-                if (!cancelled) setStatus("Não foi possível carregar o roteiro deste dia.");
+                if (!cancelled) setStatus("Não foi possível carregar a programação deste dia.");
             })
             .finally(() => {
                 if (!cancelled) setLoading(false);
@@ -161,7 +161,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
             }
             const saved: DailyRundown = result.rundown;
             setItems(saved.items ?? []);
-            if (showMessage) setStatus("Roteiro salvo.");
+            if (showMessage) setStatus("Programação salva.");
             return saved;
         } finally {
             setLoading(false);
@@ -185,10 +185,10 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                 <div>
                     <div className="panel-title">PROGRAMAÇÃO</div>
                     <h1>Programação diária</h1>
-                    <p>Monte a ordem do dia e envie para o Playout sem alterar o arquivo original. Os horários aqui são programados; a previsão ao vivo aparece na Timeline.</p>
+                    <p>Monte a programação do dia e envie para o Playout sem alterar as mídias originais. Os horários aqui são programados; a previsão ao vivo aparece na Timeline.</p>
                 </div>
                 <div className="opec-header-actions">
-                    <button onClick={() => void saveRundown()} disabled={loading}>Salvar roteiro</button>
+                    <button onClick={() => void saveRundown()} disabled={loading}>Salvar programação</button>
                     <button className="primary-button" onClick={applyRundown} disabled={loading || items.length === 0}>
                         Aplicar no Playout
                     </button>
@@ -197,7 +197,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
 
             <div className="opec-meta-row">
                 <label><span>Data</span><input type="date" value={date} onChange={(e) => setDate(e.currentTarget.value)} /></label>
-                <label className="opec-title-field"><span>Nome do roteiro</span><input value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={120} /></label>
+                <label className="opec-title-field"><span>Nome da programação</span><input value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={120} /></label>
                 <label><span>Início programado</span><input type="time" value={startTime} onChange={(e) => setStartTime(e.currentTarget.value)} /></label>
                 <div className="opec-summary"><span>PROGRAMADO</span><strong>{totalDuration === null ? "--:--:--" : formatDuration(totalDuration)}</strong><small>até {scheduleTimes.end}</small></div>
             </div>
@@ -267,7 +267,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                                         onChange={(e) => patchItem(item.rundownItemId, { hashtag: e.currentTarget.value })}
                                     />
                                 </div>
-                                <button className="opec-remove" title="Remover do roteiro" onClick={() => removeItem(item.rundownItemId)}>×</button>
+                                <button className="opec-remove" title="Remover da programação" onClick={() => removeItem(item.rundownItemId)}>×</button>
                             </article>
                         ))}
                     </div>
