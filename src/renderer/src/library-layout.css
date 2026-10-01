@@ -81,3 +81,142 @@
     flex: 1;
     min-height: 0;
 }
+
+
+.library-inputs-tab {
+    border-color: #6554c0;
+}
+
+.library-inputs-tab.active {
+    background: #362f66;
+    border-color: #8b7cf6;
+}
+
+.web-inputs-panel {
+    display: grid;
+    gap: 12px;
+    min-height: 0;
+    overflow: auto;
+    padding: 2px 0 4px;
+}
+
+.web-input-editor {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: #141414;
+}
+
+.web-input-premium {
+    width: fit-content;
+    padding: 4px 8px;
+    border: 1px solid #6e62c9;
+    border-radius: 999px;
+    color: #c7c0ff;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+}
+
+.web-input-editor label {
+    display: grid;
+    gap: 5px;
+    color: #bababa;
+    font-size: 11px;
+}
+
+.web-input-editor input,
+.web-input-editor select {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 0 9px;
+    color: #f3f3f3;
+    background: #0e0e0e;
+    border: 1px solid #3a3a3a;
+    border-radius: 5px;
+}
+
+.web-input-editor input[type="range"] {
+    height: auto;
+    padding: 0;
+}
+
+.web-input-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.web-input-size-field > span {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.web-input-size-field strong {
+    color: #ffffff;
+}
+
+.web-input-duration-preview {
+    color: #aaa;
+    font-size: 11px;
+}
+
+.web-input-duration-preview strong {
+    color: #ffffff;
+}
+
+.web-input-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.web-input-list {
+    display: grid;
+    gap: 7px;
+}
+
+.web-input-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    gap: 8px;
+    align-items: center;
+    padding: 9px 10px;
+    background: #121212;
+    border: 1px solid #2d2d2d;
+    border-radius: 7px;
+}
+
+.web-input-item > div {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.web-input-item strong,
+.web-input-item span,
+.web-input-item small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.web-input-item span,
+.web-input-item small {
+    color: #8f8f8f;
+    font-size: 10px;
+}
+
+@media (max-width: 1050px) {
+    .web-input-row {
+        grid-template-columns: 1fr;
+    }
+
+    .web-input-item {
+        grid-template-columns: 1fr auto;
+    }
+}
