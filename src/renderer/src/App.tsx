@@ -8,6 +8,7 @@ import {
 import type { CSSProperties } from "react";
 import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
+import WebInputsPanel from "./WebInputsPanel";
 import ProgramAudioMeters from "./ProgramAudioMeters";
 import type { NativeAudioStatus } from "./ProgramAudioMeters";
 import { buildTimelineForecast, buildPlannedSchedule, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
@@ -30,6 +31,7 @@ export interface MediaItem {
     inputTimingMode?: "duration" | "clock";
     inputEndTime?: string;
     fitMode?: "contain" | "cover" | "stretch";
+    sizePercent?: number;
     premiumFeature?: boolean;
     loop?: boolean;
     freezeEnd?: boolean;
@@ -242,6 +244,35 @@ declare global {
                 unconfigured?: boolean;
                 error?: string;
             }>;
+            getWebInputs: () => Promise<{
+                ok: boolean;
+                inputs?: Array<{
+                    id: string;
+                    name: string;
+                    url: string;
+                    protocol: "http" | "https" | "hls" | "m3u8" | "srt";
+                    timingMode: "duration" | "clock";
+                    durationSeconds: number;
+                    endTime: string;
+                    fitMode: "contain" | "cover" | "stretch";
+                    sizePercent: number;
+                    premiumFeature: true;
+                    createdAt: string;
+                }>;
+                error?: string;
+            }>;
+            saveWebInput: (input: unknown) => Promise<{
+                ok: boolean;
+                input?: unknown;
+                inputs?: any[];
+                error?: string;
+            }>;
+            removeWebInput: (id: string) => Promise<{
+                ok: boolean;
+                removed?: boolean;
+                inputs?: any[];
+                error?: string;
+            }>;
             getTimeline: () => Promise<MediaItem[]>;
             saveTimeline: (
                 timelineItems: MediaItem[]
@@ -283,6 +314,9 @@ declare global {
                     audioStreamIndex?: number | null;
                     timingMode?: string;
                     outPointSeconds?: number | null;
+                    sourceType?: "file" | "input";
+                    fitMode?: "contain" | "cover" | "stretch";
+                    sizePercent?: number;
                 }
             ) => Promise<NdiCommandResult>;
             getWatermarkPreview: (
@@ -320,6 +354,17 @@ declare global {
             getPlayoutReportFolder: () => Promise<{
                 ok: boolean;
                 folder?: string;
+            }>;
+            selectPlayoutReportFolder: () => Promise<{
+                ok: boolean;
+                canceled?: boolean;
+                folder?: string;
+                error?: string;
+            }>;
+            resetPlayoutReportFolder: () => Promise<{
+                ok: boolean;
+                folder?: string;
+                error?: string;
             }>;
             sendNdiFrame: (
                 frameData: Uint8Array
@@ -1066,6 +1111,12 @@ function PlayoutPanel({
         setTimelineQueue((current) =>
             current
                 .map((entry): MediaItem | null => {
+                    if (
+                        entry.sourceType === "input"
+                    ) {
+                        return entry;
+                    }
+
                     const sourceId =
                         entry.sourceMediaId ??
                         entry.id;
@@ -1191,9 +1242,11 @@ function PlayoutPanel({
         });
 
     const selectedMediaUrl =
-        selectedMedia
+        selectedMedia &&
+        selectedMedia.sourceType !== "input"
             ? window.santtosAPI.getMediaFileUrl(
-                previewProxyBySource[selectedMedia.path] || selectedMedia.path
+                  previewProxyBySource[selectedMedia.path] ||
+                      selectedMedia.path
               )
             : null;
 
@@ -1401,7 +1454,11 @@ function PlayoutPanel({
     }, [selectedMedia?.path]);
 
     async function prepareBrowserPreview() {
-        if (!selectedMedia || previewPreparing) return;
+        if (
+            !selectedMedia ||
+            selectedMedia.sourceType === "input" ||
+            previewPreparing
+        ) return;
         if (isPlaying && !testBench) {
             setPreviewError("Pare o PROGRAM antes de preparar uma prévia compatível.");
             return;
@@ -1504,7 +1561,13 @@ function PlayoutPanel({
             audioStreamIndex:
                 mediaItem.audioStreamIndex ?? null,
             timingMode:
-                mediaItem.timingMode ?? "unknown"
+                mediaItem.timingMode ?? "unknown",
+            sourceType:
+                mediaItem.sourceType ?? "file",
+            fitMode:
+                mediaItem.fitMode ?? "contain",
+            sizePercent:
+                mediaItem.sizePercent ?? 100
         };
     }
 
@@ -2109,8 +2172,15 @@ function PlayoutPanel({
             hashtag: "",
             inPoint: 0,
             outPoint: mediaItem.duration ?? null,
-            blockLabel: "",
-            exhibitionType: "NORMAL"
+            blockLabel:
+                mediaItem.sourceType === "input"
+                    ? mediaItem.blockLabel ?? "INPUT"
+                    : "",
+            exhibitionType: "NORMAL",
+            fitMode:
+                mediaItem.fitMode ?? "contain",
+            sizePercent:
+                mediaItem.sizePercent ?? 100
         };
 
         setTimelineQueue((current) => {
@@ -2877,6 +2947,32 @@ function PlayoutPanel({
                                 <span className="next-entry-forecast">{describeForecast(nextMedia)}</span>
                             </>
                         )}
+                    </section>
+                    <section className="panel compact-status-card operation-status-card">
+                        <div className="panel-title">OPERAÇÃO</div>
+                        <strong>
+                            {nativePlayout.state === "PAUSED"
+                                ? "PROGRAM PAUSADO"
+                                : ndiOnline
+                                  ? "SAÍDA ESTÁVEL"
+                                  : "VERIFICAR SAÍDA"}
+                        </strong>
+                        <span className="compact-status-meta">
+                            Programado:{" "}
+                            {selectedMedia
+                                ? plannedSchedule.times.get(selectedMedia.id) ?? "--:--:--"
+                                : "--:--:--"}
+                            {" · "}
+                            Próximo:{" "}
+                            {nextMedia
+                                ? plannedSchedule.times.get(nextMedia.id) ?? "--:--:--"
+                                : "--:--:--"}
+                        </span>
+                        <span className="next-entry-forecast">
+                            {nextMedia
+                                ? describeForecast(nextMedia)
+                                : "Fim da programação"}
+                        </span>
                     </section>
                 </div>
 
@@ -3663,6 +3759,8 @@ function LibraryPanel({
     const [activeCategoryId, setActiveCategoryId] = useState("");
     const [categoryStatus, setCategoryStatus] = useState("");
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [libraryMode, setLibraryMode] =
+        useState<"media" | "inputs">("media");
 
     async function loadCategories(preferredId?: string) {
         try {
@@ -4048,11 +4146,26 @@ function LibraryPanel({
                             : ""
                     }
                     onClick={() => {
+                        setLibraryMode("media");
                         setActiveCategoryId("__all__");
                         setCategoryStatus("");
                     }}
                 >
                     Todas
+                </button>
+                <button
+                    type="button"
+                    className={
+                        libraryMode === "inputs"
+                            ? "active library-inputs-tab"
+                            : "library-inputs-tab"
+                    }
+                    onClick={() => {
+                        setLibraryMode("inputs");
+                        setCategoryStatus("");
+                    }}
+                >
+                    Inputs
                 </button>
                 {categories.map((category) => (
                     <button
@@ -4060,6 +4173,7 @@ function LibraryPanel({
                         type="button"
                         className={category.id === activeCategoryId ? "active" : ""}
                         onClick={() => {
+                            setLibraryMode("media");
                             setActiveCategoryId(category.id);
                             setCategoryStatus("");
                         }}
@@ -4072,98 +4186,106 @@ function LibraryPanel({
                 </button>
             </div>
 
-            <div className="library-category-status">
-                <strong>
-                    {activeCategoryId === "__all__"
-                        ? "Pastas:"
-                        : activeCategory?.folderPath
-                          ? "Pasta:"
-                          : "Sem pasta configurada"}
-                </strong>
-                {activeCategoryId === "__all__" ? (
-                    <span>
-                        {configuredFolders.length} pasta(s)
-                        configurada(s) · pesquisa global
-                    </span>
-                ) : (
-                    activeCategory?.folderPath && (
-                        <span title={activeCategory.folderPath}>
-                            {activeCategory.folderPath}
-                        </span>
-                    )
-                )}
-            </div>
-
-            <div className="library-toolbar">
-                <input
-                    className="search-input"
-                    type="search"
-                    value={search}
-                    placeholder="Pesquisar em toda a Biblioteca..."
-                    onChange={(event) => setSearch(event.target.value)}
+            {libraryMode === "inputs" ? (
+                <WebInputsPanel
+                    onAddToTimeline={onAddToTimeline}
                 />
-                <span>{filteredMedia.length} arquivo(s)</span>
-            </div>
-
-            {(categoryStatus || message) && (
-                <div className="library-message">{categoryStatus || message}</div>
-            )}
-
-            {activeCategoryId !== "__all__" &&
-            !activeCategory?.folderPath ? (
-                <div className="empty-state">Configure a pasta desta aba em Configurações → Biblioteca</div>
-            ) : filteredMedia.length === 0 ? (
-                <div className="empty-state">Nenhum vídeo nesta pasta. Clique em Atualizar.</div>
             ) : (
-                <div className="media-list">
-                    {filteredMedia.map((item) => (
-                        <article
-                            key={item.id}
-                            draggable
-                            className="media-item"
-                            onDoubleClick={(event) => {
-                                event.stopPropagation();
-                                onAddToTimeline(item);
-                            }}
-                            onDragStart={(event) => {
-                                event.dataTransfer.effectAllowed = "copy";
-                                event.dataTransfer.setData("application/x-santtos-library-media", item.id);
-                            }}
-                        >
-                            <div className="media-thumbnail">{item.extension.toUpperCase()}</div>
-                            <div className="media-information">
-                                <strong>{item.name}</strong>
-                                <span>{item.path}</span>
-                                <div className="media-metadata">
-                                    <span>{item.width && item.height ? `${item.width}×${item.height}` : "Resolução desconhecida"}</span>
-                                    <span>{item.videoCodec ?? "Codec desconhecido"}</span>
-                                    <span>{item.fps !== null ? `${item.fps.toFixed(3)} fps` : "FPS desconhecido"}</span>
-                                    <span>{formatDuration(item.duration)}</span>
-                                </div>
-                            </div>
-                            <button
-                                className="remove-media-button"
-                                title="Remover da biblioteca"
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    onRemoveMedia(item);
-                                }}
-                            >
-                                Remover
-                            </button>
-                            <button
-                                className="add-timeline-button"
-                                title="Adicionar ao final da timeline"
-                                onClick={(event) => {
+                <>
+                <div className="library-category-status">
+                    <strong>
+                        {activeCategoryId === "__all__"
+                            ? "Pastas:"
+                            : activeCategory?.folderPath
+                              ? "Pasta:"
+                              : "Sem pasta configurada"}
+                    </strong>
+                    {activeCategoryId === "__all__" ? (
+                        <span>
+                            {configuredFolders.length} pasta(s)
+                            configurada(s) · pesquisa global
+                        </span>
+                    ) : (
+                        activeCategory?.folderPath && (
+                            <span title={activeCategory.folderPath}>
+                                {activeCategory.folderPath}
+                            </span>
+                        )
+                    )}
+                </div>
+    
+                <div className="library-toolbar">
+                    <input
+                        className="search-input"
+                        type="search"
+                        value={search}
+                        placeholder="Pesquisar em toda a Biblioteca..."
+                        onChange={(event) => setSearch(event.target.value)}
+                    />
+                    <span>{filteredMedia.length} arquivo(s)</span>
+                </div>
+    
+                {(categoryStatus || message) && (
+                    <div className="library-message">{categoryStatus || message}</div>
+                )}
+    
+                {activeCategoryId !== "__all__" &&
+                !activeCategory?.folderPath ? (
+                    <div className="empty-state">Configure a pasta desta aba em Configurações → Biblioteca</div>
+                ) : filteredMedia.length === 0 ? (
+                    <div className="empty-state">Nenhum vídeo nesta pasta. Clique em Atualizar.</div>
+                ) : (
+                    <div className="media-list">
+                        {filteredMedia.map((item) => (
+                            <article
+                                key={item.id}
+                                draggable
+                                className="media-item"
+                                onDoubleClick={(event) => {
                                     event.stopPropagation();
                                     onAddToTimeline(item);
                                 }}
+                                onDragStart={(event) => {
+                                    event.dataTransfer.effectAllowed = "copy";
+                                    event.dataTransfer.setData("application/x-santtos-library-media", item.id);
+                                }}
                             >
-                                + Timeline
-                            </button>
-                        </article>
-                    ))}
-                </div>
+                                <div className="media-thumbnail">{item.extension.toUpperCase()}</div>
+                                <div className="media-information">
+                                    <strong>{item.name}</strong>
+                                    <span>{item.path}</span>
+                                    <div className="media-metadata">
+                                        <span>{item.width && item.height ? `${item.width}×${item.height}` : "Resolução desconhecida"}</span>
+                                        <span>{item.videoCodec ?? "Codec desconhecido"}</span>
+                                        <span>{item.fps !== null ? `${item.fps.toFixed(3)} fps` : "FPS desconhecido"}</span>
+                                        <span>{formatDuration(item.duration)}</span>
+                                    </div>
+                                </div>
+                                <button
+                                    className="remove-media-button"
+                                    title="Remover da biblioteca"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        onRemoveMedia(item);
+                                    }}
+                                >
+                                    Remover
+                                </button>
+                                <button
+                                    className="add-timeline-button"
+                                    title="Adicionar ao final da timeline"
+                                    onClick={(event) => {
+                                        event.stopPropagation();
+                                        onAddToTimeline(item);
+                                    }}
+                                >
+                                    + Timeline
+                                </button>
+                            </article>
+                        ))}
+                    </div>
+                )}
+                </>
             )}
         </section>
     );
