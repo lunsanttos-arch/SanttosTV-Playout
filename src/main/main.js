@@ -611,12 +611,39 @@ function buildProgramFilterGraph(
             ? state.fitMode
             : "contain";
 
+    const sizePercent =
+        Math.max(
+            10,
+            Math.min(
+                100,
+                Number(state.sizePercent) || 100
+            )
+        );
+    const targetWidth =
+        Math.max(
+            2,
+            Math.round(
+                profile.width *
+                sizePercent /
+                100
+            )
+        );
+    const targetHeight =
+        Math.max(
+            2,
+            Math.round(
+                profile.height *
+                sizePercent /
+                100
+            )
+        );
+
     const geometryFilter =
         fitMode === "stretch"
-            ? `scale=${profile.width}:${profile.height}`
+            ? `scale=${targetWidth}:${targetHeight},pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black`
             : fitMode === "cover"
-              ? `scale=${profile.width}:${profile.height}:force_original_aspect_ratio=increase,crop=${profile.width}:${profile.height}`
-              : `scale=${profile.width}:${profile.height}:force_original_aspect_ratio=decrease,pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black`;
+              ? `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black`
+              : `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black,pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black`;
 
     const chains = [
         `${sourceVideo}${geometryFilter},` +
