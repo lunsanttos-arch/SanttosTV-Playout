@@ -817,18 +817,18 @@ function normalizeRundownDate(value) {
 }
 
 function normalizeRundownTime(value) {
-    const time = normalizeText(value, "06:00", 5);
+    const time = normalizeText(value, "00:00", 5);
     return /^([01]\d|2[0-3]):[0-5]\d$/.test(time)
         ? time
-        : "06:00";
+        : "00:00";
 }
 
 function getDailyRundown(dateValue) {
     const date = normalizeRundownDate(dateValue);
     const stored = data.dailyRundowns?.[date] ?? {
         date,
-        title: "Roteiro diário",
-        startTime: "06:00",
+        title: "Programação diária",
+        startTime: "00:00",
         items: []
     };
     const mediaById = new Map(
@@ -860,7 +860,7 @@ function getDailyRundown(dateValue) {
 
     return {
         date,
-        title: normalizeText(stored.title, "Roteiro diário", 120) || "Roteiro diário",
+        title: normalizeText(stored.title, "Programação diária", 120) || "Programação diária",
         startTime: normalizeRundownTime(stored.startTime),
         items,
         updatedAt: stored.updatedAt ?? null
@@ -901,7 +901,7 @@ function saveDailyRundown(rundown) {
     data.dailyRundowns = data.dailyRundowns ?? {};
     data.dailyRundowns[date] = {
         date,
-        title: normalizeText(rundown.title, "Roteiro diário", 120) || "Roteiro diário",
+        title: normalizeText(rundown.title, "Programação diária", 120) || "Programação diária",
         startTime: normalizeRundownTime(rundown.startTime),
         items,
         updatedAt: new Date().toISOString()
