@@ -1683,8 +1683,11 @@ function PlayoutPanel({
         if (!nativeOutputEnabled) return;
         const video = videoRef.current;
         if (!ndiOnline) {
-            if (ndiWasOnlineRef.current && isPlaying && video) {
-                video.pause();
+            if (
+                ndiWasOnlineRef.current &&
+                isPlaying
+            ) {
+                video?.pause();
                 resumeAfterNdiLossRef.current = true;
             }
             ndiWasOnlineRef.current = false;
@@ -1728,7 +1731,7 @@ function PlayoutPanel({
                 .catch(() => undefined);
         })().catch((error) => {
             console.error("Falha ao retomar sinal NDI:", error);
-            video.pause();
+            video?.pause();
             setIsPlaying(false);
             void finishExecutionReport("PULADO", selectedMedia);
             window.alert("O NDI foi restabelecido, mas nao foi possivel retomar o PROGRAM. Verifique o sinal e reinicie o motor.");
