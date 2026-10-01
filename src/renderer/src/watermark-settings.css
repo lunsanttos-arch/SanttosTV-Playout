@@ -184,3 +184,18 @@
         grid-template-columns: 1fr;
     }
 }
+
+
+.watermark-slider-stack {
+    display: grid;
+    gap: 10px;
+}
+
+.watermark-range-field input[type="range"] {
+    width: 100%;
+}
+
+.watermark-range-field > span strong {
+    color: #ffffff;
+    font-size: 11px;
+}
