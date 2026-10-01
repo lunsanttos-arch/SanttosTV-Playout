@@ -10,6 +10,7 @@ export interface WebInput {
     durationSeconds: number;
     endTime: string;
     fitMode: "contain" | "cover" | "stretch";
+    sizePercent: number;
     premiumFeature: true;
     createdAt: string;
 }
@@ -30,7 +31,8 @@ const EMPTY_INPUT: Omit<
     timingMode: "duration",
     durationSeconds: 60,
     endTime: "00:01:00",
-    fitMode: "contain"
+    fitMode: "contain",
+    sizePercent: 100
 };
 
 function secondsUntilClock(
@@ -163,7 +165,9 @@ export default function WebInputsPanel({
             endTime:
                 input.endTime,
             fitMode:
-                input.fitMode
+                input.fitMode,
+            sizePercent:
+                input.sizePercent ?? 100
         });
         setStatus("");
     }
@@ -256,6 +260,8 @@ export default function WebInputsPanel({
                 input.endTime,
             fitMode:
                 input.fitMode,
+            sizePercent:
+                input.sizePercent ?? 100,
             premiumFeature:
                 true,
             programmedStartTime:
@@ -429,6 +435,33 @@ export default function WebInputsPanel({
                         </select>
                     </label>
                 </div>
+
+                <label className="web-input-size-field">
+                    <span>
+                        Tamanho no PROGRAM
+                        <strong>
+                            {draft.sizePercent}%
+                        </strong>
+                    </span>
+                    <input
+                        type="range"
+                        min={10}
+                        max={100}
+                        step={1}
+                        value={draft.sizePercent}
+                        onChange={(event) =>
+                            setDraft(
+                                (current) => ({
+                                    ...current,
+                                    sizePercent:
+                                        Number(
+                                            event.currentTarget.value
+                                        )
+                                })
+                            )
+                        }
+                    />
+                </label>
 
                 <div className="web-input-row">
                     <label>
