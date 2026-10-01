@@ -69,7 +69,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
         window.santtosAPI.getDailyRundown(date)
             .then((rundown: DailyRundown) => {
                 if (cancelled) return;
-                setTitle(rundown.title || "Roteiro diário");
+                setTitle(rundown.title || "Programação diária");
                 setStartTime(rundown.startTime || "06:00");
                 setItems(Array.isArray(rundown.items) ? rundown.items : []);
             })
@@ -172,10 +172,10 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
         try {
             const saved = await saveRundown(false);
             onApply(saved.items);
-            setStatus("Roteiro enviado para o Playout.");
+            setStatus("Programação aplicada ao Playout.");
         } catch (error) {
             console.error(error);
-            setStatus("Não foi possível aplicar o roteiro no Playout.");
+            setStatus("Não foi possível aplicar a programação no Playout.");
         }
     }
 
@@ -183,8 +183,8 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
         <section className="opec-shell">
             <header className="opec-header">
                 <div>
-                    <div className="panel-title">OPEC / SCHEDULER</div>
-                    <h1>Roteiro diário</h1>
+                    <div className="panel-title">PROGRAMAÇÃO</div>
+                    <h1>Programação diária</h1>
                     <p>Monte a ordem do dia e envie para o Playout sem alterar o arquivo original. Os horários aqui são programados; a previsão ao vivo aparece na Timeline.</p>
                 </div>
                 <div className="opec-header-actions">
