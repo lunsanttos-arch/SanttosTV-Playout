@@ -51,10 +51,38 @@ assert(electronMain.includes("resolveAppIcon") &&
 assert(!settings.includes("Engine atual") &&
     !settings.includes("1920×1080 · 29.97p · BGRA"),
     "Configurações não devem exibir um perfil NDI hardcoded.");
+assert(!settings.includes('label="Pixel format"'),
+    "Pixel format não deve aparecer como configuração operacional.");
+assert(settings.includes("tabHeading") &&
+    settings.includes('title: "Biblioteca"') &&
+    settings.includes('title: "Marca d\'água"') &&
+    settings.includes('title: "Identificação no vídeo"'),
+    "Título de Configurações deve acompanhar a aba ativa.");
+assert(!settings.includes("Resolução, FPS, varredura, aspect ratio e pixel format são aplicados ao PROGRAM NDI"),
+    "Aviso redundante sobre aplicação das configurações ao NDI deve ser removido.");
+
 
 assert(!app.includes('{ panel: "library"'), "Biblioteca não deve voltar ao menu lateral.");
 assert(app.includes("persistent-playout-view"), "Playout persistente deve continuar montado na navegação.");
-assert(app.includes("OpecSchedulerPanel"), "Scheduler/OPEC deve estar integrado.");
+assert(!app.includes('panel: "playlist"') &&
+    !app.includes('label: "Playlist"'),
+    "Playlist separada deve ser removida; a Timeline é a lista operacional.");
+assert(app.includes('RESTANTE{" "}') &&
+    app.includes("selectedClipDuration -"),
+    "Timer do player deve operar em contagem regressiva.");
+assert(app.includes('placeholder="Pesquisar em toda a Biblioteca..."') &&
+    app.includes('activeCategoryId === "__all__"') &&
+    app.includes("const source = normalized") &&
+    app.includes("? libraryMedia"),
+    "Pesquisa da Biblioteca deve ser global e incluir todas as pastas.");
+assert(app.includes("Somente o item que está efetivamente NO AR é preservado.") &&
+    app.includes("setTimelineQueue([") &&
+    app.includes("selectedMedia,") &&
+    app.includes("...prepared"),
+    "Aplicar Programação deve substituir a Timeline preservando somente o item NO AR.");
+
+assert(app.includes("OpecSchedulerPanel") && app.includes('label: "Programação"'),
+    "Programação diária deve permanecer integrada ao Playout.");
 assert(app.includes("ProgramAudioMeters") &&
     app.includes("nativeOutputEnabled") &&
     app.includes("audioStatus={audioStatus}"),
@@ -192,6 +220,18 @@ assert(settings.includes('tab === "exhibition"') && settings.includes("saveExhib
 assert(exhibitionSettings.includes("backgroundEnabled") && exhibitionSettings.includes("fontFamily") &&
     exhibitionSettings.includes("rightOffsetPx") && exhibitionSettings.includes("patchLabel"),
     "Aba precisa configurar fonte, texto, fundo opcional e posição.");
+assert(exhibitionSettings.includes("Montserrat") &&
+    exhibitionSettings.includes("Poppins") &&
+    exhibitionSettings.includes("Roboto Condensed"),
+    "Identificação deve oferecer fontes editoriais modernas.");
+assert(exhibitionSettings.includes("FieldRange") &&
+    exhibitionSettings.includes("Tamanho da fonte") &&
+    exhibitionSettings.includes("exhibition-live-preview-compact"),
+    "Tamanho/posição devem usar sliders e a prévia deve ser compacta.");
+assert(exhibition.includes('textAlign: "center"') &&
+    exhibition.includes('transform: "translateX(-50%)"'),
+    "Prévia da identificação deve permanecer centralizada no logo.");
+
 assert(app.includes("saveExhibitionStyle") && app.includes("exhibitionPreviewStyle"),
     "Alterações precisam chegar ao monitor do PROGRAM.");
 
@@ -212,6 +252,16 @@ assert(app.includes('"santtos:library-categories-updated"') &&
     "Salvar pastas deve sincronizar imediatamente a Biblioteca persistente.");
 assert(librarySettings.includes("Pastas da Biblioteca salvas e sincronizadas."),
     "Configurações devem confirmar que a sincronização da Biblioteca foi disparada.");
+const watermarkSettings = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "WatermarkSettingsTab.tsx"),
+    "utf8"
+);
+assert(watermarkSettings.includes('label="Tamanho"') &&
+    watermarkSettings.includes("RangeField") &&
+    watermarkSettings.includes('label="Posição X"') &&
+    watermarkSettings.includes('label="Fade"'),
+    "Marca d'água deve usar sliders para tamanho, posição e fade.");
+
 
 const createStart = app.indexOf("async function createCategory()");
 assert(createStart >= 0, "Função createCategory não encontrada.");
