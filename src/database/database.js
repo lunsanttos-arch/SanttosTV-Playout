@@ -703,6 +703,48 @@ function getTimeline() {
 
     return data.timeline
         .map((entry) => {
+            if (entry.sourceType === "input") {
+                return {
+                    id: entry.id,
+                    sourceMediaId: entry.sourceMediaId,
+                    sourceType: "input",
+                    inputId: normalizeText(entry.inputId, "", 160),
+                    name: normalizeText(entry.name, "Input Web", 120),
+                    path: normalizeText(entry.path, "", 4096),
+                    extension: normalizeText(entry.extension, "LIVE", 20),
+                    fileSize: 0,
+                    duration: normalizeClipNumber(entry.duration, 60),
+                    width: null,
+                    height: null,
+                    fps: null,
+                    videoCodec: "STREAM",
+                    audioCodec: null,
+                    videoStreamIndex: null,
+                    audioStreamIndex: null,
+                    timingMode: "unknown",
+                    isVariableFrameRate: false,
+                    rotation: 0,
+                    sampleAspectRatio: null,
+                    decoderMode: "software",
+                    thumbnail: null,
+                    status: "stream",
+                    createdAt: entry.createdAt || new Date(0).toISOString(),
+                    inputProtocol: normalizeText(entry.inputProtocol, "http", 20),
+                    inputTimingMode: normalizeText(entry.inputTimingMode, "duration", 20),
+                    inputEndTime: normalizeText(entry.inputEndTime, "", 8),
+                    fitMode: normalizeChoice(entry.fitMode, ["contain", "cover", "stretch"], "contain"),
+                    premiumFeature: true,
+                    loop: false,
+                    freezeEnd: Boolean(entry.freezeEnd),
+                    watermark: Boolean(entry.watermark),
+                    inPoint: 0,
+                    outPoint: normalizeClipNumber(entry.outPoint, entry.duration ?? 60),
+                    blockLabel: normalizeText(entry.blockLabel, "", 80),
+                    exhibitionType: normalizeExhibitionType(entry.exhibitionType),
+                    hashtag: normalizeHashtag(entry.hashtag ?? "")
+                };
+            }
+
             const sourceMedia =
                 mediaById.get(
                     entry.sourceMediaId
@@ -763,6 +805,55 @@ function saveTimeline(timelineItems) {
             const sourceMediaId =
                 item?.sourceMediaId ??
                 item?.id;
+
+            if (
+                item?.sourceType === "input"
+            ) {
+                if (
+                    typeof item?.id !== "string" ||
+                    typeof item?.path !== "string" ||
+                    !/^(https?:\/\/|srt:\/\/)/i.test(item.path)
+                ) {
+                    return null;
+                }
+
+                return {
+                    id: item.id,
+                    sourceMediaId:
+                        typeof sourceMediaId === "string"
+                            ? sourceMediaId
+                            : item.id,
+                    sourceType: "input",
+                    inputId: normalizeText(item.inputId, "", 160),
+                    name: normalizeText(item.name, "Input Web", 120),
+                    path: normalizeText(item.path, "", 4096),
+                    extension: normalizeText(item.extension, "LIVE", 20),
+                    duration: normalizeClipNumber(item.duration, 60),
+                    outPoint: normalizeClipNumber(
+                        item.outPoint,
+                        item.duration ?? 60
+                    ),
+                    inputProtocol: normalizeText(item.inputProtocol, "http", 20),
+                    inputTimingMode: normalizeText(item.inputTimingMode, "duration", 20),
+                    inputEndTime: normalizeText(item.inputEndTime, "", 8),
+                    fitMode: normalizeChoice(item.fitMode, ["contain", "cover", "stretch"], "contain"),
+                    createdAt: normalizeText(item.createdAt, new Date().toISOString(), 64),
+                    loop: false,
+                    freezeEnd: Boolean(item.freezeEnd),
+                    watermark: Boolean(item.watermark),
+                    inPoint: 0,
+                    blockLabel: normalizeText(
+                        item.blockLabel,
+                        "",
+                        80
+                    ),
+                    exhibitionType: normalizeExhibitionType(item.exhibitionType),
+                    hashtag:
+                        normalizeHashtag(
+                            item.hashtag ?? ""
+                        )
+                };
+            }
 
             if (
                 typeof item?.id !== "string" ||
