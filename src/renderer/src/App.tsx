@@ -2796,6 +2796,16 @@ function PlayoutPanel({
                                     </div>
                                 )}
                             </>
+                        ) : selectedMedia?.sourceType === "input" ? (
+                            <div className="program-live-input-preview">
+                                <strong>INPUT AO VIVO</strong>
+                                <span>{selectedMedia.name}</span>
+                                <small>
+                                    {selectedMedia.inputProtocol?.toUpperCase() ?? "STREAM"}
+                                    {" · "}
+                                    saída monitorada pelo PROGRAM / NDI
+                                </small>
+                            </div>
                         ) : (
                             "SEM SINAL"
                         )}
@@ -2835,7 +2845,10 @@ function PlayoutPanel({
                             disabled={!nextMedia}
                         >⏭</button>
 
-                        {selectedMedia && !previewProxyBySource[selectedMedia.path] && !previewError && (
+                        {selectedMedia &&
+                         selectedMedia.sourceType !== "input" &&
+                         !previewProxyBySource[selectedMedia.path] &&
+                         !previewError && (
                             <button
                                 className="program-proxy-action"
                                 title="Gerar prévia MP4 leve para formatos não suportados pelo Chromium"
@@ -2878,7 +2891,11 @@ function PlayoutPanel({
                                     pendingSeek ?? selectedClipCurrent
                                 )
                             )}
-                            disabled={!selectedMedia || selectedClipDuration <= 0}
+                            disabled={
+                                !selectedMedia ||
+                                selectedMedia.sourceType === "input" ||
+                                selectedClipDuration <= 0
+                            }
                             aria-label="Posição do PROGRAM"
                             onChange={(event) => {
                                 const relative = Number(event.currentTarget.value);
