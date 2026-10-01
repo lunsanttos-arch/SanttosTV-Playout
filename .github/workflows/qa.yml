@@ -67,6 +67,7 @@ jobs:
           node --check src/main/testbench.js
           node --check src/database/database.js
           node --check src/core/library/library-categories.js
+          node --check src/core/library/web-inputs.js
           node --check src/core/reporting/playout-report.js
           node --check src/core/graphics/exhibition-overlay.js
           node --check src/core/audio/stereo-meter.js
@@ -75,9 +76,6 @@ jobs:
           node --check src/core/ndi/frame-aligner.js
           node --check src/core/playout/native-playout-engine.js
           node --check src/core/playout/output-profile.js
-
-      - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=high
 
       - name: Security regression tests
         run: npm run test:security
@@ -117,3 +115,8 @@ jobs:
 
       - name: Playout smoke stress
         run: npm run stress:smoke
+
+      # Segurança continua sendo um gate, mas roda por último para não
+      # esconder falhas funcionais e de TypeScript.
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
