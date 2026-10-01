@@ -330,42 +330,46 @@ export default function WatermarkSettingsTab() {
                     />
                 </label>
 
-                <div className="watermark-grid-fields">
-                    <NumberField
-                        label="Largura no Full HD"
+                <div className="watermark-slider-stack">
+                    <RangeField
+                        label="Tamanho"
                         value={draft.widthPx}
                         min={24}
                         max={960}
+                        step={1}
                         suffix="px"
                         onChange={(widthPx) =>
                             patch({ widthPx })
                         }
                     />
-                    <NumberField
+                    <RangeField
                         label="Posição X"
                         value={draft.x}
                         min={0}
                         max={1920}
+                        step={1}
                         suffix="px"
                         onChange={(x) =>
                             patch({ x })
                         }
                     />
-                    <NumberField
+                    <RangeField
                         label="Posição Y"
                         value={draft.y}
                         min={0}
                         max={1080}
+                        step={1}
                         suffix="px"
                         onChange={(y) =>
                             patch({ y })
                         }
                     />
-                    <NumberField
+                    <RangeField
                         label="Fade"
                         value={draft.fadeMs}
                         min={0}
                         max={2000}
+                        step={10}
                         suffix="ms"
                         onChange={(fadeMs) =>
                             patch({ fadeMs })
@@ -472,11 +476,12 @@ export default function WatermarkSettingsTab() {
     );
 }
 
-function NumberField({
+function RangeField({
     label,
     value,
     min,
     max,
+    step,
     suffix,
     onChange
 }: {
@@ -484,34 +489,39 @@ function NumberField({
     value: number;
     min: number;
     max: number;
+    step: number;
     suffix: string;
     onChange: (value: number) => void;
 }) {
     return (
-        <label className="watermark-field">
-            <span>{label}</span>
-            <div className="watermark-number-input">
-                <input
-                    type="number"
-                    min={min}
-                    max={max}
-                    value={value}
-                    onChange={(event) => {
-                        const number = Number(
-                            event.currentTarget.value
+        <label className="watermark-field watermark-range-field">
+            <span>
+                {label}
+                <strong>
+                    {Math.round(value)}
+                    {suffix}
+                </strong>
+            </span>
+            <input
+                type="range"
+                min={min}
+                max={max}
+                step={step}
+                value={value}
+                onChange={(event) => {
+                    const number = Number(
+                        event.currentTarget.value
+                    );
+                    if (Number.isFinite(number)) {
+                        onChange(
+                            Math.min(
+                                max,
+                                Math.max(min, number)
+                            )
                         );
-                        if (Number.isFinite(number)) {
-                            onChange(
-                                Math.min(
-                                    max,
-                                    Math.max(min, number)
-                                )
-                            );
-                        }
-                    }}
-                />
-                <small>{suffix}</small>
-            </div>
+                    }
+                }}
+            />
         </label>
     );
 }
