@@ -7,6 +7,7 @@ import "./broadcast-settings.css";
 import WatermarkSettingsTab from "./WatermarkSettingsTab";
 import LibraryFolderSettingsTab from "./LibraryFolderSettingsTab";
 import ExhibitionSettingsTab from "./ExhibitionSettingsTab";
+import ReportingSettingsTab from "./ReportingSettingsTab";
 import { DEFAULT_EXHIBITION_STYLE } from "./exhibition";
 import type { ExhibitionStyle } from "./exhibition";
 
@@ -15,7 +16,8 @@ type SettingsTab =
     | "library"
     | "watermark"
     | "exhibition"
-    | "hashtag";
+    | "hashtag"
+    | "reporting";
 
 interface HashtagStyle {
     fontFamily: string;
@@ -331,6 +333,11 @@ export default function BroadcastSettingsPanel({
             title: "Hashtag / GC",
             description:
                 "Tipografia e aparência do texto sobre o PROGRAM."
+        },
+        reporting: {
+            title: "Relatórios de exibição",
+            description:
+                "Destino e formato dos registros de tudo que foi ao ar."
         }
     };
 
@@ -407,6 +414,19 @@ export default function BroadcastSettingsPanel({
                     >
                         Hashtag / GC
                     </button>
+                    <button
+                        type="button"
+                        className={
+                            tab === "reporting"
+                                ? "active"
+                                : ""
+                        }
+                        onClick={() =>
+                            setTab("reporting")
+                        }
+                    >
+                        Relatórios
+                    </button>
                 </div>
             </div>
 
@@ -428,6 +448,8 @@ export default function BroadcastSettingsPanel({
                     watermark={watermarkPosition}
                     patch={patchExhibition}
                 />
+            ) : tab === "reporting" ? (
+                <ReportingSettingsTab />
             ) : (
                 <HashtagTab
                     style={hashtag}
@@ -454,7 +476,11 @@ export default function BroadcastSettingsPanel({
                                 : undefined
                     }
                     style={
-                        (tab === "watermark" || tab === "library")
+                        (
+                            tab === "watermark" ||
+                            tab === "library" ||
+                            tab === "reporting"
+                        )
                             ? { display: "none" }
                             : undefined
                     }
