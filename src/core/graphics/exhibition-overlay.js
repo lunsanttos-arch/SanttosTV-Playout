@@ -131,9 +131,9 @@ function getExhibitionOverlay(
         1,
         canvasWidth
     );
-    const right = clamp(
-        logoX + logoWidth + rightOffset,
-        1860 * scaleX,
+    const center = clamp(
+        logoX + logoWidth / 2 + rightOffset,
+        logoX + logoWidth / 2,
         8 + padding,
         canvasWidth - 8 - padding
     );
@@ -146,7 +146,7 @@ function getExhibitionOverlay(
 
     return {
         text: cfg.labels[type],
-        right,
+        center,
         top,
         fontSize,
         padding
@@ -203,7 +203,7 @@ function buildExhibitionDrawtext(
         `fontcolor=${ffmpegColor(cfg.color, cfg.opacity)}`,
         `borderw=${Math.max(0, Math.round(cfg.outlineWidth * fontScale))}`,
         `bordercolor=${ffmpegColor(cfg.outlineColor, cfg.outlineOpacity)}`,
-        `x='max(8\\,min(w-text_w-8\\,${overlay.right}-text_w))'`,
+        `x='max(8\\,min(w-text_w-8\\,${overlay.center}-text_w/2))'`,
         `y=${overlay.top}`
     ];
     if (cfg.backgroundEnabled) {
