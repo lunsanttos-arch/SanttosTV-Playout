@@ -183,8 +183,9 @@ assert(app.includes("toggleTimelineFreeze") &&
     app.includes("freezeHoldItemId"),
     "Timeline deve oferecer FREEZE no último frame e manter estado operacional até liberação.");
 assert(app.includes("selectedMedia.freezeEnd") &&
-    app.includes('playNextMedia(\n                                    selectedMedia &&') &&
-    app.includes('"completed"'),
+    app.includes("freezeHoldItemId === selectedMedia.id") &&
+    app.includes('? "completed"') &&
+    app.includes(': "skipped"'),
     "NEXT deve liberar o FREEZE como conclusão normal, sem marcar o item como pulado.");
 assert(appCss.includes(".timeline-freeze-button.active"),
     "Botão FREEZE ativo deve ser visível para o operador.");
