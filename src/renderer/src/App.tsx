@@ -1703,7 +1703,18 @@ function PlayoutPanel({
                 nativePlayout.itemId === selectedMedia.id
                     ? nativePlayout.positionSeconds
                     : currentTime;
-            await startNativeNdi(selectedMedia, resumeAt);
+            const mediaToResume =
+                resolveInputClockTiming(
+                    selectedMedia,
+                    resumeAt
+                );
+            onSelectMedia(
+                mediaToResume
+            );
+            await startNativeNdi(
+                mediaToResume,
+                resumeAt
+            );
             setCurrentTime(resumeAt);
             setIsPlaying(true);
             await video.play().catch(() => undefined);
