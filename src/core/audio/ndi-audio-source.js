@@ -23,9 +23,37 @@ function audioFfmpegArgs(
         "-fflags", "+genpts",
         "-re"
     ];
-    if (startSeconds > 0 && Number.isFinite(startSeconds)) {
-        args.push("-ss", startSeconds.toFixed(3));
+    const remoteInput =
+        /^(https?:\/\/|srt:\/\/)/i.test(
+            filePath
+        );
+
+    if (
+        startSeconds > 0 &&
+        Number.isFinite(startSeconds) &&
+        !remoteInput
+    ) {
+        args.push(
+            "-ss",
+            startSeconds.toFixed(3)
+        );
     }
+
+    if (
+        /^https?:\/\//i.test(
+            filePath
+        )
+    ) {
+        args.push(
+            "-reconnect",
+            "1",
+            "-reconnect_streamed",
+            "1",
+            "-reconnect_delay_max",
+            "4"
+        );
+    }
+
     args.push("-i", filePath);
     if (durationSeconds !== null && Number.isFinite(durationSeconds) &&
         durationSeconds > 0) {
