@@ -604,9 +604,22 @@ function buildProgramFilterGraph(
             ? profile.fpsN * 2
             : profile.fpsN;
 
+    const fitMode =
+        ["contain", "cover", "stretch"].includes(
+            state.fitMode
+        )
+            ? state.fitMode
+            : "contain";
+
+    const geometryFilter =
+        fitMode === "stretch"
+            ? `scale=${profile.width}:${profile.height}`
+            : fitMode === "cover"
+              ? `scale=${profile.width}:${profile.height}:force_original_aspect_ratio=increase,crop=${profile.width}:${profile.height}`
+              : `scale=${profile.width}:${profile.height}:force_original_aspect_ratio=decrease,pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black`;
+
     const chains = [
-        `${sourceVideo}scale=${profile.width}:${profile.height}:force_original_aspect_ratio=decrease,` +
-        `pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black,` +
+        `${sourceVideo}${geometryFilter},` +
         `setsar=${profile.sar.toFixed(6)},fps=${workingFpsN}/${profile.fpsD}[base]`
     ];
 
