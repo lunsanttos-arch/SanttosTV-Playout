@@ -98,6 +98,17 @@ function normalizeInput(value = {}) {
             ? value.fitMode
             : "contain";
 
+    const sizePercent =
+        Math.max(
+            10,
+            Math.min(
+                100,
+                Math.round(
+                    Number(value.sizePercent) || 100
+                )
+            )
+        );
+
     return {
         id:
             typeof value.id === "string" &&
@@ -117,6 +128,7 @@ function normalizeInput(value = {}) {
         durationSeconds,
         endTime,
         fitMode,
+        sizePercent,
         premiumFeature: true,
         createdAt:
             typeof value.createdAt === "string"
