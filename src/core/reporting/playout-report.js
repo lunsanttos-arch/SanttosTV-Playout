@@ -1,9 +1,10 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
-const ExcelJS = require("exceljs");
 
 let stateFile = "";
+let configFile = "";
+let defaultReportFolder = "";
 let reportFolder = "";
 let state = { entries: [] };
 let writeQueue = Promise.resolve();
@@ -14,139 +15,392 @@ function ensureFolder(folderPath) {
     }
 }
 
-function initializePlayoutReports({ userDataPath, documentsPath }) {
-    const stateFolder = path.join(userDataPath, "reporting");
-    reportFolder = path.join(
+function readConfig() {
+    if (!configFile || !fs.existsSync(configFile)) {
+        return {};
+    }
+
+    try {
+        const parsed = JSON.parse(
+            fs.readFileSync(configFile, "utf8")
+        );
+        return parsed && typeof parsed === "object"
+            ? parsed
+            : {};
+    } catch (error) {
+        console.warn(
+            "Não foi possível carregar a configuração de relatórios:",
+            error
+        );
+        return {};
+    }
+}
+
+function saveConfig() {
+    ensureFolder(path.dirname(configFile));
+    const temporary =
+        `${configFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    try {
+        fs.writeFileSync(
+            temporary,
+            JSON.stringify(
+                { reportFolder },
+                null,
+                2
+            ),
+            "utf8"
+        );
+        if (fs.existsSync(configFile)) {
+            fs.copyFileSync(
+                configFile,
+                `${configFile}.bak`
+            );
+        }
+        fs.renameSync(temporary, configFile);
+    } finally {
+        if (fs.existsSync(temporary)) {
+            fs.rmSync(temporary, { force: true });
+        }
+    }
+}
+
+function initializePlayoutReports({
+    userDataPath,
+    documentsPath
+}) {
+    const stateFolder = path.join(
+        userDataPath,
+        "reporting"
+    );
+
+    defaultReportFolder = path.join(
         documentsPath,
         "Santtos TV",
         "Relatórios de Exibição"
     );
-    stateFile = path.join(stateFolder, "playout-report-state.json");
+    stateFile = path.join(
+        stateFolder,
+        "playout-report-state.json"
+    );
+    configFile = path.join(
+        stateFolder,
+        "playout-report-config.json"
+    );
 
     ensureFolder(stateFolder);
+
+    const config = readConfig();
+    reportFolder =
+        typeof config.reportFolder === "string" &&
+        config.reportFolder.trim()
+            ? config.reportFolder.trim()
+            : defaultReportFolder;
+
     ensureFolder(reportFolder);
 
     state = { entries: [] };
+
     try {
         if (fs.existsSync(stateFile)) {
-            const parsed = JSON.parse(fs.readFileSync(stateFile, "utf8"));
+            const parsed = JSON.parse(
+                fs.readFileSync(
+                    stateFile,
+                    "utf8"
+                )
+            );
             if (!Array.isArray(parsed?.entries)) {
-                throw new Error("Historico de exibicao com estrutura invalida.");
+                throw new Error(
+                    "Histórico de exibição com estrutura inválida."
+                );
             }
             state.entries = parsed.entries;
         }
     } catch (error) {
-        console.error("Nao foi possivel carregar o historico de exibicao:", error);
+        console.error(
+            "Não foi possível carregar o histórico de exibição:",
+            error
+        );
         try {
-            fs.copyFileSync(stateFile, `${stateFile}.corrompido-${Date.now()}`);
+            fs.copyFileSync(
+                stateFile,
+                `${stateFile}.corrompido-${Date.now()}`
+            );
         } catch (copyError) {
-            console.error("Falha ao preservar historico danificado:", copyError);
+            console.error(
+                "Falha ao preservar histórico danificado:",
+                copyError
+            );
         }
         throw new Error(
-            "Historico de exibicao danificado. Original preservado em " +
-            stateFile + ". Verifique o arquivo .bak antes de restaurar."
+            "Histórico de exibição danificado. Original preservado em " +
+            stateFile
         );
     }
 
-    // Uma queda brusca deixa entradas em EM_EXIBICAO. Nao marcar como
-    // EXECUTADO nem inventar segundos reproduzidos durante a indisponibilidade.
-    const recoveredAt = new Date().toISOString();
+    const recoveredAt =
+        new Date().toISOString();
     let recovered = false;
+
     for (const entry of state.entries) {
-        if (entry.status !== "EM_EXIBICAO") continue;
+        if (
+            entry.status !==
+            "EM_EXIBICAO"
+        ) {
+            continue;
+        }
+
         entry.status = "PULADO";
         entry.endedAt = recoveredAt;
         entry.playedSeconds = 0;
         entry.recoveredAfterCrash = true;
         recovered = true;
     }
-    if (recovered) saveState();
-    // Reconstroi apenas planilhas ausentes ou desatualizadas; evita
-    // reescrever anos de relatorios em cada inicializacao.
-    const reportDates = new Map();
-    for (const entry of state.entries) {
-        if ((entry.status !== "EXECUTADO" && entry.status !== "PULADO") ||
-            typeof entry.reportDate !== "string" ||
-            !/^\d{4}-\d{2}-\d{2}$/.test(entry.reportDate)) continue;
-        const lastChange = Date.parse(entry.endedAt || entry.startedAt) || 0;
-        reportDates.set(entry.reportDate, Math.max(
-            reportDates.get(entry.reportDate) || 0,
-            lastChange
-        ));
-    }
-    for (const [dateKey, lastChange] of reportDates) {
-        const outputFile = path.join(reportFolder, `Relatorio_Exibicao_${dateKey}.xlsx`);
-        let needsExport = true;
-        try {
-            needsExport = !fs.existsSync(outputFile) ||
-                fs.statSync(outputFile).mtimeMs + 1000 < lastChange;
-        } catch (error) {
-            console.warn("Nao foi possivel verificar o relatorio:", error);
-        }
-        if (needsExport) queueExport(dateKey);
+
+    if (recovered) {
+        saveState();
     }
 
-    return { reportFolder, stateFile };
+    const reportDates = new Map();
+
+    for (const entry of state.entries) {
+        if (
+            (
+                entry.status !== "EXECUTADO" &&
+                entry.status !== "PULADO"
+            ) ||
+            typeof entry.reportDate !== "string" ||
+            !/^\d{4}-\d{2}-\d{2}$/.test(
+                entry.reportDate
+            )
+        ) {
+            continue;
+        }
+
+        const lastChange =
+            Date.parse(
+                entry.endedAt ||
+                entry.startedAt
+            ) || 0;
+
+        reportDates.set(
+            entry.reportDate,
+            Math.max(
+                reportDates.get(
+                    entry.reportDate
+                ) || 0,
+                lastChange
+            )
+        );
+    }
+
+    for (
+        const [dateKey, lastChange]
+        of reportDates
+    ) {
+        const outputFile = path.join(
+            reportFolder,
+            `Relatorio_Exibicao_${dateKey}.xml`
+        );
+        let needsExport = true;
+
+        try {
+            needsExport =
+                !fs.existsSync(outputFile) ||
+                fs.statSync(outputFile)
+                    .mtimeMs +
+                    1000 <
+                    lastChange;
+        } catch (error) {
+            console.warn(
+                "Não foi possível verificar o relatório XML:",
+                error
+            );
+        }
+
+        if (needsExport) {
+            queueExport(dateKey);
+        }
+    }
+
+    return {
+        reportFolder,
+        stateFile
+    };
 }
 
 function saveState() {
     if (!stateFile) {
-        throw new Error("Relatórios de exibição ainda não foram inicializados.");
+        throw new Error(
+            "Relatórios de exibição ainda não foram inicializados."
+        );
     }
 
-    ensureFolder(path.dirname(stateFile));
-    const temporary = `${stateFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
+    ensureFolder(
+        path.dirname(stateFile)
+    );
+
+    const temporary =
+        `${stateFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
+
     let handle;
+
     try {
-        handle = fs.openSync(temporary, "wx");
-        fs.writeFileSync(handle, JSON.stringify(state, null, 2), "utf8");
+        handle = fs.openSync(
+            temporary,
+            "wx"
+        );
+        fs.writeFileSync(
+            handle,
+            JSON.stringify(
+                state,
+                null,
+                2
+            ),
+            "utf8"
+        );
         fs.fsyncSync(handle);
         fs.closeSync(handle);
         handle = undefined;
-        if (fs.existsSync(stateFile)) fs.copyFileSync(stateFile, `${stateFile}.bak`);
-        fs.renameSync(temporary, stateFile);
+
+        if (fs.existsSync(stateFile)) {
+            fs.copyFileSync(
+                stateFile,
+                `${stateFile}.bak`
+            );
+        }
+
+        fs.renameSync(
+            temporary,
+            stateFile
+        );
     } finally {
-        if (handle !== undefined) fs.closeSync(handle);
-        if (fs.existsSync(temporary)) fs.rmSync(temporary, { force: true });
+        if (handle !== undefined) {
+            fs.closeSync(handle);
+        }
+
+        if (fs.existsSync(temporary)) {
+            fs.rmSync(
+                temporary,
+                { force: true }
+            );
+        }
     }
 }
 
 function pad(value) {
-    return String(value).padStart(2, "0");
+    return String(value)
+        .padStart(2, "0");
 }
 
 function localDateKey(value) {
-    const date = value instanceof Date ? value : new Date(value);
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    const date =
+        value instanceof Date
+            ? value
+            : new Date(value);
+
+    return [
+        date.getFullYear(),
+        pad(date.getMonth() + 1),
+        pad(date.getDate())
+    ].join("-");
 }
 
 function localDateLabel(value) {
-    const date = value instanceof Date ? value : new Date(value);
-    return `${pad(date.getDate())}/${pad(date.getMonth() + 1)}/${date.getFullYear()}`;
+    const date =
+        value instanceof Date
+            ? value
+            : new Date(value);
+
+    return [
+        pad(date.getDate()),
+        pad(date.getMonth() + 1),
+        date.getFullYear()
+    ].join("/");
 }
 
 function localTimeLabel(value) {
-    const date = value instanceof Date ? value : new Date(value);
-    return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+    const date =
+        value instanceof Date
+            ? value
+            : new Date(value);
+
+    return [
+        pad(date.getHours()),
+        pad(date.getMinutes()),
+        pad(date.getSeconds())
+    ].join(":");
 }
 
 function formatDuration(seconds) {
-    const total = Math.max(0, Math.floor(Number(seconds) || 0));
-    const hours = Math.floor(total / 3600);
-    const minutes = Math.floor((total % 3600) / 60);
-    const secs = total % 60;
-    return `${pad(hours)}:${pad(minutes)}:${pad(secs)}`;
+    const total = Math.max(
+        0,
+        Math.floor(
+            Number(seconds) || 0
+        )
+    );
+    const hours =
+        Math.floor(total / 3600);
+    const minutes =
+        Math.floor(
+            (total % 3600) / 60
+        );
+    const secs =
+        total % 60;
+
+    return [
+        hours,
+        minutes,
+        secs
+    ]
+        .map(pad)
+        .join(":");
 }
 
-function sanitizeText(value, maxLength = 4096) {
+function sanitizeText(
+    value,
+    maxLength = 4096
+) {
     return typeof value === "string"
-        ? value.trim().slice(0, maxLength)
+        ? value
+            .trim()
+            .slice(0, maxLength)
         : "";
 }
 
-function sanitizeNumber(value, fallback = 0) {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
+function sanitizeNumber(
+    value,
+    fallback = 0
+) {
+    const parsed =
+        Number(value);
+
+    return Number.isFinite(parsed)
+        ? Math.max(0, parsed)
+        : fallback;
+}
+
+function xmlEscape(value) {
+    return String(
+        value ?? ""
+    )
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&apos;");
+}
+
+function xmlTag(name, value, indent = "    ") {
+    return (
+        indent +
+        "<" +
+        name +
+        ">" +
+        xmlEscape(value) +
+        "</" +
+        name +
+        ">"
+    );
 }
 
 async function exportDate(dateKey) {
@@ -154,15 +408,28 @@ async function exportDate(dateKey) {
         return;
     }
 
-    const rows = state.entries
-        .filter(
-            (entry) =>
-                entry.reportDate === dateKey &&
-                (entry.status === "EXECUTADO" || entry.status === "PULADO")
-        )
-        .sort((a, b) =>
-            new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
-        );
+    const rows =
+        state.entries
+            .filter(
+                (entry) =>
+                    entry.reportDate ===
+                        dateKey &&
+                    (
+                        entry.status ===
+                            "EXECUTADO" ||
+                        entry.status ===
+                            "PULADO"
+                    )
+            )
+            .sort(
+                (left, right) =>
+                    new Date(
+                        left.startedAt
+                    ).getTime() -
+                    new Date(
+                        right.startedAt
+                    ).getTime()
+            );
 
     if (rows.length === 0) {
         return;
@@ -170,108 +437,246 @@ async function exportDate(dateKey) {
 
     ensureFolder(reportFolder);
 
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = "Santtos TV Automation";
-    workbook.created = new Date();
-    workbook.modified = new Date();
+    const body =
+        rows.map((entry) => [
+            "  <exibicao>",
+            xmlTag(
+                "data",
+                localDateLabel(
+                    entry.startedAt
+                )
+            ),
+            xmlTag(
+                "arquivo",
+                entry.fileName
+            ),
+            xmlTag(
+                "bloco",
+                entry.blockLabel || ""
+            ),
+            xmlTag(
+                "entrada",
+                localTimeLabel(
+                    entry.startedAt
+                )
+            ),
+            xmlTag(
+                "saida",
+                entry.endedAt
+                    ? localTimeLabel(
+                          entry.endedAt
+                      )
+                    : ""
+            ),
+            xmlTag(
+                "duracao_prevista",
+                formatDuration(
+                    entry.plannedDurationSeconds
+                )
+            ),
+            xmlTag(
+                "duracao_exibida",
+                formatDuration(
+                    entry.playedSeconds
+                )
+            ),
+            xmlTag(
+                "status",
+                entry.status
+            ),
+            xmlTag(
+                "caminho",
+                entry.filePath
+            ),
+            "  </exibicao>"
+        ].join("\n"))
+            .join("\n");
 
-    const sheet = workbook.addWorksheet("Exibições", {
-        views: [{ state: "frozen", ySplit: 1 }]
-    });
+    const xml = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        `<relatorio_exibicao data="${xmlEscape(dateKey)}" gerado_por="Santtos Playout">`,
+        body,
+        "</relatorio_exibicao>",
+        ""
+    ].join("\n");
 
-    sheet.columns = [
-        { header: "Data", key: "date", width: 13 },
-        { header: "Arquivo", key: "fileName", width: 42 },
-        { header: "Bloco", key: "blockLabel", width: 16 },
-        { header: "Horário de entrada", key: "startTime", width: 20 },
-        { header: "Horário de saída", key: "endTime", width: 20 },
-        { header: "Duração prevista", key: "plannedDuration", width: 19 },
-        { header: "Duração exibida", key: "playedDuration", width: 19 },
-        { header: "Status", key: "status", width: 14 },
-        { header: "Caminho", key: "filePath", width: 60 }
-    ];
+    const filePath =
+        path.join(
+            reportFolder,
+            `Relatorio_Exibicao_${dateKey}.xml`
+        );
 
-    for (const entry of rows) {
-        sheet.addRow({
-            date: localDateLabel(entry.startedAt),
-            fileName: entry.fileName,
-            blockLabel: entry.blockLabel || "",
-            startTime: localTimeLabel(entry.startedAt),
-            endTime: entry.endedAt ? localTimeLabel(entry.endedAt) : "",
-            plannedDuration: formatDuration(entry.plannedDurationSeconds),
-            playedDuration: formatDuration(entry.playedSeconds),
-            status: entry.status,
-            filePath: entry.filePath
-        });
-    }
+    const temporaryFile =
+        `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
 
-    const header = sheet.getRow(1);
-    header.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    header.fill = {
-        type: "pattern",
-        pattern: "solid",
-        fgColor: { argb: "FF202020" }
-    };
-    header.alignment = { vertical: "middle", horizontal: "center" };
-    header.height = 24;
-
-    sheet.autoFilter = {
-        from: "A1",
-        to: "I1"
-    };
-
-    sheet.eachRow((row, rowNumber) => {
-        if (rowNumber === 1) return;
-        row.alignment = { vertical: "middle" };
-        const statusCell = row.getCell(8);
-        if (statusCell.value === "PULADO") {
-            statusCell.font = { bold: true, color: { argb: "FFB4233A" } };
-        } else if (statusCell.value === "EXECUTADO") {
-            statusCell.font = { bold: true, color: { argb: "FF248A4B" } };
-        }
-    });
-
-    const filePath = path.join(
-        reportFolder,
-        `Relatorio_Exibicao_${dateKey}.xlsx`
-    );
-
-    const temporaryFile = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
     try {
-        await workbook.xlsx.writeFile(temporaryFile);
-        fs.renameSync(temporaryFile, filePath);
+        fs.writeFileSync(
+            temporaryFile,
+            xml,
+            "utf8"
+        );
+        fs.renameSync(
+            temporaryFile,
+            filePath
+        );
         return filePath;
     } finally {
-        if (fs.existsSync(temporaryFile)) fs.rmSync(temporaryFile, { force: true });
+        if (
+            fs.existsSync(
+                temporaryFile
+            )
+        ) {
+            fs.rmSync(
+                temporaryFile,
+                { force: true }
+            );
+        }
     }
 }
 
 function queueExport(dateKey) {
-    writeQueue = writeQueue
-        .then(() => exportDate(dateKey))
-        .catch((error) => {
-            console.error("Falha ao atualizar relatório Excel:", error);
-        });
+    writeQueue =
+        writeQueue
+            .then(
+                () =>
+                    exportDate(
+                        dateKey
+                    )
+            )
+            .catch(
+                (error) => {
+                    console.error(
+                        "Falha ao atualizar relatório XML:",
+                        error
+                    );
+                }
+            );
+
     return writeQueue;
 }
 
+function reexportAllDates() {
+    const dates =
+        new Set(
+            state.entries
+                .filter(
+                    (entry) =>
+                        entry.reportDate &&
+                        (
+                            entry.status ===
+                                "EXECUTADO" ||
+                            entry.status ===
+                                "PULADO"
+                        )
+                )
+                .map(
+                    (entry) =>
+                        entry.reportDate
+                )
+        );
+
+    for (
+        const dateKey
+        of dates
+    ) {
+        queueExport(dateKey);
+    }
+}
+
+function setReportFolder(folderPath) {
+    if (
+        typeof folderPath !==
+            "string" ||
+        !folderPath.trim()
+    ) {
+        throw new Error(
+            "Pasta de relatórios inválida."
+        );
+    }
+
+    const normalized =
+        path.resolve(
+            folderPath.trim()
+        );
+
+    ensureFolder(normalized);
+    reportFolder = normalized;
+    saveConfig();
+    reexportAllDates();
+
+    return reportFolder;
+}
+
+function resetReportFolder() {
+    reportFolder =
+        defaultReportFolder;
+    ensureFolder(reportFolder);
+    saveConfig();
+    reexportAllDates();
+
+    return reportFolder;
+}
+
 function startPlayoutEntry(media) {
-    const startedAt = new Date();
+    const startedAt =
+        new Date();
+
     const entry = {
-        id: crypto.randomUUID(),
-        occurrenceId: sanitizeText(media?.id, 240),
-        sourceMediaId: sanitizeText(media?.sourceMediaId, 240),
-        fileName: sanitizeText(media?.name, 512) || path.basename(sanitizeText(media?.path)),
-        filePath: sanitizeText(media?.path),
-        blockLabel: sanitizeText(media?.blockLabel, 120),
-        inPointSeconds: sanitizeNumber(media?.inPoint),
-        outPointSeconds: sanitizeNumber(media?.outPoint, sanitizeNumber(media?.duration)),
-        plannedDurationSeconds: sanitizeNumber(media?.plannedDurationSeconds),
-        startedAt: startedAt.toISOString(),
+        id:
+            crypto.randomUUID(),
+        occurrenceId:
+            sanitizeText(
+                media?.id,
+                240
+            ),
+        sourceMediaId:
+            sanitizeText(
+                media?.sourceMediaId,
+                240
+            ),
+        fileName:
+            sanitizeText(
+                media?.name,
+                512
+            ) ||
+            path.basename(
+                sanitizeText(
+                    media?.path
+                )
+            ),
+        filePath:
+            sanitizeText(
+                media?.path
+            ),
+        blockLabel:
+            sanitizeText(
+                media?.blockLabel,
+                120
+            ),
+        inPointSeconds:
+            sanitizeNumber(
+                media?.inPoint
+            ),
+        outPointSeconds:
+            sanitizeNumber(
+                media?.outPoint,
+                sanitizeNumber(
+                    media?.duration
+                )
+            ),
+        plannedDurationSeconds:
+            sanitizeNumber(
+                media?.plannedDurationSeconds
+            ),
+        startedAt:
+            startedAt.toISOString(),
         endedAt: null,
         playedSeconds: 0,
         status: "EM_EXIBICAO",
-        reportDate: localDateKey(startedAt)
+        reportDate:
+            localDateKey(
+                startedAt
+            )
     };
 
     state.entries.push(entry);
@@ -279,61 +684,121 @@ function startPlayoutEntry(media) {
 
     return {
         id: entry.id,
-        reportDate: entry.reportDate,
+        reportDate:
+            entry.reportDate,
         reportFolder
     };
 }
 
-function finishPlayoutEntry(entryId, status, playedSeconds = 0) {
-    const normalizedStatus = status === "EXECUTADO" ? "EXECUTADO" : "PULADO";
-    const entry = state.entries.find((item) => item.id === entryId);
+function finishPlayoutEntry(
+    entryId,
+    status,
+    playedSeconds = 0
+) {
+    const normalizedStatus =
+        status === "EXECUTADO"
+            ? "EXECUTADO"
+            : "PULADO";
+
+    const entry =
+        state.entries.find(
+            (item) =>
+                item.id === entryId
+        );
 
     if (!entry) {
-        return { ok: false, error: "Registro de exibição não encontrado." };
+        return {
+            ok: false,
+            error:
+                "Registro de exibição não encontrado."
+        };
     }
 
-    if (entry.status !== "EM_EXIBICAO") {
-        return { ok: true, alreadyFinished: true, entry };
+    if (
+        entry.status !==
+        "EM_EXIBICAO"
+    ) {
+        return {
+            ok: true,
+            alreadyFinished: true,
+            entry
+        };
     }
 
-    entry.endedAt = new Date().toISOString();
-    entry.playedSeconds = sanitizeNumber(playedSeconds);
-    entry.status = normalizedStatus;
+    entry.endedAt =
+        new Date().toISOString();
+    entry.playedSeconds =
+        sanitizeNumber(
+            playedSeconds
+        );
+    entry.status =
+        normalizedStatus;
+
     saveState();
-    queueExport(entry.reportDate);
+    queueExport(
+        entry.reportDate
+    );
 
     return {
         ok: true,
-        entry: { ...entry },
+        entry: {
+            ...entry
+        },
         reportFolder
     };
 }
 
 function closeOpenEntriesAsSkipped() {
     const now = new Date();
-    const datesToExport = new Set();
+    const datesToExport =
+        new Set();
     let changed = false;
 
-    for (const entry of state.entries) {
-        if (entry.status !== "EM_EXIBICAO") {
+    for (
+        const entry
+        of state.entries
+    ) {
+        if (
+            entry.status !==
+            "EM_EXIBICAO"
+        ) {
             continue;
         }
 
-        const started = new Date(entry.startedAt);
-        entry.endedAt = now.toISOString();
-        entry.playedSeconds = Math.max(
-            0,
-            (now.getTime() - started.getTime()) / 1000
+        const started =
+            new Date(
+                entry.startedAt
+            );
+
+        entry.endedAt =
+            now.toISOString();
+        entry.playedSeconds =
+            Math.max(
+                0,
+                (
+                    now.getTime() -
+                    started.getTime()
+                ) / 1000
+            );
+        entry.status =
+            "PULADO";
+
+        datesToExport.add(
+            entry.reportDate
         );
-        entry.status = "PULADO";
-        datesToExport.add(entry.reportDate);
         changed = true;
     }
 
     if (changed) {
         saveState();
-        for (const dateKey of datesToExport) {
-            queueExport(dateKey);
+
+        for (
+            const dateKey
+            of datesToExport
+        ) {
+            queueExport(
+                dateKey
+            );
         }
     }
 }
@@ -347,5 +812,8 @@ module.exports = {
     startPlayoutEntry,
     finishPlayoutEntry,
     closeOpenEntriesAsSkipped,
-    getReportFolder
+    getReportFolder,
+    setReportFolder,
+    resetReportFolder,
+    exportDate
 };
