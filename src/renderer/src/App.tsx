@@ -10,7 +10,7 @@ import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
 import ProgramAudioMeters from "./ProgramAudioMeters";
 import type { NativeAudioStatus } from "./ProgramAudioMeters";
-import { buildTimelineForecast, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
+import { buildTimelineForecast, buildPlannedSchedule, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
 import { EXHIBITION_OPTIONS, DEFAULT_EXHIBITION_STYLE, exhibitionLabel, exhibitionPreviewStyle, exhibitionText, normalizeExhibitionType } from "./exhibition";
 import type { ExhibitionStyle, ExhibitionType } from "./exhibition";
 
@@ -23,6 +23,14 @@ type Panel =
 export interface MediaItem {
     id: string;
     sourceMediaId?: string;
+    programmedStartTime?: string;
+    sourceType?: "file" | "input";
+    inputId?: string;
+    inputProtocol?: string;
+    inputTimingMode?: "duration" | "clock";
+    inputEndTime?: string;
+    fitMode?: "contain" | "cover" | "stretch";
+    premiumFeature?: boolean;
     loop?: boolean;
     freezeEnd?: boolean;
     watermark?: boolean;
@@ -374,6 +382,7 @@ export default function App() {
     const [rundownApplyRequest, setRundownApplyRequest] = useState<{
         key: number;
         items: MediaItem[];
+        startTime: string;
     } | null>(null);
 
     // Stable callback: updating the top-bar clock must not retrigger the
@@ -704,10 +713,11 @@ export default function App() {
                     {activePanel === "scheduler" && (
                         <OpecSchedulerPanel
                             media={media}
-                            onApply={(items) => {
+                            onApply={(items, startTime) => {
                                 setRundownApplyRequest({
                                     key: Date.now(),
-                                    items: items as MediaItem[]
+                                    items: items as MediaItem[],
+                                    startTime: startTime || "00:00"
                                 });
                                 setActivePanel("playout");
                             }}
@@ -815,6 +825,7 @@ interface PlayoutPanelProps {
     rundownApplyRequest: {
         key: number;
         items: MediaItem[];
+        startTime: string;
     } | null;
     onScheduleSummary: (
         remainingSeconds: number | null,
@@ -990,6 +1001,9 @@ function PlayoutPanel({
                 ...item,
                 id: `${sourceMediaId}-rundown-${rundownApplyRequest.key}-${index}`,
                 sourceMediaId,
+                programmedStartTime:
+                    rundownApplyRequest.startTime ||
+                    "00:00",
                 loop: false,
                 freezeEnd: Boolean(item.freezeEnd),
                 watermark: Boolean(item.watermark),
@@ -1066,6 +1080,9 @@ function PlayoutPanel({
                         ...source,
                         id: entry.id,
                         sourceMediaId: sourceId,
+                        programmedStartTime:
+                            entry.programmedStartTime ??
+                            "00:00",
                         loop: Boolean(entry.loop),
                         freezeEnd: Boolean(entry.freezeEnd),
                         watermark: Boolean(entry.watermark),
@@ -1212,6 +1229,20 @@ function PlayoutPanel({
               programVideo.readyState >= 2 &&
               Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000
           );
+    const programmedStartTime =
+        timelineQueue.find(
+            (item) =>
+                typeof item.programmedStartTime ===
+                    "string"
+        )?.programmedStartTime ??
+        "00:00";
+
+    const plannedSchedule =
+        buildPlannedSchedule(
+            timelineQueue,
+            programmedStartTime
+        );
+
     const timelineForecast = buildTimelineForecast(
         timelineQueue,
         selectedMedia?.id ?? null,
@@ -1239,17 +1270,65 @@ function PlayoutPanel({
     }
 
     useEffect(() => {
+        const match =
+            /^(\d{2}):(\d{2}):(\d{2})/.exec(
+                plannedSchedule.end
+            );
+
+        let programmedEndAtMs: number | null = null;
+
+        if (
+            match &&
+            plannedSchedule.totalSeconds !== null
+        ) {
+            const now = new Date();
+            const end = new Date(now);
+            end.setHours(
+                Number(match[1]),
+                Number(match[2]),
+                Number(match[3]),
+                0
+            );
+
+            const startParts =
+                programmedStartTime
+                    .split(":")
+                    .map(Number);
+            const startSeconds =
+                (startParts[0] || 0) *
+                    3600 +
+                (startParts[1] || 0) *
+                    60;
+            const endSeconds =
+                Number(match[1]) *
+                    3600 +
+                Number(match[2]) *
+                    60 +
+                Number(match[3]);
+
+            if (
+                endSeconds <
+                startSeconds
+            ) {
+                end.setDate(
+                    end.getDate() + 1
+                );
+            }
+
+            programmedEndAtMs =
+                end.getTime();
+        }
+
         onScheduleSummary(
-            timelineForecast.remainingSeconds,
-            timelineForecast.hasLoop,
-            timelineForecast.endsAtMs,
-            timelineForecast.isLive
+            plannedSchedule.totalSeconds,
+            plannedSchedule.totalSeconds === null,
+            programmedEndAtMs,
+            true
         );
     }, [
-        timelineForecast.remainingSeconds,
-        timelineForecast.hasLoop,
-        timelineForecast.endsAtMs,
-        timelineForecast.isLive,
+        plannedSchedule.totalSeconds,
+        plannedSchedule.end,
+        programmedStartTime,
         onScheduleSummary
     ]);
 
@@ -2978,7 +3057,15 @@ function PlayoutPanel({
                                                     </span>
 
                                                     <span className="timeline-air-time">
-                                                        {describeForecast(item, isCurrent)}
+                                                        PROGRAMADO{" "}
+                                                        {plannedSchedule.times.get(
+                                                            item.id
+                                                        ) ?? "SEM PREVISÃO"}
+                                                        {" • "}
+                                                        {describeForecast(
+                                                            item,
+                                                            isCurrent
+                                                        )}
                                                     </span>
                                                 </div>
                                             </div>
