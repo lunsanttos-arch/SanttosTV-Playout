@@ -257,7 +257,7 @@ async function main() {
                 userDataPath: reportUserData,
                 documentsPath: docs
             }),
-            /Historico de exibicao danificado/
+            /Hist[oó]rico de exibi[cç][aã]o danificado/
         );
         assert.strictEqual(fs.readFileSync(reportStateFile, "utf8"), "{historico interrompido");
 
