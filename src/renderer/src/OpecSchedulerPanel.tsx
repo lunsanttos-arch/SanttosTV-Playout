@@ -53,8 +53,8 @@ function formatDuration(seconds: number) {
 
 export default function OpecSchedulerPanel({ media, onApply }: Props) {
     const [date, setDate] = useState(todayKey());
-    const [title, setTitle] = useState("Roteiro diário");
-    const [startTime, setStartTime] = useState("06:00");
+    const [title, setTitle] = useState("Programação diária");
+    const [startTime, setStartTime] = useState("00:00");
     const [items, setItems] = useState<RundownItem[]>([]);
     const [search, setSearch] = useState("");
     const [status, setStatus] = useState("");
@@ -70,7 +70,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
             .then((rundown: DailyRundown) => {
                 if (cancelled) return;
                 setTitle(rundown.title || "Programação diária");
-                setStartTime(rundown.startTime || "06:00");
+                setStartTime(rundown.startTime || "00:00");
                 setItems(Array.isArray(rundown.items) ? rundown.items : []);
             })
             .catch((error: unknown) => {
@@ -207,7 +207,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
             <div className="opec-layout">
                 <div className="opec-rundown-panel">
                     <div className="opec-section-title">
-                        <strong>ROTEIRO</strong>
+                        <strong>PROGRAMAÇÃO</strong>
                         <span>{items.length} item(ns)</span>
                     </div>
 
@@ -280,7 +280,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                         {filteredMedia.map((item) => (
                             <article key={item.id} className="opec-library-item">
                                 <div><strong>{item.name}</strong><span>{formatDuration(clipDuration(item))} · {item.extension.toUpperCase()}</span></div>
-                                <button onClick={() => addItem(item)}>+ Roteiro</button>
+                                <button onClick={() => addItem(item)}>+ Programação</button>
                             </article>
                         ))}
                     </div>
