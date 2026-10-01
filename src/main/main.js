@@ -80,6 +80,15 @@ const {
     "../core/library/library-categories"
 );
 
+const {
+    initializeWebInputs,
+    getWebInputs,
+    saveWebInput,
+    removeWebInput
+} = require(
+    "../core/library/web-inputs"
+);
+
 const testBenchConfig = configureTestBench(app);
 const isTestBench = testBenchConfig.enabled;
 const isNdiTestBench = testBenchConfig.ndiEnabled;
@@ -794,12 +803,34 @@ function startNativePlayback(
         );
     }
 
-    const imported = getMedia().some((item) =>
-        typeof item.path === "string" &&
-        path.resolve(item.path) === path.resolve(filePath)
-    );
-    if (!imported || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
-        throw new Error("O arquivo deve estar cadastrado na biblioteca.");
+    const isRemoteInput =
+        overlayState?.sourceType === "input" &&
+        /^(https?:\/\/|srt:\/\/)/i.test(filePath);
+
+    const imported = isRemoteInput
+        ? getWebInputs().some(
+              (item) =>
+                  item.url === filePath
+          )
+        : getMedia().some((item) =>
+              typeof item.path === "string" &&
+              path.resolve(item.path) === path.resolve(filePath)
+          );
+
+    if (isRemoteInput) {
+        if (!imported) {
+            throw new Error(
+                "O input deve estar cadastrado em Biblioteca → Inputs."
+            );
+        }
+    } else if (
+        !imported ||
+        !fs.existsSync(filePath) ||
+        !fs.statSync(filePath).isFile()
+    ) {
+        throw new Error(
+            "O arquivo deve estar cadastrado na biblioteca."
+        );
     }
 
     const normalizedStartSeconds =
@@ -893,11 +924,27 @@ function startNativePlayback(
         "10000000"
     ];
 
-    if (normalizedStartSeconds > 0) {
+    if (
+        normalizedStartSeconds > 0 &&
+        !isRemoteInput
+    ) {
         args.push(
             "-ss",
             normalizedStartSeconds.toFixed(3)
         );
+    }
+
+    if (isRemoteInput) {
+        if (/^https?:\/\//i.test(filePath)) {
+            args.push(
+                "-reconnect",
+                "1",
+                "-reconnect_streamed",
+                "1",
+                "-reconnect_delay_max",
+                "4"
+            );
+        }
     }
 
     args.push(
@@ -1366,6 +1413,43 @@ function registerIpcHandlers() {
                 };
             }
         }
+    );
+
+    registerTrustedHandle(
+        "web-inputs:get",
+        async () => ({
+            ok: true,
+            inputs: getWebInputs()
+        })
+    );
+
+    registerTrustedHandle(
+        "web-inputs:save",
+        async (_event, input) => {
+            try {
+                return {
+                    ok: true,
+                    input: saveWebInput(input),
+                    inputs: getWebInputs()
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Não foi possível salvar o input."
+                };
+            }
+        }
+    );
+
+    registerTrustedHandle(
+        "web-inputs:remove",
+        async (_event, id) => ({
+            ok: true,
+            ...removeWebInput(id)
+        })
     );
 
     registerTrustedHandle(
@@ -2237,6 +2321,7 @@ function startSystem() {
         migrateLegacy: !isTestBench
     });
     initializeLibraryCategories(app.getPath("userData"));
+    initializeWebInputs(app.getPath("userData"));
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
         documentsPath: isTestBench
