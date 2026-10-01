@@ -132,24 +132,50 @@ function registerTrustedOn(channel, listener) {
 
 const FONT_FILES = {
     "Arial": {
-        regular: "arial.ttf",
-        bold: "arialbd.ttf"
+        regular: ["arial.ttf"],
+        bold: ["arialbd.ttf"]
     },
     "Segoe UI": {
-        regular: "segoeui.ttf",
-        bold: "segoeuib.ttf"
+        regular: ["segoeui.ttf"],
+        bold: ["segoeuib.ttf"]
+    },
+    "Montserrat": {
+        regular: ["Montserrat-Regular.ttf", "Montserrat.ttf"],
+        bold: ["Montserrat-Bold.ttf", "Montserrat.ttf"]
+    },
+    "Inter": {
+        regular: ["Inter-Regular.ttf", "Inter.ttf"],
+        bold: ["Inter-Bold.ttf", "Inter.ttf"]
+    },
+    "Poppins": {
+        regular: ["Poppins-Regular.ttf"],
+        bold: ["Poppins-Bold.ttf"]
+    },
+    "Oswald": {
+        regular: ["Oswald-Regular.ttf", "Oswald.ttf"],
+        bold: ["Oswald-Bold.ttf", "Oswald.ttf"]
+    },
+    "Roboto Condensed": {
+        regular: [
+            "RobotoCondensed-Regular.ttf",
+            "RobotoCondensed.ttf"
+        ],
+        bold: [
+            "RobotoCondensed-Bold.ttf",
+            "RobotoCondensed.ttf"
+        ]
     },
     "Tahoma": {
-        regular: "tahoma.ttf",
-        bold: "tahomabd.ttf"
+        regular: ["tahoma.ttf"],
+        bold: ["tahomabd.ttf"]
     },
     "Verdana": {
-        regular: "verdana.ttf",
-        bold: "verdanab.ttf"
+        regular: ["verdana.ttf"],
+        bold: ["verdanab.ttf"]
     },
     "Calibri": {
-        regular: "calibri.ttf",
-        bold: "calibrib.ttf"
+        regular: ["calibri.ttf"],
+        bold: ["calibrib.ttf"]
     }
 };
 
@@ -439,19 +465,40 @@ function resolveHashtagFont(style) {
         FONT_FILES[style.fontFamily] ??
         FONT_FILES.Arial;
 
-    const fileName = style.bold
+    const fileNames = style.bold
         ? family.bold
         : family.regular;
 
     const windowsFolder =
         process.env.WINDIR ||
         "C:\\Windows";
-
-    const candidate = path.join(
-        windowsFolder,
-        "Fonts",
-        fileName
+    const localFonts = path.join(
+        process.env.LOCALAPPDATA || "",
+        "Microsoft",
+        "Windows",
+        "Fonts"
     );
+    const folders = [
+        path.join(windowsFolder, "Fonts"),
+        localFonts
+    ];
+
+    let candidate = null;
+
+    for (const folder of folders) {
+        if (!folder) continue;
+        for (const fileName of fileNames) {
+            const fullPath = path.join(
+                folder,
+                fileName
+            );
+            if (fs.existsSync(fullPath)) {
+                candidate = fullPath;
+                break;
+            }
+        }
+        if (candidate) break;
+    }
 
     const fallback = path.join(
         windowsFolder,
@@ -461,10 +508,7 @@ function resolveHashtagFont(style) {
             : "arial.ttf"
     );
 
-    return (fs.existsSync(candidate)
-        ? candidate
-        : fallback
-    )
+    return (candidate || fallback)
         .replaceAll("\\", "/")
         .replace(":", "\\:");
 }
