@@ -411,8 +411,18 @@ async function analyzeMediaItem(mediaItem) {
 }
 
 async function analyzeMediaItems(mediaItems) {
-    // Evita abrir centenas de decoders simultaneos durante importacoes grandes.
-    const poolSize = Math.min(2, mediaItems.length);
+    // Em SMB/NAS, um probe por vez evita saturar o compartilhamento e
+    // competir com a leitura do arquivo que estiver efetivamente NO AR.
+    const hasNetworkMedia =
+        mediaItems.some(
+            (item) =>
+                typeof item?.path === "string" &&
+                /^\\\\/.test(item.path)
+        );
+    const poolSize =
+        hasNetworkMedia
+            ? Math.min(1, mediaItems.length)
+            : Math.min(2, mediaItems.length);
     let nextIndex = 0;
     await Promise.all(Array.from({ length: poolSize }, async () => {
         while (nextIndex < mediaItems.length) {
