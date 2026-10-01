@@ -2950,6 +2950,12 @@ function PlayoutPanel({
                                   : "VERIFICAR SAÍDA"}
                         </strong>
                         <span className="compact-status-meta">
+                            {selectedMedia?.sourceType === "input"
+                                ? "INPUT EXTERNO"
+                                : selectedMedia?.path.startsWith("\\\\")
+                                  ? "SERVIDOR DE ARQUIVOS"
+                                  : "ARQUIVO LOCAL"}
+                            {" · "}
                             Programado:{" "}
                             {selectedMedia
                                 ? plannedSchedule.times.get(selectedMedia.id) ?? "--:--:--"
