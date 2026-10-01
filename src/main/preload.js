@@ -61,6 +61,23 @@ contextBridge.exposeInMainWorld(
                 rundown
             ),
 
+        getWebInputs: () =>
+            ipcRenderer.invoke(
+                "web-inputs:get"
+            ),
+
+        saveWebInput: (input) =>
+            ipcRenderer.invoke(
+                "web-inputs:save",
+                input
+            ),
+
+        removeWebInput: (id) =>
+            ipcRenderer.invoke(
+                "web-inputs:remove",
+                id
+            ),
+
         getLibraryCategories: () =>
             ipcRenderer.invoke(
                 "library-categories:get"
