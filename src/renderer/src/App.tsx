@@ -3611,6 +3611,30 @@ function LibraryPanel({
                 const categoryId = synced?.nextId;
                 if (!categoryId) return;
 
+                if (categoryId === "__all__") {
+                    const results = await Promise.all(
+                        (synced?.loaded ?? []).map((category) =>
+                            window.santtosAPI.scanLibraryCategory(category.id)
+                        )
+                    );
+                    const paths = [
+                        ...new Set(
+                            results.flatMap((result) =>
+                                result.ok
+                                    ? result.filePaths ?? []
+                                    : []
+                            )
+                        )
+                    ];
+                    if (paths.length > 0) {
+                        await onImportDroppedFiles(paths);
+                    }
+                    setCategoryStatus(
+                        `${paths.length} arquivo(s) sincronizado(s) em ${synced?.loaded.length ?? 0} pasta(s).`
+                    );
+                    return;
+                }
+
                 const result = await window.santtosAPI.scanLibraryCategory(categoryId);
                 if (!result.ok) {
                     setCategoryStatus(result.error ?? "Não foi possível atualizar esta pasta.");
