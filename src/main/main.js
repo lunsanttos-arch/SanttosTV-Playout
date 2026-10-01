@@ -64,7 +64,9 @@ const {
     startPlayoutEntry,
     finishPlayoutEntry,
     closeOpenEntriesAsSkipped,
-    getReportFolder
+    getReportFolder,
+    setReportFolder,
+    resetReportFolder
 } = require(
     "../core/reporting/playout-report"
 );
@@ -1624,6 +1626,58 @@ function registerIpcHandlers() {
         async () => ({
             ok: true,
             folder: getReportFolder()
+        })
+    );
+
+    registerTrustedHandle(
+        "report:select-folder",
+        async () => {
+            const result = await dialog.showOpenDialog(
+                mainWindow ?? undefined,
+                {
+                    title: "Selecionar pasta dos relatórios XML",
+                    properties: [
+                        "openDirectory",
+                        "createDirectory"
+                    ]
+                }
+            );
+
+            if (
+                result.canceled ||
+                result.filePaths.length === 0
+            ) {
+                return {
+                    ok: false,
+                    canceled: true,
+                    folder: getReportFolder()
+                };
+            }
+
+            try {
+                return {
+                    ok: true,
+                    folder: setReportFolder(
+                        result.filePaths[0]
+                    )
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : "Não foi possível configurar a pasta dos relatórios."
+                };
+            }
+        }
+    );
+
+    registerTrustedHandle(
+        "report:reset-folder",
+        async () => ({
+            ok: true,
+            folder: resetReportFolder()
         })
     );
 
