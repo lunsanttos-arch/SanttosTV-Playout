@@ -245,7 +245,7 @@ export default function BroadcastSettingsPanel({
         setIsSaving(true);
         try {
             await onSaveExhibition(exhibition);
-            setStatus("Identificação salva. A saída NDI usa o novo estilo ao iniciar o próximo vídeo; a prévia foi atualizada.");
+            setStatus("Identificação salva e prévia atualizada.");
         } catch (error) {
             console.error("Falha ao salvar identificação:", error);
             setStatus("Não foi possível salvar a identificação no vídeo.");
@@ -272,11 +272,7 @@ export default function BroadcastSettingsPanel({
             }
 
             setOutput(result.output);
-            setStatus(
-                output.ndi.enabled
-                    ? "Perfil salvo e aplicado. O sender NDI está reiniciando com estas configurações."
-                    : "Perfil salvo. A saída NDI foi desativada."
-            );
+            setStatus("Configurações de saída salvas.");
         } catch (error) {
             console.error(error);
             setStatus(
@@ -307,6 +303,37 @@ export default function BroadcastSettingsPanel({
         }
     }
 
+    const tabHeading: Record<
+        SettingsTab,
+        { title: string; description: string }
+    > = {
+        output: {
+            title: "Saída e transporte",
+            description:
+                "Perfil técnico do PROGRAM, áudio e transportes."
+        },
+        library: {
+            title: "Biblioteca",
+            description:
+                "Pastas e organização das mídias do Playout."
+        },
+        watermark: {
+            title: "Marca d'água",
+            description:
+                "Logo, tamanho, posição, opacidade e fade."
+        },
+        exhibition: {
+            title: "Identificação no vídeo",
+            description:
+                "Tipografia e posição das identificações editoriais."
+        },
+        hashtag: {
+            title: "Hashtag / GC",
+            description:
+                "Tipografia e aparência do texto sobre o PROGRAM."
+        }
+    };
+
     return (
         <section className="panel broadcast-settings-panel">
             <div className="broadcast-settings-header">
@@ -314,9 +341,9 @@ export default function BroadcastSettingsPanel({
                     <div className="panel-title">
                         CONFIGURAÇÕES
                     </div>
-                    <h1>Saída e transporte</h1>
+                    <h1>{tabHeading[tab].title}</h1>
                     <p>
-                        Perfil técnico do PROGRAM, áudio, NDI e preparação da saída SRT.
+                        {tabHeading[tab].description}
                     </p>
                 </div>
 
@@ -533,25 +560,6 @@ function OutputTab({
                     }
                 />
 
-                <SelectField
-                    label="Pixel format"
-                    value={output.pixelFormat}
-                    options={[
-                        ["yuv420p", "YUV 4:2:0"],
-                        ["yuv422p", "YUV 4:2:2"],
-                        ["bgra", "BGRA 8-bit"]
-                    ]}
-                    onChange={(value) =>
-                        patchOutput({
-                            pixelFormat:
-                                value as OutputSettings["pixelFormat"]
-                        })
-                    }
-                />
-
-                <div className="settings-info warning">
-                    Resolução, FPS, varredura, aspect ratio e pixel format são aplicados ao PROGRAM NDI ao salvar.
-                </div>
             </SettingsCard>
 
             <SettingsCard
@@ -858,6 +866,11 @@ function HashtagTab({
                     options={[
                         ["Arial", "Arial"],
                         ["Segoe UI", "Segoe UI"],
+                        ["Montserrat", "Montserrat"],
+                        ["Inter", "Inter"],
+                        ["Poppins", "Poppins"],
+                        ["Oswald", "Oswald"],
+                        ["Roboto Condensed", "Roboto Condensed"],
                         ["Tahoma", "Tahoma"],
                         ["Verdana", "Verdana"],
                         ["Calibri", "Calibri"]
@@ -866,11 +879,12 @@ function HashtagTab({
                         patch({ fontFamily })
                     }
                 />
-                <NumberSetting
-                    label="Tamanho"
+                <NumericRangeSetting
+                    label="Tamanho da fonte"
                     value={style.fontSize}
                     min={10}
                     max={160}
+                    step={1}
                     suffix="px"
                     onChange={(fontSize) =>
                         patch({ fontSize })
@@ -1191,6 +1205,50 @@ function ColorSetting({
                 />
                 <code>{value.toUpperCase()}</code>
             </div>
+        </label>
+    );
+}
+
+function NumericRangeSetting({
+    label,
+    value,
+    min,
+    max,
+    step = 1,
+    suffix = "",
+    onChange
+}: {
+    label: string;
+    value: number;
+    min: number;
+    max: number;
+    step?: number;
+    suffix?: string;
+    onChange: (value: number) => void;
+}) {
+    return (
+        <label className="broadcast-setting-field">
+            <span className="broadcast-range-heading">
+                <span>{label}</span>
+                <strong>
+                    {Math.round(value)}
+                    {suffix}
+                </strong>
+            </span>
+            <input
+                type="range"
+                min={min}
+                max={max}
+                step={step}
+                value={value}
+                onChange={(event) =>
+                    onChange(
+                        Number(
+                            event.currentTarget.value
+                        )
+                    )
+                }
+            />
         </label>
     );
 }
