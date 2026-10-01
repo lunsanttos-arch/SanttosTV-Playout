@@ -181,7 +181,27 @@ async function main() {
         );
         fs.copyFileSync(`${categoriesFile}.bak`, categoriesFile);
         library.initializeLibraryCategories(userData);
-        assert.strictEqual(library.scanLibraryCategory("custom-qa").filePaths.length, 2);
+        assert.strictEqual(
+            (await library.scanLibraryCategory("custom-qa")).filePaths.length,
+            2
+        );
+
+        const webInputs = require("../src/core/library/web-inputs");
+        webInputs.initializeWebInputs(
+            path.join(tempRoot, "web-input-user")
+        );
+        const savedInput = webInputs.saveWebInput({
+            name: "Rede QA",
+            url: "https://example.com/live/test.m3u8",
+            protocol: "hls",
+            timingMode: "duration",
+            durationSeconds: 90,
+            fitMode: "contain",
+            sizePercent: 75
+        });
+        assert.strictEqual(savedInput.premiumFeature, true);
+        assert.strictEqual(savedInput.sizePercent, 75);
+        assert.strictEqual(webInputs.getWebInputs().length, 1);
 
         const reports = require("../src/core/reporting/playout-report");
         const docs = path.join(tempRoot, "docs");
@@ -207,7 +227,7 @@ async function main() {
         const reportDir = path.join(docs, "Santtos TV", "Relatórios de Exibição");
         await waitFor(() =>
             fs.existsSync(reportDir) &&
-            fs.readdirSync(reportDir).some((name) => name.endsWith(".xlsx"))
+            fs.readdirSync(reportDir).some((name) => name.endsWith(".xml"))
         );
 
         assert(fs.existsSync(`${databaseFile}.bak`), "Deve existir backup da geracao anterior.");
@@ -244,8 +264,33 @@ async function main() {
         console.log("BACKEND QA: APROVADO");
         console.log("✓ banco e normalização");
         console.log("✓ biblioteca por pastas");
-        console.log("✓ timeline e roteiro diário");
-        console.log("✓ relatório Excel");
+        console.log("✓ timeline e programação diária");
+        const xmlFile = fs.readdirSync(reportDir)
+            .find((name) => name.endsWith(".xml"));
+        const xml = fs.readFileSync(
+            path.join(reportDir, xmlFile),
+            "utf8"
+        );
+        assert.match(xml, /<relatorio_exibicao/);
+        assert.match(xml, /<status>EXECUTADO<\/status>/);
+        assert.match(xml, /<arquivo>comercial\.mp4<\/arquivo>/);
+
+        const customReportFolder =
+            path.join(tempRoot, "xml-custom");
+        reports.setReportFolder(
+            customReportFolder
+        );
+        await waitFor(() =>
+            fs.existsSync(customReportFolder) &&
+            fs.readdirSync(customReportFolder)
+                .some((name) => name.endsWith(".xml"))
+        );
+        assert.strictEqual(
+            reports.getReportFolder(),
+            customReportFolder
+        );
+
+        console.log("✓ relatório XML configurável");
     } finally {
         fs.rmSync(tempRoot, { recursive: true, force: true });
     }
