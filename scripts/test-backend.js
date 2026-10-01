@@ -157,7 +157,7 @@ async function main() {
             builtIn: false
         };
         library.saveLibraryCategories([...defaults, custom]);
-        const scan = library.scanLibraryCategory("custom-qa");
+        const scan = await library.scanLibraryCategory("custom-qa");
         assert.strictEqual(scan.filePaths.length, 2, "Scan deve aceitar extensões suportadas e ignorar subpastas.");
         assert(scan.filePaths.some((p) => p.endsWith("A.mp4")));
         assert(scan.filePaths.some((p) => p.endsWith("B.MKV")));
