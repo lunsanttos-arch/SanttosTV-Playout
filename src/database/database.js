@@ -1052,7 +1052,18 @@ function addMedia(filePaths) {
             continue;
         }
 
-        if (!fs.existsSync(filePath)) {
+        const networkPath =
+            /^\\\\/.test(
+                filePath
+            );
+
+        // UNC/SMB é validado pelo scanner e pelo FFprobe assíncrono.
+        // Não fazemos I/O síncrono contra o servidor aqui para não
+        // congelar o processo principal do Electron.
+        if (
+            !networkPath &&
+            !fs.existsSync(filePath)
+        ) {
             continue;
         }
 
@@ -1081,7 +1092,12 @@ function addMedia(filePaths) {
             continue;
         }
 
-        const statistics = fs.statSync(filePath);
+        const statistics =
+            networkPath
+                ? null
+                : fs.statSync(
+                      filePath
+                  );
 
         const item = {
             id: crypto.randomUUID(),
@@ -1090,7 +1106,9 @@ function addMedia(filePaths) {
             path: filePath,
             extension,
 
-            fileSize: statistics.size,
+            fileSize:
+                statistics?.size ??
+                0,
 
             duration: null,
             width: null,
