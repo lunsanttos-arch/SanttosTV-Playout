@@ -2824,7 +2824,7 @@ function PlayoutPanel({
                                             ? "Formato ou codec não suportado pelo monitor Chromium."
                                             : code === 3
                                               ? "O monitor não conseguiu decodificar este vídeo."
-                                              : "Falha ao ler a mídia. Confirme que o arquivo está disponível localmente (inclusive no OneDrive).";
+                                              : "Falha ao ler a mídia. Confirme que o arquivo ou servidor de arquivos está disponível.";
                                         setPreviewError(
                                             `${problem} Se o arquivo toca no FFmpeg, prepare uma prévia MP4 compatível.`
                                         );
