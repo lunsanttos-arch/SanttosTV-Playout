@@ -1,3 +1,5 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Montserrat:wght@400;700&family=Oswald:wght@400;700&family=Poppins:wght@400;700&family=Roboto+Condensed:wght@400;700&display=swap");
+
 .exhibition-config {
     min-height: 0;
     height: 100%;
@@ -187,3 +189,52 @@
     cursor: pointer;
 }
 .exhibition-reset:hover { background: #363636; }
+
+
+.exhibition-range-field input[type="range"] {
+    width: 100%;
+}
+
+.exhibition-range-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.exhibition-range-heading strong {
+    color: #ffffff;
+    font-size: 11px;
+}
+
+.exhibition-position-card .exhibition-card-fields {
+    gap: 10px;
+}
+
+.exhibition-inline-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.exhibition-inline-preview-header strong {
+    color: #d8d8d8;
+    font-size: 11px;
+}
+
+.exhibition-inline-preview-header select {
+    width: auto;
+    min-width: 120px;
+    height: 30px;
+    color: #f0f0f0;
+    background: #111;
+    border: 1px solid #444;
+    border-radius: 5px;
+}
+
+.exhibition-live-preview-compact {
+    width: min(100%, 430px);
+    margin: 0 auto;
+}
