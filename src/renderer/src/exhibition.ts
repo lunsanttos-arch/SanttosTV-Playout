@@ -98,17 +98,20 @@ export function exhibitionPreviewAnchor(
     const logoX = clampCoordinate(watermark.x, 1680, 0, 1920);
     const logoY = clampCoordinate(watermark.y, 40, 0, 1080);
     const logoWidth = clampCoordinate(watermark.widthPx, 180, 1, 1920);
-    const right = clampCoordinate(
-        logoX + logoWidth + style.rightOffsetPx,
-        1860, 8 + style.backgroundPadding, 1920 - 8 - style.backgroundPadding
+    const center = clampCoordinate(
+        logoX + logoWidth / 2 + style.rightOffsetPx,
+        logoX + logoWidth / 2,
+        8 + style.backgroundPadding,
+        1920 - 8 - style.backgroundPadding
     );
     const top = clampCoordinate(
         logoY - style.fontSize - style.backgroundPadding * 2 - style.gapPx + style.yOffsetPx,
         8, 8, 1080 - style.fontSize
     );
     return {
-        right: String(((1920 - right) / 1920) * 100) + "%",
-        top: String((top / 1080) * 100) + "%"
+        left: String((center / 1920) * 100) + "%",
+        top: String((top / 1080) * 100) + "%",
+        transform: "translateX(-50%)"
     };
 }
 
@@ -145,6 +148,6 @@ export function exhibitionPreviewStyle(
         padding: style.backgroundEnabled
             ? String(style.backgroundPadding / 19.2) + "cqw"
             : "0",
-        textAlign: "right" as const
+        textAlign: "center" as const
     };
 }
