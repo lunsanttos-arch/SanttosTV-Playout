@@ -125,36 +125,122 @@ function saveLibraryCategories(nextCategories) {
     return getLibraryCategories();
 }
 
-function scanLibraryCategory(categoryId) {
-    const category = categories.find((item) => item.id === categoryId);
+async function scanLibraryCategory(categoryId) {
+    const category = categories.find(
+        (item) =>
+            item.id === categoryId
+    );
+
     if (!category) {
-        throw new Error("Categoria da biblioteca não encontrada.");
+        throw new Error(
+            "Categoria da biblioteca não encontrada."
+        );
     }
 
     if (!category.folderPath) {
-        return { category: { ...category }, filePaths: [], folderMissing: false, unconfigured: true };
+        return {
+            category: {
+                ...category
+            },
+            filePaths: [],
+            folderMissing: false,
+            unconfigured: true,
+            networkPath: false
+        };
     }
 
-    if (!fs.existsSync(category.folderPath)) {
-        return { category: { ...category }, filePaths: [], folderMissing: true, unconfigured: false };
+    const networkPath =
+        /^\\\\/.test(
+            category.folderPath
+        );
+
+    let stat;
+
+    try {
+        stat =
+            await fs.promises.stat(
+                category.folderPath
+            );
+    } catch (error) {
+        if (
+            error &&
+            (
+                error.code === "ENOENT" ||
+                error.code === "ENOTDIR" ||
+                error.code === "ENETUNREACH" ||
+                error.code === "EHOSTUNREACH"
+            )
+        ) {
+            return {
+                category: {
+                    ...category
+                },
+                filePaths: [],
+                folderMissing: true,
+                unconfigured: false,
+                networkPath
+            };
+        }
+
+        throw error;
     }
 
-    const stat = fs.statSync(category.folderPath);
     if (!stat.isDirectory()) {
-        throw new Error("O caminho configurado não é uma pasta.");
+        throw new Error(
+            "O caminho configurado não é uma pasta."
+        );
     }
 
-    const filePaths = fs.readdirSync(category.folderPath, { withFileTypes: true })
-        .filter((entry) => entry.isFile())
-        .map((entry) => path.join(category.folderPath, entry.name))
-        .filter((filePath) => SUPPORTED_EXTENSIONS.has(path.extname(filePath).toLowerCase()))
-        .sort((a, b) => a.localeCompare(b, "pt-BR", { sensitivity: "base" }));
+    // Importante para SMB/NAS: a leitura é assíncrona para não congelar
+    // o processo principal do Electron enquanto o servidor responde.
+    const entries =
+        await fs.promises.readdir(
+            category.folderPath,
+            {
+                withFileTypes: true
+            }
+        );
+
+    const filePaths =
+        entries
+            .filter(
+                (entry) =>
+                    entry.isFile()
+            )
+            .map(
+                (entry) =>
+                    path.join(
+                        category.folderPath,
+                        entry.name
+                    )
+            )
+            .filter(
+                (filePath) =>
+                    SUPPORTED_EXTENSIONS.has(
+                        path
+                            .extname(filePath)
+                            .toLowerCase()
+                    )
+            )
+            .sort(
+                (left, right) =>
+                    left.localeCompare(
+                        right,
+                        "pt-BR",
+                        {
+                            sensitivity: "base"
+                        }
+                    )
+            );
 
     return {
-        category: { ...category },
+        category: {
+            ...category
+        },
         filePaths,
         folderMissing: false,
-        unconfigured: false
+        unconfigured: false,
+        networkPath
     };
 }
 
