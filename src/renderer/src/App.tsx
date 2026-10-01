@@ -1693,7 +1693,13 @@ function PlayoutPanel({
 
         ndiWasOnlineRef.current = true;
         if (!resumeAfterNdiLossRef.current) return;
-        if (!selectedMedia || !video) {
+        if (
+            !selectedMedia ||
+            (
+                selectedMedia.sourceType !== "input" &&
+                !video
+            )
+        ) {
             return;
         }
 
@@ -1717,7 +1723,9 @@ function PlayoutPanel({
             );
             setCurrentTime(resumeAt);
             setIsPlaying(true);
-            await video.play().catch(() => undefined);
+            await video
+                ?.play()
+                .catch(() => undefined);
         })().catch((error) => {
             console.error("Falha ao retomar sinal NDI:", error);
             video.pause();
