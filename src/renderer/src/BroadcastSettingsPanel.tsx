@@ -638,7 +638,7 @@ function OutputTab({
                 />
 
                 <div className="settings-info">
-                    No NDI, Sample rate e Canais são aplicados ao PCM nativo. Codec e bitrate AAC continuam sendo usados apenas nas saídas comprimidas, como SRT.
+                    Sample rate e canais definem o áudio do PROGRAM. Codec e bitrate AAC são usados apenas nas saídas comprimidas.
                 </div>
             </SettingsCard>
 
