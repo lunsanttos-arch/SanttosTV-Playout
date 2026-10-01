@@ -30,6 +30,7 @@ export interface MediaItem {
     inputProtocol?: string;
     inputTimingMode?: "duration" | "clock";
     inputEndTime?: string;
+    inputEndAtMs?: number;
     fitMode?: "contain" | "cover" | "stretch";
     sizePercent?: number;
     premiumFeature?: boolean;
@@ -1746,6 +1747,90 @@ function PlayoutPanel({
         }
     }, [hashtagStyle]);
 
+    function resolveInputClockTiming(
+        item: MediaItem,
+        resumePosition = 0
+    ): MediaItem {
+        if (
+            item.sourceType !== "input" ||
+            item.inputTimingMode !== "clock" ||
+            !item.inputEndTime
+        ) {
+            return item;
+        }
+
+        const now = Date.now();
+        let endAt =
+            Number(item.inputEndAtMs);
+
+        if (
+            !Number.isFinite(endAt) ||
+            endAt <= 0
+        ) {
+            const [hours, minutes, seconds] =
+                item.inputEndTime
+                    .split(":")
+                    .map(Number);
+            const end =
+                new Date(now);
+
+            end.setHours(
+                hours || 0,
+                minutes || 0,
+                seconds || 0,
+                0
+            );
+
+            if (
+                end.getTime() <= now
+            ) {
+                end.setDate(
+                    end.getDate() + 1
+                );
+            }
+
+            endAt =
+                end.getTime();
+        }
+
+        const remaining =
+            Math.max(
+                0.05,
+                (endAt - now) /
+                    1000
+            );
+        const nextOut =
+            Math.max(
+                resumePosition,
+                0
+            ) +
+            remaining;
+
+        const updated: MediaItem = {
+            ...item,
+            inputEndAtMs:
+                endAt,
+            duration:
+                nextOut,
+            inPoint: 0,
+            outPoint:
+                nextOut
+        };
+
+        setTimelineQueue(
+            (current) =>
+                current.map(
+                    (entry) =>
+                        entry.id ===
+                        item.id
+                            ? updated
+                            : entry
+                )
+        );
+
+        return updated;
+    }
+
     async function playVideo() {
         let mediaToPlay = selectedMedia;
 
@@ -1772,6 +1857,28 @@ function PlayoutPanel({
         }
 
         const video = videoRef.current;
+
+        mediaToPlay =
+            resolveInputClockTiming(
+                mediaToPlay,
+                nativeOutputEnabled &&
+                nativePlayout.itemId ===
+                    mediaToPlay.id &&
+                nativePlayout.state ===
+                    "PAUSED"
+                    ? nativePlayout.positionSeconds
+                    : 0
+            );
+
+        if (
+            selectedMedia?.id ===
+            mediaToPlay.id
+        ) {
+            onSelectMedia(
+                mediaToPlay
+            );
+        }
+
         const clipIn = getClipIn(mediaToPlay);
         const clipOut = getClipOut(mediaToPlay);
         const resumeAt =
@@ -2012,15 +2119,31 @@ function PlayoutPanel({
             return;
         }
 
-        onSelectMedia(nextMedia);
-        const nextIn = getClipIn(nextMedia);
+        const nextToPlay =
+            resolveInputClockTiming(
+                nextMedia,
+                0
+            );
+
+        onSelectMedia(
+            nextToPlay
+        );
+        const nextIn =
+            getClipIn(nextToPlay);
         setCurrentTime(nextIn);
-        setDuration(getClipDuration(nextMedia));
+        setDuration(
+            getClipDuration(
+                nextToPlay
+            )
+        );
         clipAdvanceGuardRef.current = false;
         await delay(120);
 
         if (nativeOutputEnabled) {
-            await startNativeNdi(nextMedia, nextIn);
+            await startNativeNdi(
+                nextToPlay,
+                nextIn
+            );
         }
 
         const video = videoRef.current;
@@ -2038,7 +2161,7 @@ function PlayoutPanel({
             atMs: Date.now()
         };
         setIsPlaying(true);
-        await startExecutionReport(nextMedia);
+        await startExecutionReport(nextToPlay);
     }
 
     useEffect(() => {
