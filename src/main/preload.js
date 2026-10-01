@@ -262,6 +262,16 @@ contextBridge.exposeInMainWorld(
                 "report:folder"
             ),
 
+        selectPlayoutReportFolder: () =>
+            ipcRenderer.invoke(
+                "report:select-folder"
+            ),
+
+        resetPlayoutReportFolder: () =>
+            ipcRenderer.invoke(
+                "report:reset-folder"
+            ),
+
         sendNdiFrame: (frameData) =>
             ipcRenderer.send(
                 "ndi:frame",
