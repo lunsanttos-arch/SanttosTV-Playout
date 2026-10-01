@@ -1323,53 +1323,28 @@ function PlayoutPanel({
     }
 
     useEffect(() => {
-        const match =
-            /^(\d{2}):(\d{2}):(\d{2})/.exec(
-                plannedSchedule.end
-            );
-
         let programmedEndAtMs: number | null = null;
 
         if (
-            match &&
             plannedSchedule.totalSeconds !== null
         ) {
-            const now = new Date();
-            const end = new Date(now);
-            end.setHours(
-                Number(match[1]),
-                Number(match[2]),
-                Number(match[3]),
-                0
-            );
-
             const startParts =
                 programmedStartTime
                     .split(":")
                     .map(Number);
-            const startSeconds =
-                (startParts[0] || 0) *
-                    3600 +
-                (startParts[1] || 0) *
-                    60;
-            const endSeconds =
-                Number(match[1]) *
-                    3600 +
-                Number(match[2]) *
-                    60 +
-                Number(match[3]);
-
-            if (
-                endSeconds <
-                startSeconds
-            ) {
-                end.setDate(
-                    end.getDate() + 1
-                );
-            }
+            const start =
+                new Date();
+            start.setHours(
+                startParts[0] || 0,
+                startParts[1] || 0,
+                0,
+                0
+            );
 
             programmedEndAtMs =
-                end.getTime();
+                start.getTime() +
+                plannedSchedule.totalSeconds *
+                    1000;
         }
 
         onScheduleSummary(
