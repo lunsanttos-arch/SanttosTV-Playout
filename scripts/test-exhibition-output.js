@@ -16,14 +16,14 @@ assert.equal(getExhibitionOverlay("NORMAL", defaultLogo), null);
 assert.equal(getExhibitionOverlay("invalid;drawtext=evil", defaultLogo), null);
 assert.deepEqual(getExhibitionOverlay("INEDITO", defaultLogo), {
     text: "INÉDITO",
-    right: 1860,
+    center: 1770,
     top: 8,
     fontSize: 26,
     padding: 5
 });
 assert.equal(getExhibitionOverlay("REPRISE", defaultLogo).text, "REPRISE");
 assert.equal(getExhibitionOverlay("AO_VIVO", defaultLogo).text, "AO VIVO");
-assert.equal(getExhibitionOverlay("REPRISE", { x: 99999, y: -50, widthPx: 100 }).right, 1907);
+assert.equal(getExhibitionOverlay("REPRISE", { x: 99999, y: -50, widthPx: 100 }).center, 1907);
 assert.throws(
     () => buildExhibitionDrawtext("bad] ; [0:v]", "REPRISE", defaultLogo, "arial.ttf"),
     /input label/
@@ -47,7 +47,7 @@ const custom = normalizeExhibitionStyle({
 });
 assert.equal(getExhibitionOverlay("REPRISE", { x: 1650, y: 160, widthPx: 200 }, custom).text,
     "OUTRA EXIBIÇÃO");
-assert.equal(getExhibitionOverlay("REPRISE", { x: 1650, y: 160, widthPx: 200 }, custom).right, 1815);
+assert.equal(getExhibitionOverlay("REPRISE", { x: 1650, y: 160, widthPx: 200 }, custom).center, 1715);
 assert.equal(getExhibitionOverlay("REPRISE", defaultLogo, { enabled: false }), null);
 const customFilter = buildExhibitionDrawtext("base", "REPRISE", defaultLogo,
     "arial.ttf", custom);
@@ -56,6 +56,8 @@ assert(customFilter.includes("fontcolor=0xf0c020@1.000"));
 assert(customFilter.includes("borderw=3"));
 assert(customFilter.includes("box=1"));
 assert(customFilter.includes("shadowx=3"));
+assert(customFilter.includes("text_w/2"),
+    "Identificação deve permanecer centralizada em relação ao logo.");
 assert(!buildExhibitionDrawtext("base", "REPRISE", defaultLogo, "arial.ttf",
     { labels: { REPRISE: "expr=%{metadata}" } }).includes("expr="),
     "Textos não autorizados devem voltar ao padrão.");
