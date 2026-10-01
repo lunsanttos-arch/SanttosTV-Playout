@@ -1442,7 +1442,7 @@ function registerIpcHandlers() {
             try {
                 return {
                     ok: true,
-                    ...scanLibraryCategory(categoryId)
+                    ...(await scanLibraryCategory(categoryId))
                 };
             } catch (error) {
                 return {
