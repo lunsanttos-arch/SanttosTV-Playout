@@ -707,6 +707,10 @@ function getTimeline() {
                 return {
                     id: entry.id,
                     sourceMediaId: entry.sourceMediaId,
+                    programmedStartTime:
+                        normalizeRundownTime(
+                            entry.programmedStartTime
+                        ),
                     sourceType: "input",
                     inputId: normalizeText(entry.inputId, "", 160),
                     name: normalizeText(entry.name, "Input Web", 120),
@@ -759,6 +763,10 @@ function getTimeline() {
                 id: entry.id,
                 sourceMediaId:
                     entry.sourceMediaId,
+                programmedStartTime:
+                    normalizeRundownTime(
+                        entry.programmedStartTime
+                    ),
                 loop: Boolean(entry.loop),
                 freezeEnd: Boolean(entry.freezeEnd),
                 watermark: Boolean(entry.watermark),
@@ -824,6 +832,10 @@ function saveTimeline(timelineItems) {
                             ? sourceMediaId
                             : item.id,
                     sourceType: "input",
+                    programmedStartTime:
+                        normalizeRundownTime(
+                            item.programmedStartTime
+                        ),
                     inputId: normalizeText(item.inputId, "", 160),
                     name: normalizeText(item.name, "Input Web", 120),
                     path: normalizeText(item.path, "", 4096),
@@ -868,6 +880,10 @@ function saveTimeline(timelineItems) {
             return {
                 id: item.id,
                 sourceMediaId,
+                programmedStartTime:
+                    normalizeRundownTime(
+                        item.programmedStartTime
+                    ),
                 loop: Boolean(item.loop),
                 freezeEnd: Boolean(item.freezeEnd),
                 watermark: Boolean(item.watermark),
