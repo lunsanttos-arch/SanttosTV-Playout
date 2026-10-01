@@ -17,7 +17,6 @@ import type { ExhibitionStyle, ExhibitionType } from "./exhibition";
 type Panel =
     | "playout"
     | "library"
-    | "playlist"
     | "scheduler"
     | "settings";
 
@@ -763,8 +762,7 @@ function Sidebar({
         label: string;
     }> = [
         { panel: "playout", icon: "📺", label: "Playout" },
-        { panel: "playlist", icon: "📋", label: "Playlist" },
-        { panel: "scheduler", icon: "🗓", label: "Scheduler" },
+        { panel: "scheduler", icon: "🗓", label: "Programação" },
         { panel: "settings", icon: "⚙", label: "Configurações" }
     ];
 
@@ -1006,15 +1004,12 @@ function PlayoutPanel({
         }
 
         if (isPlaying && selectedMedia) {
-            setTimelineQueue((current) => {
-                const currentIndex = current.findIndex(
-                    (item) => item.id === selectedMedia.id
-                );
-                const preserved = currentIndex >= 0
-                    ? current.slice(0, currentIndex + 1)
-                    : [selectedMedia];
-                return [...preserved, ...prepared];
-            });
+            // Aplicar uma Programação substitui tudo que ainda não foi ao ar.
+            // Somente o item que está efetivamente NO AR é preservado.
+            setTimelineQueue([
+                selectedMedia,
+                ...prepared
+            ]);
         } else {
             setTimelineQueue(prepared);
             onSelectMedia(prepared[0]);
@@ -2705,10 +2700,18 @@ function PlayoutPanel({
                             <span className="program-proxy-ready">Prévia compatível</span>
                         )}
 
-                        <div className="program-time">
-                            {formatDuration(selectedClipCurrent)}
-                            {" / "}
-                            {formatDuration(selectedClipDuration)}
+                        <div
+                            className="program-time"
+                            title="Tempo restante do vídeo atual"
+                        >
+                            RESTANTE{" "}
+                            {formatDuration(
+                                Math.max(
+                                    0,
+                                    selectedClipDuration -
+                                        selectedClipCurrent
+                                )
+                            )}
                         </div>
                     </div>
 
@@ -3578,11 +3581,16 @@ function LibraryPanel({
         try {
             const loaded = await window.santtosAPI.getLibraryCategories();
             setCategories(loaded);
-            const nextId = preferredId && loaded.some((item) => item.id === preferredId)
-                ? preferredId
-                : loaded.some((item) => item.id === activeCategoryId)
-                  ? activeCategoryId
-                  : loaded[0]?.id ?? "";
+            const validIds = new Set([
+                "__all__",
+                ...loaded.map((item) => item.id)
+            ]);
+            const nextId =
+                preferredId && validIds.has(preferredId)
+                    ? preferredId
+                    : validIds.has(activeCategoryId)
+                      ? activeCategoryId
+                      : "__all__";
             setActiveCategoryId(nextId);
             return { loaded, nextId };
         } catch (error) {
@@ -3657,7 +3665,18 @@ function LibraryPanel({
             );
     }, [activeCategoryId]);
 
-    const activeCategory = categories.find((item) => item.id === activeCategoryId) ?? null;
+    const allCategory: LibraryCategory = {
+        id: "__all__",
+        name: "Todas",
+        folderPath: "",
+        builtIn: true
+    };
+    const activeCategory =
+        activeCategoryId === allCategory.id
+            ? allCategory
+            : categories.find(
+                  (item) => item.id === activeCategoryId
+              ) ?? null;
 
     function belongsToFolder(filePath: string, folderPath: string) {
         if (!folderPath) return false;
@@ -3667,22 +3686,117 @@ function LibraryPanel({
         return file.startsWith(`${folder}/`) && !file.slice(folder.length + 1).includes("/");
     }
 
+    const configuredFolders = useMemo(
+        () =>
+            categories.filter(
+                (category) => Boolean(category.folderPath)
+            ),
+        [categories]
+    );
+
+    const libraryMedia = useMemo(
+        () =>
+            media.filter((item) =>
+                configuredFolders.some((category) =>
+                    belongsToFolder(
+                        item.path,
+                        category.folderPath
+                    )
+                )
+            ),
+        [media, configuredFolders]
+    );
+
     const categoryMedia = useMemo(() => {
+        if (activeCategoryId === "__all__") {
+            return libraryMedia;
+        }
         if (!activeCategory?.folderPath) return [];
-        return media.filter((item) => belongsToFolder(item.path, activeCategory.folderPath));
-    }, [media, activeCategory?.folderPath]);
+        return media.filter((item) =>
+            belongsToFolder(
+                item.path,
+                activeCategory.folderPath
+            )
+        );
+    }, [
+        media,
+        libraryMedia,
+        activeCategoryId,
+        activeCategory?.folderPath
+    ]);
 
     const filteredMedia = useMemo(() => {
-        const normalized = search.trim().toLowerCase();
-        if (!normalized) return categoryMedia;
-        return categoryMedia.filter((item) => item.name.toLowerCase().includes(normalized));
-    }, [categoryMedia, search]);
+        const normalized = search
+            .trim()
+            .toLowerCase();
+
+        // A pesquisa é sempre global, independentemente da pasta aberta.
+        const source = normalized
+            ? libraryMedia
+            : categoryMedia;
+
+        if (!normalized) return source;
+
+        return source.filter((item) => {
+            const categoryName =
+                configuredFolders.find((category) =>
+                    belongsToFolder(
+                        item.path,
+                        category.folderPath
+                    )
+                )?.name ?? "";
+            return (
+                item.name
+                    .toLowerCase()
+                    .includes(normalized) ||
+                item.path
+                    .toLowerCase()
+                    .includes(normalized) ||
+                categoryName
+                    .toLowerCase()
+                    .includes(normalized)
+            );
+        });
+    }, [
+        categoryMedia,
+        libraryMedia,
+        configuredFolders,
+        search
+    ]);
 
     async function refreshCategory() {
         if (!activeCategory) return;
         setIsRefreshing(true);
         setCategoryStatus("");
         try {
+            if (activeCategoryId === "__all__") {
+                const results = await Promise.all(
+                    categories.map((category) =>
+                        window.santtosAPI
+                            .scanLibraryCategory(
+                                category.id
+                            )
+                    )
+                );
+                const paths = [
+                    ...new Set(
+                        results.flatMap(
+                            (result) =>
+                                result.ok
+                                    ? result.filePaths ?? []
+                                    : []
+                        )
+                    )
+                ];
+                if (paths.length > 0) {
+                    await onImportDroppedFiles(paths);
+                }
+                setCategoryStatus(
+                    `${paths.length} arquivo(s) encontrado(s) em ${categories.length} pasta(s).`
+                );
+                return;
+            }
+
             const result = await window.santtosAPI.scanLibraryCategory(activeCategory.id);
             if (!result.ok) throw new Error(result.error ?? "Falha ao atualizar");
 
@@ -3815,6 +3929,20 @@ function LibraryPanel({
             </div>
 
             <div className="library-category-tabs">
+                <button
+                    type="button"
+                    className={
+                        activeCategoryId === "__all__"
+                            ? "active"
+                            : ""
+                    }
+                    onClick={() => {
+                        setActiveCategoryId("__all__");
+                        setCategoryStatus("");
+                    }}
+                >
+                    Todas
+                </button>
                 {categories.map((category) => (
                     <button
                         key={category.id}
@@ -3822,7 +3950,6 @@ function LibraryPanel({
                         className={category.id === activeCategoryId ? "active" : ""}
                         onClick={() => {
                             setActiveCategoryId(category.id);
-                            setSearch("");
                             setCategoryStatus("");
                         }}
                     >
@@ -3835,8 +3962,25 @@ function LibraryPanel({
             </div>
 
             <div className="library-category-status">
-                <strong>{activeCategory?.folderPath ? "Pasta:" : "Sem pasta configurada"}</strong>
-                {activeCategory?.folderPath && <span title={activeCategory.folderPath}>{activeCategory.folderPath}</span>}
+                <strong>
+                    {activeCategoryId === "__all__"
+                        ? "Pastas:"
+                        : activeCategory?.folderPath
+                          ? "Pasta:"
+                          : "Sem pasta configurada"}
+                </strong>
+                {activeCategoryId === "__all__" ? (
+                    <span>
+                        {configuredFolders.length} pasta(s)
+                        configurada(s) · pesquisa global
+                    </span>
+                ) : (
+                    activeCategory?.folderPath && (
+                        <span title={activeCategory.folderPath}>
+                            {activeCategory.folderPath}
+                        </span>
+                    )
+                )}
             </div>
 
             <div className="library-toolbar">
@@ -3844,7 +3988,7 @@ function LibraryPanel({
                     className="search-input"
                     type="search"
                     value={search}
-                    placeholder={`Pesquisar em ${activeCategory?.name ?? "Biblioteca"}...`}
+                    placeholder="Pesquisar em toda a Biblioteca..."
                     onChange={(event) => setSearch(event.target.value)}
                 />
                 <span>{filteredMedia.length} arquivo(s)</span>
@@ -3854,7 +3998,8 @@ function LibraryPanel({
                 <div className="library-message">{categoryStatus || message}</div>
             )}
 
-            {!activeCategory?.folderPath ? (
+            {activeCategoryId !== "__all__" &&
+            !activeCategory?.folderPath ? (
                 <div className="empty-state">Configure a pasta desta aba em Configurações → Biblioteca</div>
             ) : filteredMedia.length === 0 ? (
                 <div className="empty-state">Nenhum vídeo nesta pasta. Clique em Atualizar.</div>
