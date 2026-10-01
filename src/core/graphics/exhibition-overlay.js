@@ -9,7 +9,18 @@ const LABELS = Object.freeze({
     ESPECIAL: "ESPECIAL",
     AO_VIVO: "AO VIVO"
 });
-const FONTS = new Set(["Arial", "Segoe UI", "Tahoma", "Verdana", "Calibri"]);
+const FONTS = new Set([
+    "Arial",
+    "Segoe UI",
+    "Montserrat",
+    "Inter",
+    "Poppins",
+    "Oswald",
+    "Roboto Condensed",
+    "Tahoma",
+    "Verdana",
+    "Calibri"
+]);
 const WIDTH = 1920;
 const HEIGHT = 1080;
 
