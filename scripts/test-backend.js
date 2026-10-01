@@ -230,6 +230,31 @@ async function main() {
             fs.readdirSync(reportDir).some((name) => name.endsWith(".xml"))
         );
 
+        const xmlFile = fs.readdirSync(reportDir)
+            .find((name) => name.endsWith(".xml"));
+        const xml = fs.readFileSync(
+            path.join(reportDir, xmlFile),
+            "utf8"
+        );
+        assert.match(xml, /<relatorio_exibicao/);
+        assert.match(xml, /<status>EXECUTADO<\/status>/);
+        assert.match(xml, /<arquivo>comercial\.mp4<\/arquivo>/);
+
+        const customReportFolder =
+            path.join(tempRoot, "xml-custom");
+        reports.setReportFolder(
+            customReportFolder
+        );
+        await waitFor(() =>
+            fs.existsSync(customReportFolder) &&
+            fs.readdirSync(customReportFolder)
+                .some((name) => name.endsWith(".xml"))
+        );
+        assert.strictEqual(
+            reports.getReportFolder(),
+            customReportFolder
+        );
+
         assert(fs.existsSync(`${databaseFile}.bak`), "Deve existir backup da geracao anterior.");
         const persisted = JSON.parse(fs.readFileSync(databaseFile, "utf8"));
         assert.strictEqual(persisted.timeline.length, 1, "Timeline nao deve se perder no disco.");
@@ -265,32 +290,8 @@ async function main() {
         console.log("✓ banco e normalização");
         console.log("✓ biblioteca por pastas");
         console.log("✓ timeline e programação diária");
-        const xmlFile = fs.readdirSync(reportDir)
-            .find((name) => name.endsWith(".xml"));
-        const xml = fs.readFileSync(
-            path.join(reportDir, xmlFile),
-            "utf8"
-        );
-        assert.match(xml, /<relatorio_exibicao/);
-        assert.match(xml, /<status>EXECUTADO<\/status>/);
-        assert.match(xml, /<arquivo>comercial\.mp4<\/arquivo>/);
-
-        const customReportFolder =
-            path.join(tempRoot, "xml-custom");
-        reports.setReportFolder(
-            customReportFolder
-        );
-        await waitFor(() =>
-            fs.existsSync(customReportFolder) &&
-            fs.readdirSync(customReportFolder)
-                .some((name) => name.endsWith(".xml"))
-        );
-        assert.strictEqual(
-            reports.getReportFolder(),
-            customReportFolder
-        );
-
         console.log("✓ relatório XML configurável");
+
     } finally {
         fs.rmSync(tempRoot, { recursive: true, force: true });
     }
