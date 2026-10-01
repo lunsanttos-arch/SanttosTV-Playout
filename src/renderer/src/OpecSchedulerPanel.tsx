@@ -15,7 +15,10 @@ interface DailyRundown {
 
 interface Props {
     media: MediaItem[];
-    onApply: (items: MediaItem[]) => void;
+    onApply: (
+        items: MediaItem[],
+        startTime: string
+    ) => void;
 }
 
 function todayKey() {
@@ -171,7 +174,10 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
     async function applyRundown() {
         try {
             const saved = await saveRundown(false);
-            onApply(saved.items);
+            onApply(
+                saved.items,
+                saved.startTime || "00:00"
+            );
             setStatus("Programação aplicada ao Playout.");
         } catch (error) {
             console.error(error);
