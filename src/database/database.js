@@ -211,6 +211,11 @@ function normalizeHashtagStyle(value = {}) {
     const allowedFonts = new Set([
         "Arial",
         "Segoe UI",
+        "Montserrat",
+        "Inter",
+        "Poppins",
+        "Oswald",
+        "Roboto Condensed",
         "Tahoma",
         "Verdana",
         "Calibri"
