@@ -81,6 +81,7 @@ jobs:
           node --check src/core/playout/remote-input.js
           node --check src/core/playout/remote-input-resolver.js
           node --check src/core/playout/remote-input-proxy.js
+          node --check src/core/playout/vlc-input-bridge.js
           node --check src/core/playout/ffmpeg-stream-map.js
           node --check src/core/media/web-input-preview.js
 
@@ -98,6 +99,9 @@ jobs:
 
       - name: Web input HLS playback
         run: npm run test:web-input
+
+      - name: VLC Input bridge regression
+        run: npm run test:vlc-input
 
       - name: NDI editorial overlay render regression
         run: npm run test:exhibition-output
