@@ -321,6 +321,14 @@ assert(
     "Inputs Web devem oferecer identidade HTTP e controles secundários no tema escuro."
 );
 assert(
+    webInputs.includes("Motor do Input") &&
+    webInputs.includes('value="vlc"') &&
+    webInputs.includes("getVlcInputStatus") &&
+    webInputs.includes("VLC detectado") &&
+    app.includes("inputEngine"),
+    "Inputs Web devem permitir Automático/FFmpeg/VLC e mostrar detecção do VLC."
+);
+assert(
     webInputs.includes("const value =") &&
     !/setDraft\([\s\S]{0,220}event\.currentTarget\.value/.test(webInputs),
     "Formulário de Input deve capturar o valor do evento antes do updater React."
