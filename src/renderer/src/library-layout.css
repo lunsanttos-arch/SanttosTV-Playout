@@ -264,6 +264,18 @@
     line-height: 1.4;
 }
 
+.web-input-engine-status {
+    display: block;
+    margin-top: 4px;
+    max-width: 280px;
+    overflow: hidden;
+    color: #8e8e8e;
+    font-size: 9px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .web-input-item .secondary-button,
 .web-input-actions .secondary-button {
     min-height: 34px;
