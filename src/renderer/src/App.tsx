@@ -2321,9 +2321,18 @@ function PlayoutPanel({
     ): MediaItem | null {
         if (!raw) return null;
 
+        const serialized =
+            raw.startsWith(
+                "SANTTOS_INPUT:"
+            )
+                ? raw.slice(
+                      "SANTTOS_INPUT:".length
+                  )
+                : raw;
+
         try {
             const value =
-                JSON.parse(raw) as Partial<MediaItem>;
+                JSON.parse(serialized) as Partial<MediaItem>;
 
             if (
                 value.sourceType !== "input" ||
@@ -3228,11 +3237,16 @@ function PlayoutPanel({
                             event.dataTransfer.types.includes(
                                 "application/x-santtos-timeline-item"
                             );
+                        const hasPlainText =
+                            event.dataTransfer.types.includes(
+                                "text/plain"
+                            );
 
                         if (
                             hasFiles ||
                             hasLibraryMedia ||
-                            hasTimelineItem
+                            hasTimelineItem ||
+                            hasPlainText
                         ) {
                             event.preventDefault();
                             event.dataTransfer.dropEffect = "copy";
@@ -3252,6 +3266,9 @@ function PlayoutPanel({
                             parseDraggedTimelineItem(
                                 event.dataTransfer.getData(
                                     "application/x-santtos-timeline-item"
+                                ) ||
+                                event.dataTransfer.getData(
+                                    "text/plain"
                                 )
                             );
 
@@ -3335,6 +3352,10 @@ function PlayoutPanel({
                                                     event.dataTransfer.types.includes(
                                                         "application/x-santtos-timeline-item"
                                                     );
+                                                const hasPlainText =
+                                                    event.dataTransfer.types.includes(
+                                                        "text/plain"
+                                                    );
                                                 const hasFiles =
                                                     event.dataTransfer.types.includes("Files");
 
@@ -3342,6 +3363,7 @@ function PlayoutPanel({
                                                     hasFiles ||
                                                     isLibraryMedia ||
                                                     hasTimelineItem ||
+                                                    hasPlainText ||
                                                     !isCurrent
                                                 ) {
                                                     event.preventDefault();
@@ -3363,6 +3385,9 @@ function PlayoutPanel({
                                                     parseDraggedTimelineItem(
                                                         event.dataTransfer.getData(
                                                             "application/x-santtos-timeline-item"
+                                                        ) ||
+                                                        event.dataTransfer.getData(
+                                                            "text/plain"
                                                         )
                                                     );
 
