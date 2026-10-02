@@ -10,6 +10,8 @@ const ffmpegStatic = require("ffmpeg-static");
 const {
     isRemoteInputUrl,
     isHlsInput,
+    automaticReferer,
+    describeRemoteInputError,
     remoteInputArgs
 } = require("../src/core/playout/remote-input");
 const {
@@ -124,6 +126,34 @@ async function main() {
     assert(policy.includes("-reconnect"));
     assert(policy.includes("-rw_timeout"));
     assert(policy.includes("-user_agent"));
+
+    const dailyPolicy = remoteInputArgs(
+        "https://cdndirector.dailymotion.com/cdn/live/video/test.m3u8",
+        {
+            protocolHint: "hls",
+            realtime: true
+        }
+    );
+    assert.equal(
+        automaticReferer(
+            "https://cdndirector.dailymotion.com/cdn/live/video/test.m3u8"
+        ),
+        "https://www.dailymotion.com/"
+    );
+    assert.equal(
+        dailyPolicy[dailyPolicy.indexOf("-referer") + 1],
+        "https://www.dailymotion.com/"
+    );
+    assert.match(
+        dailyPolicy[dailyPolicy.indexOf("-user_agent") + 1],
+        /Mozilla\/5\.0/
+    );
+    assert.match(
+        describeRemoteInputError(
+            "HTTP error 403 Forbidden (access denied)"
+        ),
+        /HTTP 403/
+    );
 
     const temp =
         fs.mkdtempSync(
