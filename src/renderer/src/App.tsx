@@ -32,6 +32,8 @@ export interface MediaItem {
     inputTimingMode?: "duration" | "clock";
     inputEndTime?: string;
     inputEndAtMs?: number;
+    inputHttpReferer?: string;
+    inputHttpUserAgent?: string;
     fitMode?: "contain" | "cover" | "stretch";
     sizePercent?: number;
     premiumFeature?: boolean;
@@ -258,6 +260,8 @@ declare global {
                     endTime: string;
                     fitMode: "contain" | "cover" | "stretch";
                     sizePercent: number;
+                    httpReferer: string;
+                    httpUserAgent: string;
                     premiumFeature: true;
                     createdAt: string;
                 }>;
@@ -318,6 +322,8 @@ declare global {
                     outPointSeconds?: number | null;
                     sourceType?: "file" | "input";
                     inputProtocol?: string;
+                    inputHttpReferer?: string;
+                    inputHttpUserAgent?: string;
                     fitMode?: "contain" | "cover" | "stretch";
                     sizePercent?: number;
                 }
@@ -1598,6 +1604,10 @@ function PlayoutPanel({
                 mediaItem.sourceType ?? "file",
             inputProtocol:
                 mediaItem.inputProtocol ?? "",
+            inputHttpReferer:
+                mediaItem.inputHttpReferer ?? "",
+            inputHttpUserAgent:
+                mediaItem.inputHttpUserAgent ?? "",
             fitMode:
                 mediaItem.fitMode ?? "contain",
             sizePercent:
