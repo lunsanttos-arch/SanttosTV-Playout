@@ -136,7 +136,8 @@ function remoteInputArgs(
         realtime = true,
         startupTimeoutUs = 15000000,
         userAgent = "",
-        referer = ""
+        referer = "",
+        cookie = ""
     } = {}
 ) {
     if (!isRemoteInputUrl(url)) {
