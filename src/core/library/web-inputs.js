@@ -125,6 +125,13 @@ function normalizeInput(value = {}) {
                 .slice(0, 512)
             : "";
 
+    const engine =
+        ["auto", "ffmpeg", "vlc"].includes(
+            String(value.engine ?? "").toLowerCase()
+        )
+            ? String(value.engine).toLowerCase()
+            : "auto";
+
     return {
         id:
             typeof value.id === "string" &&
@@ -147,6 +154,7 @@ function normalizeInput(value = {}) {
         sizePercent,
         httpReferer,
         httpUserAgent,
+        engine,
         premiumFeature: true,
         createdAt:
             typeof value.createdAt === "string"
