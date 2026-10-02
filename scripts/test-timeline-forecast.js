@@ -23,8 +23,8 @@ vm.runInNewContext(compiled.outputText, {
     module: cjs, exports: cjs.exports, Date, Math, Map, Number
 }, { filename: "timeline-forecast.js", timeout: 1000 });
 const {
-    buildTimelineForecast, buildPlannedSchedule, knownClipRange, formatEstimatedClock,
-    formatRemaining, describeForecastEntry
+    buildTimelineForecast, buildPlannedSchedule, buildFreezeCountdown,
+    knownClipRange, formatEstimatedClock, formatRemaining, describeForecastEntry
 } = cjs.exports;
 
 const now = new Date(2026, 8, 25, 23, 59, 50).getTime();
@@ -232,6 +232,33 @@ assert.equal(plannedFreeze.end, "08:00:40");
 assert.equal(plannedFreeze.totalSeconds, 40);
 assert.equal(plannedFreeze.blocker, null);
 assert.equal(plannedFreeze.hasFreeze, true);
+
+const freezeQueue = [
+    { id: "current", duration: 130, inPoint: 30, outPoint: 130 },
+    { id: "break", duration: 30, freezeEnd: true },
+    { id: "after-freeze", duration: 60 }
+];
+const freezeFromCurrent = buildFreezeCountdown(freezeQueue, "current", 40);
+assert.equal(freezeFromCurrent.hasUpcomingFreeze, true);
+assert.equal(freezeFromCurrent.seconds, 120,
+    "Deve somar 90s restantes do item atual + 30s até o fim do item com FREEZE.");
+const freezeInsideItem = buildFreezeCountdown(freezeQueue, "break", 5);
+assert.equal(freezeInsideItem.seconds, 25);
+const freezeAlreadyPassed = buildFreezeCountdown(freezeQueue, "after-freeze", 0);
+assert.equal(freezeAlreadyPassed.hasUpcomingFreeze, false);
+assert.equal(freezeAlreadyPassed.seconds, null);
+const freezeAfterUnknown = buildFreezeCountdown([
+    { id: "unknown-before", duration: null },
+    { id: "freeze-later", duration: 20, freezeEnd: true }
+], "unknown-before", 0);
+assert.equal(freezeAfterUnknown.hasUpcomingFreeze, true);
+assert.equal(freezeAfterUnknown.seconds, null);
+const freezeAfterLoop = buildFreezeCountdown([
+    { id: "loop-before", duration: 10, loop: true },
+    { id: "freeze-later", duration: 20, freezeEnd: true }
+], "loop-before", 0);
+assert.equal(freezeAfterLoop.hasUpcomingFreeze, true);
+assert.equal(freezeAfterLoop.seconds, null);
 const badStart = buildPlannedSchedule([{ id: "clip", duration: 20 }], "29:75");
 assert.equal(badStart.times.get("clip"), "SEM PREVISÃO — INÍCIO INVÁLIDO");
 assert.equal(badStart.blocker, "invalid-start");
