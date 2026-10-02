@@ -204,6 +204,7 @@ assert.equal(planned.times.get("part-1"), "00:00:00 (+1 dia)");
 assert.equal(planned.times.get("ad-break"), "00:01:00 (+1 dia)");
 assert.equal(planned.end, "00:01:30 (+1 dia)");
 assert.equal(planned.totalSeconds, 150);
+assert.equal(planned.blocker, null);
 const missingPlanned = buildPlannedSchedule([
     { id: "known", duration: 60 },
     { id: "unknown", duration: null },
@@ -213,19 +214,23 @@ assert.equal(missingPlanned.times.get("unknown"), "06:01:00");
 assert.match(missingPlanned.times.get("after"), /SEM PREVISÃO/);
 assert.equal(missingPlanned.end, "SEM PREVISÃO");
 assert.equal(missingPlanned.totalSeconds, null);
+assert.equal(missingPlanned.blocker, "unknown-duration");
 const plannedLoop = buildPlannedSchedule([
     { id: "repeat", duration: 20, loop: true },
     { id: "next", duration: 20 }
 ], "08:00");
 assert.match(plannedLoop.times.get("next"), /LOOP ANTERIOR/);
+assert.equal(plannedLoop.blocker, "loop");
 const plannedFreeze = buildPlannedSchedule([
     { id: "freeze", duration: 20, freezeEnd: true },
     { id: "next", duration: 20 }
 ], "08:00");
 assert.match(plannedFreeze.times.get("next"), /FREEZE ANTERIOR/);
 assert.equal(plannedFreeze.end, "SEM PREVISÃO");
+assert.equal(plannedFreeze.blocker, "freeze");
 const badStart = buildPlannedSchedule([{ id: "clip", duration: 20 }], "29:75");
 assert.equal(badStart.times.get("clip"), "SEM PREVISÃO — INÍCIO INVÁLIDO");
+assert.equal(badStart.blocker, "invalid-start");
 
 console.log(
     "TIMELINE ETA QA: APROVADO — cortes, countdown estável, pausa/retomada, seek, reordenação, loop, freeze manual, mídia sem duração e meia-noite."
