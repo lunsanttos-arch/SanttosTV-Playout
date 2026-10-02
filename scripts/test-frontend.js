@@ -256,7 +256,7 @@ assert(opec.includes("exhibitionType"), "Programação diária deve permitir mar
 assert(opec.includes('useState("00:00")') &&
     opec.includes('saved.startTime || "00:00"'),
     "Programação deve começar às 00:00 por padrão.");
-assert(app.includes("+ Nova aba"), "Biblioteca deve oferecer criação de sub-aba.");
+assert(app.includes("+ Nova pasta"), "Biblioteca deve oferecer criação de nova pasta.");
 assert(app.includes("selectLibraryFolder"), "Criação/configuração deve usar seletor de pasta.");
 assert(app.includes("scanLibraryCategory"), "Biblioteca deve conseguir atualizar a pasta ativa.");
 assert(app.includes("result.category ?? activeCategory") &&
