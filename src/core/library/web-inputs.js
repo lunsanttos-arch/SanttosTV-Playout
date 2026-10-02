@@ -109,6 +109,22 @@ function normalizeInput(value = {}) {
             )
         );
 
+    const httpReferer =
+        typeof value.httpReferer === "string"
+            ? value.httpReferer
+                .replace(/[\r\n\u0000]/g, "")
+                .trim()
+                .slice(0, 2048)
+            : "";
+
+    const httpUserAgent =
+        typeof value.httpUserAgent === "string"
+            ? value.httpUserAgent
+                .replace(/[\r\n\u0000]/g, "")
+                .trim()
+                .slice(0, 512)
+            : "";
+
     return {
         id:
             typeof value.id === "string" &&
@@ -129,6 +145,8 @@ function normalizeInput(value = {}) {
         endTime,
         fitMode,
         sizePercent,
+        httpReferer,
+        httpUserAgent,
         premiumFeature: true,
         createdAt:
             typeof value.createdAt === "string"
