@@ -197,10 +197,14 @@ async function main() {
             timingMode: "duration",
             durationSeconds: 90,
             fitMode: "contain",
-            sizePercent: 75
+            sizePercent: 75,
+            httpReferer: "https://example.com/player",
+            httpUserAgent: "QA Browser"
         });
         assert.strictEqual(savedInput.premiumFeature, true);
         assert.strictEqual(savedInput.sizePercent, 75);
+        assert.strictEqual(savedInput.httpReferer, "https://example.com/player");
+        assert.strictEqual(savedInput.httpUserAgent, "QA Browser");
         assert.strictEqual(webInputs.getWebInputs().length, 1);
 
         const reports = require("../src/core/reporting/playout-report");
