@@ -311,6 +311,19 @@ assert(
     app.includes("application/x-santtos-timeline-item"),
     "Inputs Web devem ser arrastáveis e soltos na Timeline como as demais mídias."
 );
+assert(
+    webInputs.includes("Compatibilidade HTTP") &&
+    webInputs.includes("httpReferer") &&
+    webInputs.includes("httpUserAgent") &&
+    webInputs.includes('className="secondary-button"') &&
+    app.includes("inputHttpReferer") &&
+    app.includes("inputHttpUserAgent"),
+    "Inputs Web devem oferecer identidade HTTP e controles secundários no tema escuro."
+);
+assert(
+    watermarkSettings.includes('className="secondary-button"'),
+    "Ação secundária da Marca d'água não deve usar botão branco nativo."
+);
 
 const reportingSettings = fs.readFileSync(
     path.join(root, "src", "renderer", "src", "ReportingSettingsTab.tsx"),
