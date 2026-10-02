@@ -28,6 +28,11 @@ const {
 const {
     createRemoteHlsProxy
 } = require("../core/playout/remote-input-proxy");
+const {
+    findVlcPath,
+    selectInputEngine,
+    startVlcInputBridge
+} = require("../core/playout/vlc-input-bridge");
 const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
 const crypto = require("node:crypto");
@@ -225,6 +230,7 @@ let mainWindow = null;
 let ndiProcess = null;
 let ffmpegProcess = null;
 let activeRemoteInputProxy = null;
+let activeVlcInputBridge = null;
 
 let ndiReady = false;
 let ndiFrameBusy = false;
@@ -822,6 +828,11 @@ function buildProgramFilterGraph(
 }
 
 function stopNativePlayback({ engineAction = "stop" } = {}) {
+    if (activeVlcInputBridge) {
+        activeVlcInputBridge.stop();
+        activeVlcInputBridge = null;
+    }
+
     if (activeRemoteInputProxy) {
         activeRemoteInputProxy.close();
         activeRemoteInputProxy = null;
@@ -982,8 +993,12 @@ async function startNativePlayback(
 
     let playbackPath =
         filePath;
+    let audioPlaybackPath =
+        filePath;
     let resolvedRemoteInput =
         null;
+    let selectedInputEngine =
+        "ffmpeg";
 
     if (isRemoteInput) {
         resolvedRemoteInput =
@@ -999,6 +1014,21 @@ async function startNativePlayback(
 
         playbackPath =
             resolvedRemoteInput.url;
+        audioPlaybackPath =
+            resolvedRemoteInput.url;
+
+        const vlcPath =
+            findVlcPath();
+
+        selectedInputEngine =
+            selectInputEngine(
+                programState.inputEngine,
+                resolvedRemoteInput.provider,
+                Boolean(vlcPath)
+            );
+
+        let sourceForBridge =
+            resolvedRemoteInput.url;
 
         if (
             resolvedRemoteInput.provider ===
@@ -1009,7 +1039,7 @@ async function startNativePlayback(
                     resolvedRemoteInput
                 );
 
-            playbackPath =
+            sourceForBridge =
                 activeRemoteInputProxy.url;
 
             console.log(
@@ -1017,9 +1047,70 @@ async function startNativePlayback(
             );
         }
 
+        if (
+            selectedInputEngine ===
+            "vlc"
+        ) {
+            try {
+                activeVlcInputBridge =
+                    await startVlcInputBridge(
+                        sourceForBridge,
+                        {
+                            vlcPath,
+                            userAgent:
+                                resolvedRemoteInput.provider === "dailymotion"
+                                    ? ""
+                                    : resolvedRemoteInput.userAgent,
+                            referer:
+                                resolvedRemoteInput.provider === "dailymotion"
+                                    ? ""
+                                    : resolvedRemoteInput.referer,
+                            withAudioCopy:
+                                true
+                        }
+                    );
+
+                playbackPath =
+                    activeVlcInputBridge.videoUrl;
+                audioPlaybackPath =
+                    activeVlcInputBridge.audioUrl ||
+                    activeVlcInputBridge.videoUrl;
+
+                console.log(
+                    `Input usando ponte VLC: ${path.basename(activeVlcInputBridge.executable)} -> vídeo UDP ${activeVlcInputBridge.videoPort}` +
+                    `${activeVlcInputBridge.audioPort ? ` / áudio UDP ${activeVlcInputBridge.audioPort}` : ""}.`
+                );
+            } catch (error) {
+                if (
+                    (programState.inputEngine ?? "auto") !==
+                    "auto"
+                ) {
+                    throw error;
+                }
+
+                selectedInputEngine =
+                    "ffmpeg";
+                playbackPath =
+                    sourceForBridge;
+                audioPlaybackPath =
+                    sourceForBridge;
+
+                console.warn(
+                    "Ponte VLC falhou no modo Automático; usando FFmpeg:",
+                    error
+                );
+            }
+        } else {
+            playbackPath =
+                sourceForBridge;
+            audioPlaybackPath =
+                sourceForBridge;
+        }
+
         console.log(
             `Input remoto resolvido: ${resolvedRemoteInput.provider}` +
-            `${resolvedRemoteInput.providerId ? `/${resolvedRemoteInput.providerId}` : ""}`
+            `${resolvedRemoteInput.providerId ? `/${resolvedRemoteInput.providerId}` : ""}` +
+            ` | motor=${selectedInputEngine}`
         );
     }
     const normalizedInPoint =
@@ -1086,7 +1177,10 @@ async function startNativePlayback(
         );
     }
 
-    if (isRemoteInput) {
+    if (
+        isRemoteInput &&
+        isRemoteInputUrl(playbackPath)
+    ) {
         args.push(
             ...remoteInputArgs(
                 playbackPath,
@@ -1194,7 +1288,7 @@ async function startNativePlayback(
                 ffmpegPath,
                 filePath:
                     isRemoteInput
-                        ? playbackPath
+                        ? audioPlaybackPath
                         : filePath,
                 // Midias importadas antes do suporte de áudio não possuem
                 // audioStreamIndex no banco. Nesse caso o FFmpeg usa 0:a:0.
@@ -1202,22 +1296,33 @@ async function startNativePlayback(
                     selectedAudioIndex >= 0
                         ? selectedAudioIndex
                         : null,
-                startSeconds: normalizedStartSeconds,
+                startSeconds:
+                    activeVlcInputBridge
+                        ? 0
+                        : normalizedStartSeconds,
                 durationSeconds: clipRemainingSeconds,
                 sampleRate: profile.sampleRate,
                 channels: profile.channels,
                 protocolHint:
-                    programState.inputProtocol ?? "",
+                    activeVlcInputBridge
+                        ? ""
+                        : programState.inputProtocol ?? "",
                 userAgent:
-                    resolvedRemoteInput?.userAgent ??
-                    programState.inputHttpUserAgent ??
-                    "",
+                    activeVlcInputBridge
+                        ? ""
+                        : resolvedRemoteInput?.userAgent ??
+                          programState.inputHttpUserAgent ??
+                          "",
                 referer:
-                    resolvedRemoteInput?.referer ??
-                    programState.inputHttpReferer ??
-                    "",
+                    activeVlcInputBridge
+                        ? ""
+                        : resolvedRemoteInput?.referer ??
+                          programState.inputHttpReferer ??
+                          "",
                 cookie:
-                    resolvedRemoteInput?.cookie ?? ""
+                    activeVlcInputBridge
+                        ? ""
+                        : resolvedRemoteInput?.cookie ?? ""
             }).start();
             audioOutputStatus = "STARTING";
             audioOutputError = "";
@@ -1351,6 +1456,11 @@ async function startNativePlayback(
             if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
 
+                if (activeVlcInputBridge) {
+                    activeVlcInputBridge.stop();
+                    activeVlcInputBridge = null;
+                }
+
                 if (activeRemoteInputProxy) {
                     activeRemoteInputProxy.close();
                     activeRemoteInputProxy = null;
@@ -1429,6 +1539,11 @@ async function startNativePlayback(
                     );
                 }
 
+                if (activeVlcInputBridge) {
+                    activeVlcInputBridge.stop();
+                    activeVlcInputBridge = null;
+                }
+
                 if (activeRemoteInputProxy) {
                     activeRemoteInputProxy.close();
                     activeRemoteInputProxy = null;
@@ -1448,7 +1563,15 @@ async function startNativePlayback(
                         () =>
                             reject(
                                 new Error(
-                                    "O Input não entregou o primeiro quadro em 12 segundos. Verifique a URL, autenticação, rede ou codec."
+                                    [
+                                        "O Input não entregou o primeiro quadro em 12 segundos. Verifique a URL, autenticação, rede ou codec.",
+                                        activeVlcInputBridge?.stderr?.()
+                                            ? "VLC: " + activeVlcInputBridge.stderr()
+                                            : ""
+                                    ]
+                                        .filter(Boolean)
+                                        .join("\n")
+                                        .slice(-1400)
                                 )
                             ),
                         12000
@@ -1716,6 +1839,22 @@ function registerIpcHandlers() {
             ok: true,
             inputs: getWebInputs()
         })
+    );
+
+    registerTrustedHandle(
+        "web-inputs:vlc-status",
+        async () => {
+            const vlcPath =
+                findVlcPath();
+
+            return {
+                ok: true,
+                available:
+                    Boolean(vlcPath),
+                path:
+                    vlcPath || ""
+            };
+        }
     );
 
     registerTrustedHandle(

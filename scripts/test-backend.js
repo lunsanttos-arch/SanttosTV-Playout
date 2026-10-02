@@ -199,12 +199,14 @@ async function main() {
             fitMode: "contain",
             sizePercent: 75,
             httpReferer: "https://example.com/player",
-            httpUserAgent: "QA Browser"
+            httpUserAgent: "QA Browser",
+            engine: "vlc"
         });
         assert.strictEqual(savedInput.premiumFeature, true);
         assert.strictEqual(savedInput.sizePercent, 75);
         assert.strictEqual(savedInput.httpReferer, "https://example.com/player");
         assert.strictEqual(savedInput.httpUserAgent, "QA Browser");
+        assert.strictEqual(savedInput.engine, "vlc");
         assert.strictEqual(webInputs.getWebInputs().length, 1);
 
         const reports = require("../src/core/reporting/playout-report");

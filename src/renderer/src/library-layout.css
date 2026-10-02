@@ -211,7 +211,7 @@
 
 .web-input-row {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 10px;
 }
 
@@ -262,6 +262,18 @@
     color: #858585;
     font-size: 10px;
     line-height: 1.4;
+}
+
+.web-input-engine-status {
+    display: block;
+    margin-top: 4px;
+    max-width: 280px;
+    overflow: hidden;
+    color: #8e8e8e;
+    font-size: 9px;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .web-input-item .secondary-button,

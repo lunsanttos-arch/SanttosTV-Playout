@@ -34,6 +34,7 @@ export interface MediaItem {
     inputEndAtMs?: number;
     inputHttpReferer?: string;
     inputHttpUserAgent?: string;
+    inputEngine?: "auto" | "ffmpeg" | "vlc";
     fitMode?: "contain" | "cover" | "stretch";
     sizePercent?: number;
     premiumFeature?: boolean;
@@ -262,10 +263,16 @@ declare global {
                     sizePercent: number;
                     httpReferer: string;
                     httpUserAgent: string;
+                    engine: "auto" | "ffmpeg" | "vlc";
                     premiumFeature: true;
                     createdAt: string;
                 }>;
                 error?: string;
+            }>;
+            getVlcInputStatus: () => Promise<{
+                ok: boolean;
+                available: boolean;
+                path: string;
             }>;
             saveWebInput: (input: unknown) => Promise<{
                 ok: boolean;
@@ -324,6 +331,7 @@ declare global {
                     inputProtocol?: string;
                     inputHttpReferer?: string;
                     inputHttpUserAgent?: string;
+                    inputEngine?: "auto" | "ffmpeg" | "vlc";
                     fitMode?: "contain" | "cover" | "stretch";
                     sizePercent?: number;
                 }
@@ -1608,6 +1616,8 @@ function PlayoutPanel({
                 mediaItem.inputHttpReferer ?? "",
             inputHttpUserAgent:
                 mediaItem.inputHttpUserAgent ?? "",
+            inputEngine:
+                mediaItem.inputEngine ?? "auto",
             fitMode:
                 mediaItem.fitMode ?? "contain",
             sizePercent:
@@ -2386,6 +2396,12 @@ function PlayoutPanel({
                             .replace(/[\r\n\u0000]/g, "")
                             .slice(0, 512)
                         : "",
+                inputEngine:
+                    ["auto", "ffmpeg", "vlc"].includes(
+                        String(value.inputEngine ?? "").toLowerCase()
+                    )
+                        ? String(value.inputEngine).toLowerCase() as MediaItem["inputEngine"]
+                        : "auto",
                 fileSize: 0,
                 duration,
                 loop: false,

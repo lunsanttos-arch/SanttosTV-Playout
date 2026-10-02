@@ -66,6 +66,11 @@ contextBridge.exposeInMainWorld(
                 "web-inputs:get"
             ),
 
+        getVlcInputStatus: () =>
+            ipcRenderer.invoke(
+                "web-inputs:vlc-status"
+            ),
+
         saveWebInput: (input) =>
             ipcRenderer.invoke(
                 "web-inputs:save",
