@@ -11,7 +11,7 @@ import OpecSchedulerPanel from "./OpecSchedulerPanel";
 import WebInputsPanel from "./WebInputsPanel";
 import ProgramAudioMeters from "./ProgramAudioMeters";
 import type { NativeAudioStatus } from "./ProgramAudioMeters";
-import { buildTimelineForecast, buildPlannedSchedule, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
+import { buildTimelineForecast, buildPlannedSchedule, buildFreezeCountdown, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
 import type { PlannedScheduleBlocker } from "./timeline-forecast";
 import { EXHIBITION_OPTIONS, DEFAULT_EXHIBITION_STYLE, exhibitionLabel, exhibitionPreviewStyle, exhibitionText, normalizeExhibitionType } from "./exhibition";
 import type { ExhibitionStyle, ExhibitionType } from "./exhibition";
@@ -427,6 +427,8 @@ export default function App() {
         useState<number | null>(null);
     const [programmedHasFreeze, setProgrammedHasFreeze] =
         useState(false);
+    const [programmedFreezeSeconds, setProgrammedFreezeSeconds] =
+        useState<number | null>(null);
     const [programmedLive, setProgrammedLive] = useState(false);
     const [rundownApplyRequest, setRundownApplyRequest] = useState<{
         key: number;
@@ -441,12 +443,14 @@ export default function App() {
         blocker: PlannedScheduleBlocker,
         endsAtMs: number | null,
         hasFreeze: boolean,
+        freezeSeconds: number | null,
         live: boolean
     ) => {
         setProgrammedRemainingSeconds(remainingSeconds ?? 0);
         setProgrammedBlocker(blocker);
         setProgrammedEndAtMs(endsAtMs);
         setProgrammedHasFreeze(hasFreeze);
+        setProgrammedFreezeSeconds(freezeSeconds);
         setProgrammedLive(live);
     }, []);
 
@@ -661,11 +665,19 @@ export default function App() {
     }
 
     const programmedDurationLabel =
-        programmedBlocker === "loop" ? "LOOP"
+        programmedHasFreeze
+            ? programmedFreezeSeconds !== null
+                ? formatProgrammedDuration(programmedFreezeSeconds)
+                : "SEM PREVISÃO"
+            : programmedBlocker === "loop" ? "LOOP"
             : programmedBlocker !== null ? "SEM PREVISÃO"
             : programmedEndAtMs !== null
               ? formatProgrammedDuration(programmedRemainingSeconds)
               : "--:--:--";
+    const programmedDurationTitle =
+        programmedHasFreeze
+            ? "ATÉ FREEZE"
+            : "PROGRAMADO";
     const programmedUntilLabel =
         programmedBlocker !== null ? "SEM PREVISÃO"
             : programmedEndAtMs !== null
@@ -697,12 +709,14 @@ export default function App() {
                         }
                         title={
                             programmedHasFreeze
-                                ? "A programação contém pelo menos um item com FREEZE."
+                                ? programmedFreezeSeconds !== null
+                                    ? `Próximo FREEZE em ${formatProgrammedDuration(programmedFreezeSeconds)}.`
+                                    : "Existe um FREEZE adiante, mas o tempo até ele não pode ser previsto."
                                 : undefined
                         }
                     >
                         <div>
-                            <span>PROGRAMADO</span>
+                            <span>{programmedDurationTitle}</span>
                             <strong>{programmedDurationLabel}</strong>
                         </div>
                         <div>
@@ -895,6 +909,7 @@ interface PlayoutPanelProps {
         blocker: PlannedScheduleBlocker,
         endsAtMs: number | null,
         hasFreeze: boolean,
+        freezeSeconds: number | null,
         live: boolean
     ) => void;
 }
@@ -1332,6 +1347,12 @@ function PlayoutPanel({
         }
     );
 
+    const freezeCountdown = buildFreezeCountdown(
+        timelineQueue,
+        selectedMedia?.id ?? null,
+        currentTime
+    );
+
     function describeForecast(item: MediaItem | null, isCurrent = false): string {
         if (!item) return "Nenhum próximo vídeo";
         return describeForecastEntry(
@@ -1370,14 +1391,16 @@ function PlayoutPanel({
             plannedSchedule.totalSeconds,
             plannedSchedule.blocker,
             programmedEndAtMs,
-            plannedSchedule.hasFreeze,
+            freezeCountdown.hasUpcomingFreeze,
+            freezeCountdown.seconds,
             true
         );
     }, [
         plannedSchedule.totalSeconds,
         plannedSchedule.end,
         plannedSchedule.blocker,
-        plannedSchedule.hasFreeze,
+        freezeCountdown.hasUpcomingFreeze,
+        freezeCountdown.seconds,
         programmedStartTime,
         onScheduleSummary
     ]);
