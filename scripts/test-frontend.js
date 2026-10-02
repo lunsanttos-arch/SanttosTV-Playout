@@ -294,6 +294,14 @@ assert(app.includes("<WebInputsPanel") &&
 assert(app.includes('sourceType !== "input"') &&
     app.includes("program-live-input-preview"),
     "Input remoto não deve ser tratado como arquivo local no preview.");
+assert(
+    webInputs.includes("draggable") &&
+    webInputs.includes("startInputDrag") &&
+    webInputs.includes("application/x-santtos-timeline-item") &&
+    app.includes("parseDraggedTimelineItem") &&
+    app.includes("application/x-santtos-timeline-item"),
+    "Inputs Web devem ser arrastáveis e soltos na Timeline como as demais mídias."
+);
 
 const reportingSettings = fs.readFileSync(
     path.join(root, "src", "renderer", "src", "ReportingSettingsTab.tsx"),
