@@ -197,10 +197,18 @@ export function buildTimelineForecast(
  * Não confundir com ENTRA EST. (previsão operacional ao vivo).
  * Um clipe sem duração ou loop invalida os horários seguintes.
  */
+export type PlannedScheduleBlocker =
+    | "loop"
+    | "freeze"
+    | "unknown-duration"
+    | "invalid-start"
+    | null;
+
 export interface PlannedSchedule {
     times: Map<string, string>;
     end: string;
     totalSeconds: number | null;
+    blocker: PlannedScheduleBlocker;
 }
 
 function formatPlannedClock(seconds: number): string {
@@ -225,7 +233,12 @@ export function buildPlannedSchedule(
         ? startTime.split(":").map(Number) : null;
     if (!match) {
         items.forEach(item => times.set(item.id, "SEM PREVISÃO — INÍCIO INVÁLIDO"));
-        return { times, end: "SEM PREVISÃO", totalSeconds: null };
+        return {
+            times,
+            end: "SEM PREVISÃO",
+            totalSeconds: null,
+            blocker: "invalid-start"
+        };
     }
     let cursor = match[0] * 3600 + match[1] * 60;
     let total = 0;
@@ -234,6 +247,7 @@ export function buildPlannedSchedule(
         | "FREEZE ANTERIOR"
         | "DURAÇÃO ANTERIOR DESCONHECIDA"
         | null = null;
+    let blocker: PlannedScheduleBlocker = null;
     for (const item of items) {
         if (blocked) {
             times.set(item.id, "SEM PREVISÃO — " + blocked);
@@ -243,22 +257,26 @@ export function buildPlannedSchedule(
         const clip = knownClipRange(item);
         if (!clip) {
             blocked = "DURAÇÃO ANTERIOR DESCONHECIDA";
+            blocker = "unknown-duration";
             continue;
         }
         if (item.loop) {
             blocked = "LOOP ANTERIOR";
+            blocker = "loop";
             continue;
         }
         cursor += clip.length;
         total += clip.length;
         if (item.freezeEnd) {
             blocked = "FREEZE ANTERIOR";
+            blocker = "freeze";
         }
     }
     return {
         times,
         end: blocked ? "SEM PREVISÃO" : formatPlannedClock(cursor),
-        totalSeconds: blocked ? null : total
+        totalSeconds: blocked ? null : total,
+        blocker
     };
 }
 
