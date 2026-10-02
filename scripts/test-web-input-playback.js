@@ -12,6 +12,9 @@ const {
     isHlsInput,
     remoteInputArgs
 } = require("../src/core/playout/remote-input");
+const {
+    serveWebInputPreview
+} = require("../src/core/media/web-input-preview");
 
 function ffmpegPath() {
     if (typeof ffmpegStatic !== "string" || !ffmpegStatic) {
@@ -287,6 +290,91 @@ async function main() {
                 "null",
                 "-"
             ]);
+
+            const controller =
+                new AbortController();
+            const previewResponse =
+                serveWebInputPreview(
+                    new Request(
+                        "santtos-input://preview/qa-hls",
+                        {
+                            signal:
+                                controller.signal
+                        }
+                    ),
+                    [
+                        {
+                            id: "qa-hls",
+                            name: "HLS QA",
+                            url,
+                            protocol: "hls"
+                        }
+                    ],
+                    {
+                        ffmpegPath:
+                            ffmpegPath()
+                    }
+                );
+
+            assert.equal(
+                previewResponse.status,
+                200
+            );
+            assert.match(
+                previewResponse.headers.get(
+                    "content-type"
+                ) || "",
+                /video\/mp4/i
+            );
+
+            const reader =
+                previewResponse.body.getReader();
+            const chunks = [];
+            let total = 0;
+
+            try {
+                while (total < 16384) {
+                    const {
+                        value,
+                        done
+                    } =
+                        await reader.read();
+
+                    if (done) break;
+                    if (!value) continue;
+
+                    chunks.push(
+                        Buffer.from(
+                            value
+                        )
+                    );
+                    total +=
+                        value.byteLength;
+                }
+            } finally {
+                controller.abort();
+                try {
+                    await reader.cancel();
+                } catch {
+                    // O FFmpeg pode encerrar junto com o abort.
+                }
+            }
+
+            const previewBytes =
+                Buffer.concat(
+                    chunks
+                );
+
+            assert(
+                previewBytes.length > 1024,
+                "Prévia do Input não entregou bytes suficientes."
+            );
+            assert(
+                previewBytes.includes(
+                    Buffer.from("ftyp")
+                ),
+                "Prévia do Input não começou como MP4 fragmentado."
+            );
         } finally {
             await new Promise((resolve) =>
                 server.close(resolve)
@@ -303,7 +391,7 @@ async function main() {
     }
 
     console.log(
-        "WEB INPUT QA: APROVADO — HLS HTTP real aberto e decodificado pelo FFmpeg do Santtos."
+        "WEB INPUT QA: APROVADO — HLS aberto, decodificado e convertido em prévia MP4 pelo FFmpeg do Santtos."
     );
 }
 
