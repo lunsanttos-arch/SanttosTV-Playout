@@ -233,18 +233,18 @@ assert.equal(plannedFreeze.totalSeconds, 40);
 assert.equal(plannedFreeze.blocker, null);
 assert.equal(plannedFreeze.hasFreeze, true);
 
-const freezeQueue = [
+const freezeCountdownQueue = [
     { id: "current", duration: 130, inPoint: 30, outPoint: 130 },
     { id: "break", duration: 30, freezeEnd: true },
     { id: "after-freeze", duration: 60 }
 ];
-const freezeFromCurrent = buildFreezeCountdown(freezeQueue, "current", 40);
+const freezeFromCurrent = buildFreezeCountdown(freezeCountdownQueue, "current", 40);
 assert.equal(freezeFromCurrent.hasUpcomingFreeze, true);
 assert.equal(freezeFromCurrent.seconds, 120,
     "Deve somar 90s restantes do item atual + 30s até o fim do item com FREEZE.");
-const freezeInsideItem = buildFreezeCountdown(freezeQueue, "break", 5);
+const freezeInsideItem = buildFreezeCountdown(freezeCountdownQueue, "break", 5);
 assert.equal(freezeInsideItem.seconds, 25);
-const freezeAlreadyPassed = buildFreezeCountdown(freezeQueue, "after-freeze", 0);
+const freezeAlreadyPassed = buildFreezeCountdown(freezeCountdownQueue, "after-freeze", 0);
 assert.equal(freezeAlreadyPassed.hasUpcomingFreeze, false);
 assert.equal(freezeAlreadyPassed.seconds, null);
 const freezeAfterUnknown = buildFreezeCountdown([
