@@ -17,6 +17,10 @@ const {
 const {
     serveWebInputPreview
 } = require("../src/core/media/web-input-preview");
+const {
+    dailymotionVideoId,
+    resolveDailymotionInput
+} = require("../src/core/playout/remote-input-resolver");
 
 function ffmpegPath() {
     if (typeof ffmpegStatic !== "string" || !ffmpegStatic) {
@@ -153,6 +157,92 @@ async function main() {
             "HTTP error 403 Forbidden (access denied)"
         ),
         /HTTP 403/
+    );
+
+    assert.equal(
+        dailymotionVideoId(
+            "https://cdndirector.dailymotion.com/cdn/live/video/x9xwtpy.m3u8?sec=expired"
+        ),
+        "x9xwtpy",
+        "O resolver deve recuperar o ID mesmo de um M3U8 assinado já vencido."
+    );
+
+    let metadataRequestUrl = "";
+    const renewed =
+        await resolveDailymotionInput(
+            "https://cdndirector.dailymotion.com/cdn/live/video/x9xwtpy.m3u8?sec=expired",
+            {
+                fetchImpl:
+                    async (url) => {
+                        metadataRequestUrl =
+                            String(url);
+
+                        return {
+                            ok: true,
+                            status: 200,
+                            headers: {
+                                getSetCookie: () => [
+                                    "dmvk=qa-cookie; Path=/; Secure"
+                                ]
+                            },
+                            json: async () => ({
+                                qualities: {
+                                    auto: [
+                                        {
+                                            type:
+                                                "application/x-mpegURL",
+                                            url:
+                                                "https://fresh.example/live/x9xwtpy/master.m3u8?sec=fresh"
+                                        }
+                                    ]
+                                }
+                            })
+                        };
+                    }
+            }
+        );
+
+    assert.match(
+        metadataRequestUrl,
+        /player\/metadata\/video\/x9xwtpy/
+    );
+    assert.equal(
+        renewed.url,
+        "https://fresh.example/live/x9xwtpy/master.m3u8?sec=fresh"
+    );
+    assert.equal(
+        renewed.cookie,
+        "dmvk=qa-cookie"
+    );
+
+    const renewedPolicy =
+        remoteInputArgs(
+            renewed.url,
+            {
+                protocolHint:
+                    "hls",
+                userAgent:
+                    renewed.userAgent,
+                referer:
+                    renewed.referer,
+                cookie:
+                    renewed.cookie,
+                realtime: true
+            }
+        );
+
+    assert(
+        renewedPolicy.includes(
+            "-headers"
+        )
+    );
+    assert.match(
+        renewedPolicy[
+            renewedPolicy.indexOf(
+                "-headers"
+            ) + 1
+        ],
+        /Cookie: dmvk=qa-cookie/
     );
 
     const temp =
@@ -324,7 +414,7 @@ async function main() {
             const controller =
                 new AbortController();
             const previewResponse =
-                serveWebInputPreview(
+                await serveWebInputPreview(
                     new Request(
                         "santtos-input://preview/qa-hls",
                         {
