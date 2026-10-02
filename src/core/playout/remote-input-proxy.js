@@ -171,7 +171,10 @@ async function createRemoteHlsProxy(
     const server = http.createServer(async (request, response) => {
         const abort = new AbortController();
 
-        request.on("close", () => {
+        request.on("aborted", () => {
+            abort.abort();
+        });
+        response.on("close", () => {
             if (!response.writableEnded) {
                 abort.abort();
             }
