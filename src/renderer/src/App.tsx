@@ -263,10 +263,16 @@ declare global {
                     sizePercent: number;
                     httpReferer: string;
                     httpUserAgent: string;
+                    engine: "auto" | "ffmpeg" | "vlc";
                     premiumFeature: true;
                     createdAt: string;
                 }>;
                 error?: string;
+            }>;
+            getVlcInputStatus: () => Promise<{
+                ok: boolean;
+                available: boolean;
+                path: string;
             }>;
             saveWebInput: (input: unknown) => Promise<{
                 ok: boolean;
