@@ -34,6 +34,11 @@ export interface ForecastResult {
     isLive: boolean;
 }
 
+export interface FreezeCountdown {
+    hasUpcomingFreeze: boolean;
+    seconds: number | null;
+}
+
 function finitePositive(value: unknown): number | null {
     if (value === null || value === undefined || value === "") return null;
     const number = Number(value);
@@ -59,6 +64,69 @@ export function knownClipRange(item: ForecastMedia): {
 
 function unknown(state: ForecastState): ForecastEntry {
     return { state, remainingSeconds: null, startsAtMs: null, endsAtMs: null };
+}
+
+/**
+ * Tempo de conteúdo até o próximo FREEZE a partir da posição atual do PROGRAM.
+ * Pausa não consome tempo: currentTime permanece estável e a contagem congela.
+ */
+export function buildFreezeCountdown(
+    queue: ForecastMedia[],
+    selectedMediaId: string | null,
+    currentTime: number
+): FreezeCountdown {
+    const selectedIndex = selectedMediaId === null
+        ? -1
+        : queue.findIndex(item => item.id === selectedMediaId);
+    const startIndex = selectedIndex >= 0 ? selectedIndex : 0;
+    const remainingQueue = queue.slice(startIndex);
+
+    if (!remainingQueue.some(item => item.freezeEnd === true)) {
+        return { hasUpcomingFreeze: false, seconds: null };
+    }
+
+    let cumulative = 0;
+
+    for (let index = 0; index < remainingQueue.length; index += 1) {
+        const item = remainingQueue[index];
+        const clip = knownClipRange(item);
+
+        if (!clip) {
+            return { hasUpcomingFreeze: true, seconds: null };
+        }
+
+        if (item.loop) {
+            return { hasUpcomingFreeze: true, seconds: null };
+        }
+
+        let length = clip.length;
+
+        if (
+            index === 0 &&
+            selectedIndex >= 0 &&
+            Number.isFinite(currentTime)
+        ) {
+            const position = Math.min(
+                clip.outPoint,
+                Math.max(
+                    clip.inPoint,
+                    Number(currentTime)
+                )
+            );
+            length = Math.max(0, clip.outPoint - position);
+        }
+
+        cumulative += length;
+
+        if (item.freezeEnd) {
+            return {
+                hasUpcomingFreeze: true,
+                seconds: cumulative
+            };
+        }
+    }
+
+    return { hasUpcomingFreeze: false, seconds: null };
 }
 
 export function buildTimelineForecast(
