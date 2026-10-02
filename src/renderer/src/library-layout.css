@@ -256,6 +256,20 @@
     border-radius: 7px;
 }
 
+.web-input-item[draggable="true"] {
+    cursor: grab;
+    user-select: none;
+}
+
+.web-input-item[draggable="true"]:active {
+    cursor: grabbing;
+}
+
+.web-input-item[draggable="true"]:hover {
+    border-color: #56516f;
+    background: #171622;
+}
+
 .web-input-item > div {
     min-width: 0;
     display: grid;
