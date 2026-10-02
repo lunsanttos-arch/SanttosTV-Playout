@@ -63,7 +63,8 @@ function resolveHttpIdentity(
     url,
     {
         userAgent = "",
-        referer = ""
+        referer = "",
+        cookie = ""
     } = {}
 ) {
     const explicitUserAgent =
@@ -176,6 +177,21 @@ function remoteInputArgs(
             args.push(
                 "-referer",
                 identity.referer
+            );
+        }
+
+        const safeCookie =
+            typeof cookie === "string"
+                ? cookie
+                    .replace(/[\r\n\u0000]/g, "")
+                    .trim()
+                    .slice(0, 4096)
+                : "";
+
+        if (safeCookie) {
+            args.push(
+                "-headers",
+                `Cookie: ${safeCookie}\r\n`
             );
         }
 
