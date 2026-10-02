@@ -560,17 +560,16 @@ function WebInputsContent({
                             draft.name
                         }
                         placeholder="Ex.: Rede / Link externo"
-                        onChange={(event) =>
+                        onChange={(event) => {
+                            const value =
+                                event.currentTarget.value;
                             setDraft(
                                 (current) => ({
                                     ...current,
-                                    name:
-                                        event
-                                            .currentTarget
-                                            .value
+                                    name: value
                                 })
-                            )
-                        }
+                            );
+                        }}
                     />
                 </label>
 
@@ -653,17 +652,19 @@ function WebInputsContent({
                                     autoCorrect="off"
                                     spellCheck={false}
                                     maxLength={2048}
-                                    onChange={(event) =>
+                                    onChange={(event) => {
+                                        const value =
+                                            event.currentTarget.value
+                                                .replace(/[\r\n\u0000]/g, "")
+                                                .slice(0, 2048);
                                         setDraft(
                                             (current) => ({
                                                 ...current,
                                                 httpReferer:
-                                                    event.currentTarget.value
-                                                        .replace(/[\r\n\u0000]/g, "")
-                                                        .slice(0, 2048)
+                                                    value
                                             })
-                                        )
-                                    }
+                                        );
+                                    }}
                                 />
                             </label>
                             <label>
@@ -675,17 +676,19 @@ function WebInputsContent({
                                     autoCorrect="off"
                                     spellCheck={false}
                                     maxLength={512}
-                                    onChange={(event) =>
+                                    onChange={(event) => {
+                                        const value =
+                                            event.currentTarget.value
+                                                .replace(/[\r\n\u0000]/g, "")
+                                                .slice(0, 512);
                                         setDraft(
                                             (current) => ({
                                                 ...current,
                                                 httpUserAgent:
-                                                    event.currentTarget.value
-                                                        .replace(/[\r\n\u0000]/g, "")
-                                                        .slice(0, 512)
+                                                    value
                                             })
-                                        )
-                                    }
+                                        );
+                                    }}
                                 />
                             </label>
                             <small>
@@ -703,19 +706,18 @@ function WebInputsContent({
                             value={
                                 draft.protocol
                             }
-                            onChange={(event) =>
+                            onChange={(event) => {
+                                const value =
+                                    event.currentTarget
+                                        .value as WebInput["protocol"];
                                 setDraft(
-                                    (
-                                        current
-                                    ) => ({
+                                    (current) => ({
                                         ...current,
                                         protocol:
-                                            event
-                                                .currentTarget
-                                                .value as WebInput["protocol"]
+                                            value
                                     })
-                                )
-                            }
+                                );
+                            }}
                         >
                             <option value="http">
                                 HTTP
@@ -738,19 +740,18 @@ function WebInputsContent({
                             value={
                                 draft.fitMode
                             }
-                            onChange={(event) =>
+                            onChange={(event) => {
+                                const value =
+                                    event.currentTarget
+                                        .value as WebInput["fitMode"];
                                 setDraft(
-                                    (
-                                        current
-                                    ) => ({
+                                    (current) => ({
                                         ...current,
                                         fitMode:
-                                            event
-                                                .currentTarget
-                                                .value as WebInput["fitMode"]
+                                            value
                                     })
-                                )
-                            }
+                                );
+                            }}
                         >
                             <option value="contain">
                                 Ajustar
@@ -778,17 +779,19 @@ function WebInputsContent({
                         max={100}
                         step={1}
                         value={draft.sizePercent}
-                        onChange={(event) =>
+                        onChange={(event) => {
+                            const value =
+                                Number(
+                                    event.currentTarget.value
+                                );
                             setDraft(
                                 (current) => ({
                                     ...current,
                                     sizePercent:
-                                        Number(
-                                            event.currentTarget.value
-                                        )
+                                        value
                                 })
-                            )
-                        }
+                            );
+                        }}
                     />
                 </label>
 
@@ -799,19 +802,18 @@ function WebInputsContent({
                             value={
                                 draft.timingMode
                             }
-                            onChange={(event) =>
+                            onChange={(event) => {
+                                const value =
+                                    event.currentTarget
+                                        .value as WebInput["timingMode"];
                                 setDraft(
-                                    (
-                                        current
-                                    ) => ({
+                                    (current) => ({
                                         ...current,
                                         timingMode:
-                                            event
-                                                .currentTarget
-                                                .value as WebInput["timingMode"]
+                                            value
                                     })
-                                )
-                            }
+                                );
+                            }}
                         >
                             <option value="duration">
                                 Por duração
@@ -833,25 +835,22 @@ function WebInputsContent({
                                 value={
                                     draft.durationSeconds
                                 }
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                    const value =
+                                        Math.max(
+                                            1,
+                                            Number(
+                                                event.currentTarget.value
+                                            ) || 1
+                                        );
                                     setDraft(
-                                        (
-                                            current
-                                        ) => ({
+                                        (current) => ({
                                             ...current,
                                             durationSeconds:
-                                                Math.max(
-                                                    1,
-                                                    Number(
-                                                        event
-                                                            .currentTarget
-                                                            .value
-                                                    ) ||
-                                                        1
-                                                )
+                                                value
                                         })
-                                    )
-                                }
+                                    );
+                                }}
                             />
                         </label>
                     ) : (
@@ -863,19 +862,17 @@ function WebInputsContent({
                                 value={
                                     draft.endTime
                                 }
-                                onChange={(event) =>
+                                onChange={(event) => {
+                                    const value =
+                                        event.currentTarget.value;
                                     setDraft(
-                                        (
-                                            current
-                                        ) => ({
+                                        (current) => ({
                                             ...current,
                                             endTime:
-                                                event
-                                                    .currentTarget
-                                                    .value
+                                                value
                                         })
-                                    )
-                                }
+                                    );
+                                }}
                             />
                         </label>
                     )}
