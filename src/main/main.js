@@ -1051,34 +1051,55 @@ async function startNativePlayback(
             selectedInputEngine ===
             "vlc"
         ) {
-            activeVlcInputBridge =
-                await startVlcInputBridge(
-                    sourceForBridge,
-                    {
-                        vlcPath,
-                        userAgent:
-                            resolvedRemoteInput.provider === "dailymotion"
-                                ? ""
-                                : resolvedRemoteInput.userAgent,
-                        referer:
-                            resolvedRemoteInput.provider === "dailymotion"
-                                ? ""
-                                : resolvedRemoteInput.referer,
-                        withAudioCopy:
-                            true
-                    }
+            try {
+                activeVlcInputBridge =
+                    await startVlcInputBridge(
+                        sourceForBridge,
+                        {
+                            vlcPath,
+                            userAgent:
+                                resolvedRemoteInput.provider === "dailymotion"
+                                    ? ""
+                                    : resolvedRemoteInput.userAgent,
+                            referer:
+                                resolvedRemoteInput.provider === "dailymotion"
+                                    ? ""
+                                    : resolvedRemoteInput.referer,
+                            withAudioCopy:
+                                true
+                        }
+                    );
+
+                playbackPath =
+                    activeVlcInputBridge.videoUrl;
+                audioPlaybackPath =
+                    activeVlcInputBridge.audioUrl ||
+                    activeVlcInputBridge.videoUrl;
+
+                console.log(
+                    `Input usando ponte VLC: ${path.basename(activeVlcInputBridge.executable)} -> vídeo UDP ${activeVlcInputBridge.videoPort}` +
+                    `${activeVlcInputBridge.audioPort ? ` / áudio UDP ${activeVlcInputBridge.audioPort}` : ""}.`
                 );
+            } catch (error) {
+                if (
+                    (programState.inputEngine ?? "auto") !==
+                    "auto"
+                ) {
+                    throw error;
+                }
 
-            playbackPath =
-                activeVlcInputBridge.videoUrl;
-            audioPlaybackPath =
-                activeVlcInputBridge.audioUrl ||
-                activeVlcInputBridge.videoUrl;
+                selectedInputEngine =
+                    "ffmpeg";
+                playbackPath =
+                    sourceForBridge;
+                audioPlaybackPath =
+                    sourceForBridge;
 
-            console.log(
-                `Input usando ponte VLC: ${path.basename(activeVlcInputBridge.executable)} -> vídeo UDP ${activeVlcInputBridge.videoPort}` +
-                `${activeVlcInputBridge.audioPort ? ` / áudio UDP ${activeVlcInputBridge.audioPort}` : ""}.`
-            );
+                console.warn(
+                    "Ponte VLC falhou no modo Automático; usando FFmpeg:",
+                    error
+                );
+            }
         } else {
             playbackPath =
                 sourceForBridge;
@@ -1542,7 +1563,15 @@ async function startNativePlayback(
                         () =>
                             reject(
                                 new Error(
-                                    "O Input não entregou o primeiro quadro em 12 segundos. Verifique a URL, autenticação, rede ou codec."
+                                    [
+                                        "O Input não entregou o primeiro quadro em 12 segundos. Verifique a URL, autenticação, rede ou codec.",
+                                        activeVlcInputBridge?.stderr?.()
+                                            ? "VLC: " + activeVlcInputBridge.stderr()
+                                            : ""
+                                    ]
+                                        .filter(Boolean)
+                                        .join("\n")
+                                        .slice(-1400)
                                 )
                             ),
                         12000
