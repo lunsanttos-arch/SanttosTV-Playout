@@ -1813,6 +1813,22 @@ function registerIpcHandlers() {
     );
 
     registerTrustedHandle(
+        "web-inputs:vlc-status",
+        async () => {
+            const vlcPath =
+                findVlcPath();
+
+            return {
+                ok: true,
+                available:
+                    Boolean(vlcPath),
+                path:
+                    vlcPath || ""
+            };
+        }
+    );
+
+    registerTrustedHandle(
         "web-inputs:save",
         async (_event, input) => {
             try {
