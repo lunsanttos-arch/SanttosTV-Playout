@@ -2316,6 +2316,58 @@ function PlayoutPanel({
         }
     }
 
+    function parseDraggedTimelineItem(
+        raw: string
+    ): MediaItem | null {
+        if (!raw) return null;
+
+        try {
+            const value =
+                JSON.parse(raw) as Partial<MediaItem>;
+
+            if (
+                value.sourceType !== "input" ||
+                typeof value.inputId !== "string" ||
+                typeof value.name !== "string" ||
+                typeof value.path !== "string" ||
+                !/^(https?:\/\/|srt:\/\/)/i.test(
+                    value.path
+                )
+            ) {
+                return null;
+            }
+
+            const duration =
+                Number(value.duration);
+
+            if (
+                !Number.isFinite(duration) ||
+                duration <= 0
+            ) {
+                return null;
+            }
+
+            return {
+                ...(value as MediaItem),
+                sourceType: "input",
+                fileSize: 0,
+                duration,
+                loop: false,
+                freezeEnd: false,
+                watermark: false,
+                hashtag:
+                    typeof value.hashtag === "string"
+                        ? value.hashtag
+                        : "",
+                inPoint: 0,
+                outPoint: duration,
+                status: "stream"
+            };
+        } catch {
+            return null;
+        }
+    }
+
     function addTimelineItem(
         mediaItem: MediaItem,
         targetMediaId?: string
@@ -3172,8 +3224,16 @@ function PlayoutPanel({
                             event.dataTransfer.types.includes(
                                 "application/x-santtos-library-media"
                             );
+                        const hasTimelineItem =
+                            event.dataTransfer.types.includes(
+                                "application/x-santtos-timeline-item"
+                            );
 
-                        if (hasFiles || hasLibraryMedia) {
+                        if (
+                            hasFiles ||
+                            hasLibraryMedia ||
+                            hasTimelineItem
+                        ) {
                             event.preventDefault();
                             event.dataTransfer.dropEffect = "copy";
                         }
@@ -3184,6 +3244,22 @@ function PlayoutPanel({
                             event.stopPropagation();
                             void importExplorerFilesToTimeline(
                                 event.dataTransfer.files
+                            );
+                            return;
+                        }
+
+                        const draggedItem =
+                            parseDraggedTimelineItem(
+                                event.dataTransfer.getData(
+                                    "application/x-santtos-timeline-item"
+                                )
+                            );
+
+                        if (draggedItem) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            addTimelineItem(
+                                draggedItem
                             );
                             return;
                         }
@@ -3255,12 +3331,17 @@ function PlayoutPanel({
                                                     event.dataTransfer.types.includes(
                                                         "application/x-santtos-library-media"
                                                     );
+                                                const hasTimelineItem =
+                                                    event.dataTransfer.types.includes(
+                                                        "application/x-santtos-timeline-item"
+                                                    );
                                                 const hasFiles =
                                                     event.dataTransfer.types.includes("Files");
 
                                                 if (
                                                     hasFiles ||
                                                     isLibraryMedia ||
+                                                    hasTimelineItem ||
                                                     !isCurrent
                                                 ) {
                                                     event.preventDefault();
@@ -3273,6 +3354,21 @@ function PlayoutPanel({
                                                 if (event.dataTransfer.files.length > 0) {
                                                     void importExplorerFilesToTimeline(
                                                         event.dataTransfer.files,
+                                                        item.id
+                                                    );
+                                                    return;
+                                                }
+
+                                                const draggedItem =
+                                                    parseDraggedTimelineItem(
+                                                        event.dataTransfer.getData(
+                                                            "application/x-santtos-timeline-item"
+                                                        )
+                                                    );
+
+                                                if (draggedItem) {
+                                                    addTimelineItem(
+                                                        draggedItem,
                                                         item.id
                                                     );
                                                     return;
