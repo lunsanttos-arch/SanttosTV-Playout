@@ -294,7 +294,7 @@ function buildVlcArgs(
 
     const args = [
         "--intf=dummy",
-        "--dummy-quiet",
+        "--no-one-instance",
         "--no-video-title-show",
         "--no-sout-all",
         "--sout-keep",
