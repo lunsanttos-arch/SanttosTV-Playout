@@ -47,10 +47,19 @@ class NativePlayoutEngine {
         this.filePath = typeof filePath === "string" ? filePath : null;
         this.itemId = typeof itemId === "string" ? itemId : null;
         this.inPointSeconds = Math.max(0, finiteNumber(inPointSeconds, 0));
-        const normalizedOut = Number(outPointSeconds);
-        this.outPointSeconds = Number.isFinite(normalizedOut)
-            ? Math.max(this.inPointSeconds, normalizedOut)
-            : null;
+        const normalizedOut =
+            outPointSeconds === null ||
+            outPointSeconds === undefined
+                ? null
+                : Number(outPointSeconds);
+        this.outPointSeconds =
+            normalizedOut !== null &&
+            Number.isFinite(normalizedOut)
+                ? Math.max(
+                      this.inPointSeconds,
+                      normalizedOut
+                  )
+                : null;
         this.anchorPositionSeconds = this.clampPosition(startSeconds);
         this.anchorAtMs = this.now();
         this.state = "PLAYING";
