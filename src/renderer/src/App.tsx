@@ -2374,6 +2374,18 @@ function PlayoutPanel({
             return {
                 ...(value as MediaItem),
                 sourceType: "input",
+                inputHttpReferer:
+                    typeof value.inputHttpReferer === "string"
+                        ? value.inputHttpReferer
+                            .replace(/[\r\n\u0000]/g, "")
+                            .slice(0, 2048)
+                        : "",
+                inputHttpUserAgent:
+                    typeof value.inputHttpUserAgent === "string"
+                        ? value.inputHttpUserAgent
+                            .replace(/[\r\n\u0000]/g, "")
+                            .slice(0, 512)
+                        : "",
                 fileSize: 0,
                 duration,
                 loop: false,
