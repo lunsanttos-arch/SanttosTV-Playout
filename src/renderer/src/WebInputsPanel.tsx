@@ -1,5 +1,5 @@
 import { Component, useEffect, useMemo, useState } from "react";
-import type { ErrorInfo, ReactNode } from "react";
+import type { DragEvent, ErrorInfo, ReactNode } from "react";
 import type { MediaItem } from "./App";
 
 export interface WebInput {
@@ -410,9 +410,9 @@ function WebInputsContent({
         }
     }
 
-    function addToTimeline(
+    function buildTimelineMedia(
         input: WebInput
-    ) {
+    ): MediaItem {
         const duration =
             input.timingMode === "clock"
                 ? secondsUntilClock(
@@ -423,10 +423,7 @@ function WebInputsContent({
                       input.durationSeconds
                   );
 
-        const now =
-            new Date();
-
-        onAddToTimeline({
+        return {
             id:
                 `input-${input.id}-${Date.now()}`,
             sourceMediaId:
@@ -484,7 +481,7 @@ function WebInputsContent({
             thumbnail: null,
             status: "stream",
             createdAt:
-                now.toISOString(),
+                new Date().toISOString(),
             loop: false,
             freezeEnd: false,
             watermark: false,
@@ -494,10 +491,46 @@ function WebInputsContent({
                 duration,
             blockLabel:
                 "INPUT"
-        });
+        };
+    }
+
+    function addToTimeline(
+        input: WebInput
+    ) {
+        const mediaItem =
+            buildTimelineMedia(
+                input
+            );
+
+        onAddToTimeline(
+            mediaItem
+        );
 
         setStatus(
-            `${input.name} adicionado à Timeline por ${formatDuration(duration)}.`
+            `${input.name} adicionado à Timeline por ${formatDuration(mediaItem.duration ?? 0)}.`
+        );
+    }
+
+    function startInputDrag(
+        event: DragEvent<HTMLElement>,
+        input: WebInput
+    ) {
+        const mediaItem =
+            buildTimelineMedia(
+                input
+            );
+
+        event.dataTransfer.effectAllowed =
+            "copy";
+        event.dataTransfer.setData(
+            "application/x-santtos-timeline-item",
+            JSON.stringify(
+                mediaItem
+            )
+        );
+        event.dataTransfer.setData(
+            "text/plain",
+            input.name
         );
     }
 
@@ -831,6 +864,19 @@ function WebInputsContent({
                                 key={
                                     input.id
                                 }
+                                draggable
+                                title="Arraste para a Timeline ou dê dois cliques para adicionar"
+                                onDoubleClick={() =>
+                                    addToTimeline(
+                                        input
+                                    )
+                                }
+                                onDragStart={(event) =>
+                                    startInputDrag(
+                                        event,
+                                        input
+                                    )
+                                }
                             >
                                 <div>
                                     <strong>
@@ -861,6 +907,9 @@ function WebInputsContent({
 
                                 <button
                                     type="button"
+                                    onDoubleClick={(event) =>
+                                        event.stopPropagation()
+                                    }
                                     onClick={() =>
                                         edit(
                                             input
@@ -872,6 +921,9 @@ function WebInputsContent({
 
                                 <button
                                     type="button"
+                                    onDoubleClick={(event) =>
+                                        event.stopPropagation()
+                                    }
                                     onClick={() =>
                                         void remove(
                                             input.id
@@ -884,6 +936,9 @@ function WebInputsContent({
                                 <button
                                     type="button"
                                     className="primary-button"
+                                    onDoubleClick={(event) =>
+                                        event.stopPropagation()
+                                    }
                                     onClick={() =>
                                         addToTimeline(
                                             input
