@@ -3085,6 +3085,25 @@ function PlayoutPanel({
                         ) : (
                             "SEM SINAL"
                         )}
+
+                        {(nativePlayout.state === "FAULT" || playoutError) && (
+                            <div
+                                className="program-engine-error-banner"
+                                role="alert"
+                                title={
+                                    nativePlayout.error ??
+                                    playoutError ??
+                                    undefined
+                                }
+                            >
+                                <strong>ERRO DO PROGRAM</strong>
+                                <span>
+                                    {nativePlayout.error ??
+                                        playoutError ??
+                                        "Falha desconhecida no motor de playout."}
+                                </span>
+                            </div>
+                        )}
                         </div>
                         <ProgramAudioMeters
                             videoRef={videoRef}
