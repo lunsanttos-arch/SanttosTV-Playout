@@ -80,6 +80,7 @@ jobs:
           node --check src/core/playout/output-profile.js
           node --check src/core/playout/remote-input.js
           node --check src/core/playout/remote-input-resolver.js
+          node --check src/core/playout/remote-input-proxy.js
           node --check src/core/playout/ffmpeg-stream-map.js
           node --check src/core/media/web-input-preview.js
 

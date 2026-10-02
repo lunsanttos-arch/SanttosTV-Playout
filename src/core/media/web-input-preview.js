@@ -9,6 +9,9 @@ const {
 const {
     resolveRemoteInput
 } = require("../playout/remote-input-resolver");
+const {
+    createRemoteHlsProxy
+} = require("../playout/remote-input-proxy");
 
 const INPUT_PREVIEW_SCHEME = "santtos-input";
 
@@ -113,6 +116,32 @@ async function serveWebInputPreview(
         );
     }
 
+    let playbackUrl =
+        resolved.url;
+    let proxy = null;
+
+    if (
+        resolved.provider ===
+        "dailymotion"
+    ) {
+        try {
+            proxy =
+                await createRemoteHlsProxy(
+                    resolved
+                );
+            playbackUrl =
+                proxy.url;
+        } catch (error) {
+            return new Response(
+                String(
+                    error?.message ||
+                    "Não foi possível iniciar o proxy interno do Input."
+                ),
+                { status: 502 }
+            );
+        }
+    }
+
     const args = [
         "-hide_banner",
         "-loglevel",
@@ -121,7 +150,7 @@ async function serveWebInputPreview(
         "-fflags",
         "+genpts+discardcorrupt",
         ...remoteInputArgs(
-            resolved.url,
+            playbackUrl,
             {
                 protocolHint:
                     input.protocol,
@@ -130,12 +159,14 @@ async function serveWebInputPreview(
                 referer:
                     resolved.referer,
                 cookie:
-                    resolved.cookie,
+                    resolved.provider === "dailymotion"
+                        ? ""
+                        : resolved.cookie,
                 realtime: true
             }
         ),
         "-i",
-        resolved.url,
+        playbackUrl,
         "-map",
         "0:v:0",
         "-map",
@@ -201,6 +232,11 @@ async function serveWebInputPreview(
     child.on(
         "error",
         (error) => {
+            if (proxy) {
+                proxy.close();
+                proxy = null;
+            }
+
             console.error(
                 "Falha na prévia do Input:",
                 error
@@ -211,6 +247,11 @@ async function serveWebInputPreview(
     child.on(
         "exit",
         (code, signal) => {
+            if (proxy) {
+                proxy.close();
+                proxy = null;
+            }
+
             if (
                 code !== 0 &&
                 !signal
@@ -227,6 +268,11 @@ async function serveWebInputPreview(
     request.signal?.addEventListener(
         "abort",
         () => {
+            if (proxy) {
+                proxy.close();
+                proxy = null;
+            }
+
             try {
                 if (!child.killed) {
                     child.kill();

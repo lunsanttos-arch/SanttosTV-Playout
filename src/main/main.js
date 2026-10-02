@@ -25,6 +25,9 @@ const {
 const {
     resolveRemoteInput
 } = require("../core/playout/remote-input-resolver");
+const {
+    createRemoteHlsProxy
+} = require("../core/playout/remote-input-proxy");
 const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
 const crypto = require("node:crypto");
@@ -221,6 +224,7 @@ const FONT_FILES = {
 let mainWindow = null;
 let ndiProcess = null;
 let ffmpegProcess = null;
+let activeRemoteInputProxy = null;
 
 let ndiReady = false;
 let ndiFrameBusy = false;
@@ -818,6 +822,11 @@ function buildProgramFilterGraph(
 }
 
 function stopNativePlayback({ engineAction = "stop" } = {}) {
+    if (activeRemoteInputProxy) {
+        activeRemoteInputProxy.close();
+        activeRemoteInputProxy = null;
+    }
+
     if (engineAction === "pause") {
         playoutEngine.pause();
     } else if (engineAction === "stop") {
@@ -990,6 +999,23 @@ async function startNativePlayback(
 
         playbackPath =
             resolvedRemoteInput.url;
+
+        if (
+            resolvedRemoteInput.provider ===
+            "dailymotion"
+        ) {
+            activeRemoteInputProxy =
+                await createRemoteHlsProxy(
+                    resolvedRemoteInput
+                );
+
+            playbackPath =
+                activeRemoteInputProxy.url;
+
+            console.log(
+                `Input Dailymotion encapsulado pelo proxy local 127.0.0.1:${activeRemoteInputProxy.port}.`
+            );
+        }
 
         console.log(
             `Input remoto resolvido: ${resolvedRemoteInput.provider}` +
@@ -1324,6 +1350,12 @@ async function startNativePlayback(
 
             if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
+
+                if (activeRemoteInputProxy) {
+                    activeRemoteInputProxy.close();
+                    activeRemoteInputProxy = null;
+                }
+
                 onPlayoutFault("Erro no decodificador FFmpeg: " + error.message);
             }
         }
@@ -1381,9 +1413,25 @@ async function startNativePlayback(
                         );
                     }
                 } else {
+                    const detail =
+                        describeRemoteInputError(
+                            startupStderr
+                        );
+
                     onPlayoutFault(
-                        `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`
+                        [
+                            `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`,
+                            detail
+                        ]
+                            .filter(Boolean)
+                            .join("\n")
+                            .slice(-1400)
                     );
+                }
+
+                if (activeRemoteInputProxy) {
+                    activeRemoteInputProxy.close();
+                    activeRemoteInputProxy = null;
                 }
             }
         }
