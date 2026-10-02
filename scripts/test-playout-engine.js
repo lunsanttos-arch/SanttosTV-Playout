@@ -2,9 +2,34 @@
 
 const assert = require("node:assert/strict");
 const { NativePlayoutEngine } = require("../src/core/playout/native-playout-engine");
+const {
+    normalizeStreamIndex,
+    videoFilterInput
+} = require("../src/core/playout/ffmpeg-stream-map");
 
 let nowMs = 1_000_000;
 const engine = new NativePlayoutEngine({ now: () => nowMs });
+
+assert.equal(
+    normalizeStreamIndex(null),
+    null,
+    "null não pode virar índice de stream 0."
+);
+assert.equal(
+    normalizeStreamIndex(undefined),
+    null,
+    "undefined não pode virar índice de stream 0."
+);
+assert.equal(
+    videoFilterInput(null),
+    "[0:v:0]",
+    "Sem índice explícito o filtro deve selecionar a primeira faixa de vídeo."
+);
+assert.equal(
+    videoFilterInput(2),
+    "[0:2]",
+    "Índice explícito válido deve continuar sendo respeitado."
+);
 
 let status = engine.start({
     filePath: "C:\\media\\program.mp4",
@@ -68,4 +93,21 @@ assert.equal(status.state, "FAULT");
 assert(status.positionSeconds >= 2.5 && status.positionSeconds < 2.51);
 assert.equal(status.error, "decode");
 
-console.log("PLAYOUT ENGINE QA: APROVADO — relógio nativo, pausa, seek, fim e falha.");
+status = engine.start({
+    filePath: "https://example.com/live.m3u8",
+    itemId: "input-sem-out",
+    inPointSeconds: 0,
+    startSeconds: 0,
+    outPointSeconds: null
+});
+assert.equal(
+    status.outPointSeconds,
+    null,
+    "Input sem OUT explícito não pode ser truncado para zero."
+);
+assert.equal(
+    status.remainingSeconds,
+    null
+);
+
+console.log("PLAYOUT ENGINE QA: APROVADO — relógio nativo, stream mapping, pausa, seek, fim e falha.");
