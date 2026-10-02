@@ -971,13 +971,20 @@ async function startNativePlayback(
         Number.isFinite(Number(programState.inPointSeconds))
             ? Math.max(0, Number(programState.inPointSeconds))
             : normalizedStartSeconds;
+    const rawOutPoint =
+        programState.outPointSeconds;
     const normalizedOutPoint =
-        Number.isFinite(Number(programState.outPointSeconds))
-            ? Math.max(
-                  normalizedStartSeconds,
-                  Number(programState.outPointSeconds)
+        rawOutPoint === null ||
+        rawOutPoint === undefined
+            ? null
+            : Number.isFinite(
+                  Number(rawOutPoint)
               )
-            : null;
+              ? Math.max(
+                    normalizedStartSeconds,
+                    Number(rawOutPoint)
+                )
+              : null;
     const clipRemainingSeconds =
         normalizedOutPoint !== null
             ? Math.max(
