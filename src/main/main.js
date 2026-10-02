@@ -119,7 +119,8 @@ protocol.registerSchemesAsPrivileged([
         privileges: {
             standard: true,
             secure: true,
-            stream: true
+            stream: true,
+            supportFetchAPI: true
         }
     }
 ]);
