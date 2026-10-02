@@ -1590,6 +1590,11 @@ button {
     border-radius: 6px;
 }
 
+.programmed-time-summary.has-freeze > div {
+    border-color: #e53935;
+    box-shadow: 0 0 0 1px rgba(229, 57, 53, 0.18);
+}
+
 .programmed-time-summary span {
     color: #777777;
     font-size: 9px;
