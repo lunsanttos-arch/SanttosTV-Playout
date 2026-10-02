@@ -321,6 +321,16 @@ assert(
     "Inputs Web devem oferecer identidade HTTP e controles secundários no tema escuro."
 );
 assert(
+    webInputs.includes("const value =") &&
+    !/setDraft\([\s\S]{0,220}event\.currentTarget\.value/.test(webInputs),
+    "Formulário de Input deve capturar o valor do evento antes do updater React."
+);
+assert(
+    app.includes("program-engine-error-banner") &&
+    app.includes("ERRO DO PROGRAM"),
+    "Falha do motor deve aparecer com detalhe dentro do monitor do PROGRAM."
+);
+assert(
     watermarkSettings.includes('className="secondary-button"'),
     "Ação secundária da Marca d'água não deve usar botão branco nativo."
 );
