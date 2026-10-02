@@ -22,6 +22,9 @@ const {
     describeRemoteInputError,
     remoteInputArgs
 } = require("../core/playout/remote-input");
+const {
+    resolveRemoteInput
+} = require("../core/playout/remote-input-resolver");
 const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
 const crypto = require("node:crypto");
@@ -967,6 +970,32 @@ async function startNativePlayback(
         startSeconds:
             normalizedStartSeconds
     };
+
+    let playbackPath =
+        filePath;
+    let resolvedRemoteInput =
+        null;
+
+    if (isRemoteInput) {
+        resolvedRemoteInput =
+            await resolveRemoteInput(
+                filePath,
+                {
+                    userAgent:
+                        programState.inputHttpUserAgent,
+                    referer:
+                        programState.inputHttpReferer
+                }
+            );
+
+        playbackPath =
+            resolvedRemoteInput.url;
+
+        console.log(
+            `Input remoto resolvido: ${resolvedRemoteInput.provider}` +
+            `${resolvedRemoteInput.providerId ? `/${resolvedRemoteInput.providerId}` : ""}`
+        );
+    }
     const normalizedInPoint =
         Number.isFinite(Number(programState.inPointSeconds))
             ? Math.max(0, Number(programState.inPointSeconds))
@@ -1034,14 +1063,18 @@ async function startNativePlayback(
     if (isRemoteInput) {
         args.push(
             ...remoteInputArgs(
-                filePath,
+                playbackPath,
                 {
                     protocolHint:
                         programState.inputProtocol,
                     userAgent:
+                        resolvedRemoteInput?.userAgent ??
                         programState.inputHttpUserAgent,
                     referer:
+                        resolvedRemoteInput?.referer ??
                         programState.inputHttpReferer,
+                    cookie:
+                        resolvedRemoteInput?.cookie ?? "",
                     realtime: true
                 }
             )
@@ -1050,7 +1083,7 @@ async function startNativePlayback(
 
     args.push(
         "-i",
-        filePath
+        playbackPath
     );
 
     if (clipRemainingSeconds !== null) {
@@ -1133,7 +1166,10 @@ async function startNativePlayback(
             audioSource = new NdiAudioSource({
                 pipePath: ndiAudioPipe,
                 ffmpegPath,
-                filePath,
+                filePath:
+                    isRemoteInput
+                        ? playbackPath
+                        : filePath,
                 // Midias importadas antes do suporte de áudio não possuem
                 // audioStreamIndex no banco. Nesse caso o FFmpeg usa 0:a:0.
                 streamIndex: Number.isSafeInteger(selectedAudioIndex) &&
@@ -1147,9 +1183,15 @@ async function startNativePlayback(
                 protocolHint:
                     programState.inputProtocol ?? "",
                 userAgent:
-                    programState.inputHttpUserAgent ?? "",
+                    resolvedRemoteInput?.userAgent ??
+                    programState.inputHttpUserAgent ??
+                    "",
                 referer:
-                    programState.inputHttpReferer ?? ""
+                    resolvedRemoteInput?.referer ??
+                    programState.inputHttpReferer ??
+                    "",
+                cookie:
+                    resolvedRemoteInput?.cookie ?? ""
             }).start();
             audioOutputStatus = "STARTING";
             audioOutputError = "";
