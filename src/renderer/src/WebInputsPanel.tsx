@@ -14,6 +14,7 @@ export interface WebInput {
     sizePercent: number;
     httpReferer: string;
     httpUserAgent: string;
+    engine: "auto" | "ffmpeg" | "vlc";
     premiumFeature: true;
     createdAt: string;
 }
@@ -37,7 +38,8 @@ const EMPTY_INPUT: Omit<
     fitMode: "contain",
     sizePercent: 100,
     httpReferer: "",
-    httpUserAgent: ""
+    httpUserAgent: "",
+    engine: "auto"
 };
 
 function secondsUntilClock(
@@ -304,7 +306,9 @@ function WebInputsContent({
             httpReferer:
                 input.httpReferer ?? "",
             httpUserAgent:
-                input.httpUserAgent ?? ""
+                input.httpUserAgent ?? "",
+            engine:
+                input.engine ?? "auto"
         });
         setStatus("");
     }
@@ -450,6 +454,8 @@ function WebInputsContent({
                 input.httpReferer ?? "",
             inputHttpUserAgent:
                 input.httpUserAgent ?? "",
+            inputEngine:
+                input.engine ?? "auto",
             fitMode:
                 input.fitMode,
             sizePercent:
@@ -735,7 +741,38 @@ function WebInputsContent({
                     </label>
 
                     <label>
-                        <span>Tamanho no PROGRAM</span>
+                        <span>Motor do Input</span>
+                        <select
+                            value={
+                                draft.engine
+                            }
+                            onChange={(event) => {
+                                const value =
+                                    event.currentTarget
+                                        .value as WebInput["engine"];
+                                setDraft(
+                                    (current) => ({
+                                        ...current,
+                                        engine:
+                                            value
+                                    })
+                                );
+                            }}
+                        >
+                            <option value="auto">
+                                Automático
+                            </option>
+                            <option value="ffmpeg">
+                                FFmpeg
+                            </option>
+                            <option value="vlc">
+                                VLC
+                            </option>
+                        </select>
+                    </label>
+
+                    <label>
+                        <span>Tamanho no PROGRAM</span
                         <select
                             value={
                                 draft.fitMode
@@ -972,6 +1009,10 @@ function WebInputsContent({
                                         {" · "}
                                         {
                                             input.fitMode
+                                        }
+                                        {" · "}
+                                        motor {
+                                            (input.engine ?? "auto").toUpperCase()
                                         }
                                     </small>
                                 </div>
