@@ -70,13 +70,6 @@ function remoteInputArgs(
         if (realtime) {
             args.push("-re");
         }
-
-        if (isHlsInput(url, protocolHint)) {
-            args.push(
-                "-allowed_extensions",
-                "ALL"
-            );
-        }
     }
 
     return args;
