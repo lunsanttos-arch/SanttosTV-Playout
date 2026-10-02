@@ -189,6 +189,10 @@ assert(app.includes("selectedMedia.freezeEnd") &&
     "NEXT deve liberar o FREEZE como conclusão normal, sem marcar o item como pulado.");
 assert(appCss.includes(".timeline-freeze-button.active"),
     "Botão FREEZE ativo deve ser visível para o operador.");
+assert(app.includes("programmedHasFreeze") &&
+    app.includes('"programmed-time-summary has-freeze"') &&
+    appCss.includes(".programmed-time-summary.has-freeze > div"),
+    "FREEZE na grade deve manter o tempo programado e acender borda vermelha no cabeçalho.");
 const etaCode = fs.readFileSync(
     path.join(root, "src", "renderer", "src", "timeline-forecast.ts"), "utf8"
 );
