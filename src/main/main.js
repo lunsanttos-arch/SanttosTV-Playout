@@ -1129,7 +1129,9 @@ async function startNativePlayback(
                 startSeconds: normalizedStartSeconds,
                 durationSeconds: clipRemainingSeconds,
                 sampleRate: profile.sampleRate,
-                channels: profile.channels
+                channels: profile.channels,
+                protocolHint:
+                    programState.inputProtocol ?? ""
             }).start();
             audioOutputStatus = "STARTING";
             audioOutputError = "";
