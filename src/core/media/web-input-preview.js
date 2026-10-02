@@ -12,6 +12,11 @@ const {
 const {
     createRemoteHlsProxy
 } = require("../playout/remote-input-proxy");
+const {
+    findVlcPath,
+    selectInputEngine,
+    startVlcInputBridge
+} = require("../playout/vlc-input-bridge");
 
 const INPUT_PREVIEW_SCHEME = "santtos-input";
 
@@ -119,6 +124,29 @@ async function serveWebInputPreview(
     let playbackUrl =
         resolved.url;
     let proxy = null;
+    let vlcBridge = null;
+
+    const vlcPath =
+        findVlcPath();
+
+    let engine;
+
+    try {
+        engine =
+            selectInputEngine(
+                input.engine,
+                resolved.provider,
+                Boolean(vlcPath)
+            );
+    } catch (error) {
+        return new Response(
+            String(
+                error?.message ||
+                "Motor VLC indisponível."
+            ),
+            { status: 503 }
+        );
+    }
 
     if (
         resolved.provider ===
@@ -142,6 +170,44 @@ async function serveWebInputPreview(
         }
     }
 
+    if (engine === "vlc") {
+        try {
+            vlcBridge =
+                await startVlcInputBridge(
+                    playbackUrl,
+                    {
+                        vlcPath,
+                        userAgent:
+                            resolved.provider === "dailymotion"
+                                ? ""
+                                : resolved.userAgent,
+                        referer:
+                            resolved.provider === "dailymotion"
+                                ? ""
+                                : resolved.referer,
+                        withAudioCopy:
+                            false
+                    }
+                );
+
+            playbackUrl =
+                vlcBridge.videoUrl;
+        } catch (error) {
+            if (proxy) {
+                proxy.close();
+                proxy = null;
+            }
+
+            return new Response(
+                String(
+                    error?.message ||
+                    "Não foi possível iniciar a ponte VLC."
+                ),
+                { status: 502 }
+            );
+        }
+    }
+
     const args = [
         "-hide_banner",
         "-loglevel",
@@ -149,21 +215,25 @@ async function serveWebInputPreview(
         "-nostdin",
         "-fflags",
         "+genpts+discardcorrupt",
-        ...remoteInputArgs(
-            playbackUrl,
-            {
-                protocolHint:
-                    input.protocol,
-                userAgent:
-                    resolved.userAgent,
-                referer:
-                    resolved.referer,
-                cookie:
-                    resolved.provider === "dailymotion"
-                        ? ""
-                        : resolved.cookie,
-                realtime: true
-            }
+        ...(
+            isHttpInput(playbackUrl)
+                ? remoteInputArgs(
+                      playbackUrl,
+                      {
+                          protocolHint:
+                              input.protocol,
+                          userAgent:
+                              resolved.userAgent,
+                          referer:
+                              resolved.referer,
+                          cookie:
+                              resolved.provider === "dailymotion"
+                                  ? ""
+                                  : resolved.cookie,
+                          realtime: true
+                      }
+                  )
+                : []
         ),
         "-i",
         playbackUrl,
@@ -232,6 +302,11 @@ async function serveWebInputPreview(
     child.on(
         "error",
         (error) => {
+            if (vlcBridge) {
+                vlcBridge.stop();
+                vlcBridge = null;
+            }
+
             if (proxy) {
                 proxy.close();
                 proxy = null;
@@ -247,6 +322,11 @@ async function serveWebInputPreview(
     child.on(
         "exit",
         (code, signal) => {
+            if (vlcBridge) {
+                vlcBridge.stop();
+                vlcBridge = null;
+            }
+
             if (proxy) {
                 proxy.close();
                 proxy = null;
@@ -268,6 +348,11 @@ async function serveWebInputPreview(
     request.signal?.addEventListener(
         "abort",
         () => {
+            if (vlcBridge) {
+                vlcBridge.stop();
+                vlcBridge = null;
+            }
+
             if (proxy) {
                 proxy.close();
                 proxy = null;
