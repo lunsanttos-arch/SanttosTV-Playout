@@ -21,6 +21,9 @@ const {
     dailymotionVideoId,
     resolveDailymotionInput
 } = require("../src/core/playout/remote-input-resolver");
+const {
+    createRemoteHlsProxy
+} = require("../src/core/playout/remote-input-proxy");
 
 function ffmpegPath() {
     if (typeof ffmpegStatic !== "string" || !ffmpegStatic) {
@@ -305,6 +308,133 @@ async function main() {
             ),
             "Playlist HLS de QA não foi criada."
         );
+
+        const proxyFetches = [];
+        const protectedFetch =
+            async (rawUrl, options = {}) => {
+                const upstream =
+                    new URL(
+                        String(rawUrl)
+                    );
+                const headers =
+                    options.headers || {};
+
+                proxyFetches.push({
+                    pathname:
+                        upstream.pathname,
+                    headers
+                });
+
+                if (
+                    !/QA Browser/i.test(
+                        String(
+                            headers["User-Agent"] || ""
+                        )
+                    ) ||
+                    headers["Referer"] !==
+                        "https://www.dailymotion.com/" ||
+                    !/qa=1/.test(
+                        String(
+                            headers["Cookie"] || ""
+                        )
+                    )
+                ) {
+                    return new Response(
+                        "Forbidden",
+                        { status: 403 }
+                    );
+                }
+
+                const relative =
+                    upstream.pathname
+                        .replace(/^\/+/, "");
+
+                const filePath =
+                    path.join(
+                        temp,
+                        relative
+                    );
+
+                if (
+                    !fs.existsSync(
+                        filePath
+                    )
+                ) {
+                    return new Response(
+                        "Not found",
+                        { status: 404 }
+                    );
+                }
+
+                const body =
+                    fs.readFileSync(
+                        filePath
+                    );
+
+                return new Response(
+                    body,
+                    {
+                        status: 200,
+                        headers: {
+                            "Content-Type":
+                                contentType(
+                                    filePath
+                                ),
+                            "Cache-Control":
+                                "no-store"
+                        }
+                    }
+                );
+            };
+
+        const protectedProxy =
+            await createRemoteHlsProxy(
+                {
+                    url:
+                        "https://protected.example/index.m3u8",
+                    userAgent:
+                        "QA Browser",
+                    referer:
+                        "https://www.dailymotion.com/",
+                    cookie:
+                        "qa=1"
+                },
+                {
+                    fetchImpl:
+                        protectedFetch
+                }
+            );
+
+        try {
+            await runFfmpeg([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-nostdin",
+                "-i",
+                protectedProxy.url,
+                "-t",
+                "1",
+                "-map",
+                "0:v:0",
+                "-an",
+                "-f",
+                "null",
+                "-"
+            ]);
+
+            assert(
+                proxyFetches.some(
+                    item =>
+                        /segment-\d+\.ts$/i.test(
+                            item.pathname
+                        )
+                ),
+                "O proxy deve reescrever e buscar os segmentos HLS."
+            );
+        } finally {
+            protectedProxy.close();
+        }
 
         const server =
             http.createServer(
