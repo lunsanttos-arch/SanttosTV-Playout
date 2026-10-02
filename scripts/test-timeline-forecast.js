@@ -205,6 +205,7 @@ assert.equal(planned.times.get("ad-break"), "00:01:00 (+1 dia)");
 assert.equal(planned.end, "00:01:30 (+1 dia)");
 assert.equal(planned.totalSeconds, 150);
 assert.equal(planned.blocker, null);
+assert.equal(planned.hasFreeze, false);
 const missingPlanned = buildPlannedSchedule([
     { id: "known", duration: 60 },
     { id: "unknown", duration: null },
@@ -225,9 +226,12 @@ const plannedFreeze = buildPlannedSchedule([
     { id: "freeze", duration: 20, freezeEnd: true },
     { id: "next", duration: 20 }
 ], "08:00");
-assert.match(plannedFreeze.times.get("next"), /FREEZE ANTERIOR/);
-assert.equal(plannedFreeze.end, "SEM PREVISÃO");
-assert.equal(plannedFreeze.blocker, "freeze");
+assert.equal(plannedFreeze.times.get("freeze"), "08:00:00");
+assert.equal(plannedFreeze.times.get("next"), "08:00:20");
+assert.equal(plannedFreeze.end, "08:00:40");
+assert.equal(plannedFreeze.totalSeconds, 40);
+assert.equal(plannedFreeze.blocker, null);
+assert.equal(plannedFreeze.hasFreeze, true);
 const badStart = buildPlannedSchedule([{ id: "clip", duration: 20 }], "29:75");
 assert.equal(badStart.times.get("clip"), "SEM PREVISÃO — INÍCIO INVÁLIDO");
 assert.equal(badStart.blocker, "invalid-start");
