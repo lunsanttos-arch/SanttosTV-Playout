@@ -295,6 +295,13 @@ assert(app.includes('sourceType !== "input"') &&
     app.includes("program-live-input-preview"),
     "Input remoto não deve ser tratado como arquivo local no preview.");
 assert(
+    app.includes("santtos-input://preview/") &&
+    app.includes("selectedInputPreviewUrl") &&
+    app.includes("program-input-preview-video") &&
+    html.includes("santtos-input:"),
+    "HTTP/HLS devem ter prévia real via protocolo interno FFmpeg permitido pela CSP."
+);
+assert(
     webInputs.includes("draggable") &&
     webInputs.includes("startInputDrag") &&
     webInputs.includes("application/x-santtos-timeline-item") &&
