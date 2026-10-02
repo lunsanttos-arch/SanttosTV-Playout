@@ -856,6 +856,9 @@ function startNativePlayback(
     const isRemoteInput =
         overlayState?.sourceType === "input" &&
         /^(https?:\/\/|srt:\/\/)/i.test(filePath);
+    const isNetworkFile =
+        !isRemoteInput &&
+        /^\\\\/.test(filePath);
 
     const imported = isRemoteInput
         ? getWebInputs().some(
@@ -873,15 +876,27 @@ function startNativePlayback(
                 "O input deve estar cadastrado em Biblioteca → Inputs."
             );
         }
-    } else if (
-        !imported ||
-        !fs.existsSync(filePath) ||
-        !fs.statSync(filePath).isFile()
-    ) {
+    } else if (!imported) {
         throw new Error(
             "O arquivo deve estar cadastrado na biblioteca."
         );
+    } else if (
+        !isNetworkFile &&
+        (
+            !fs.existsSync(filePath) ||
+            !fs.statSync(filePath).isFile()
+        )
+    ) {
+        throw new Error(
+            "O arquivo cadastrado não está disponível no disco."
+        );
     }
+
+    // UNC/SMB: não fazemos stat/exists síncrono imediatamente antes do PLAY.
+    // Se o servidor estiver lento ou reconectando, essas chamadas podem
+    // bloquear o processo principal do Electron e atrasar toda a operação.
+    // O caminho já foi validado no scanner assíncrono da Biblioteca; no PLAY,
+    // o FFmpeg passa a ser a fonte de verdade e reporta falha sem congelar a UI.
 
     const normalizedStartSeconds =
         Number.isFinite(Number(startSeconds))

@@ -62,7 +62,10 @@ function runProbe(filePath, options = {}) {
                 argumentsList,
                 {
                     windowsHide: true,
-                    timeout: 30000,
+                    timeout:
+                        Number.isFinite(Number(options.timeout))
+                            ? Math.max(5000, Number(options.timeout))
+                            : 30000,
                     maxBuffer:
                         64 * 1024 * 1024
                 },
@@ -112,10 +115,28 @@ function getProbeFormatHint(filePath) {
 
 async function probeMedia(filePath) {
     let firstError = null;
+    const networkPath =
+        typeof filePath === "string" &&
+        /^\\\\/.test(filePath);
+
+    // Em SMB/UNC, uma análise inicial menor evita ler dezenas de MB de cada
+    // arquivo apenas para preencher a Biblioteca. Se ela não for suficiente,
+    // a rotina de recuperação abaixo aumenta a janela automaticamente.
+    const firstPassOptions =
+        networkPath
+            ? {
+                  probeSize: 10000000,
+                  analyzeDuration: 10000000,
+                  timeout: 45000
+              }
+            : {};
 
     try {
         const probeResult =
-            await runProbe(filePath);
+            await runProbe(
+                filePath,
+                firstPassOptions
+            );
 
         return parseProbeResult(
             probeResult
@@ -127,15 +148,29 @@ async function probeMedia(filePath) {
     const formatHint =
         getProbeFormatHint(filePath);
 
-    if (formatHint) {
+    if (formatHint || networkPath) {
         try {
             const probeResult =
                 await runProbe(
                     filePath,
                     {
-                        formatHint,
-                        probeSize: 100000000,
-                        analyzeDuration: 100000000
+                        ...(formatHint
+                            ? {
+                                  formatHint
+                              }
+                            : {}),
+                        probeSize:
+                            formatHint
+                                ? 100000000
+                                : 50000000,
+                        analyzeDuration:
+                            formatHint
+                                ? 100000000
+                                : 50000000,
+                        timeout:
+                            networkPath
+                                ? 60000
+                                : 30000
                     }
                 );
 
