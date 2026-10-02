@@ -10,6 +10,7 @@ on:
       - "scripts/test-frontend.js"
       - "scripts/test-media-stream.js"
       - "scripts/test-preview-proxy.js"
+      - "scripts/test-web-input-playback.js"
       - "scripts/test-exhibition-output.js"
       - "scripts/test-timeline-forecast.js"
       - "scripts/test-output-profile.js"
@@ -31,6 +32,7 @@ on:
       - "scripts/test-frontend.js"
       - "scripts/test-media-stream.js"
       - "scripts/test-preview-proxy.js"
+      - "scripts/test-web-input-playback.js"
       - "scripts/test-exhibition-output.js"
       - "scripts/test-timeline-forecast.js"
       - "scripts/test-output-profile.js"
@@ -76,6 +78,8 @@ jobs:
           node --check src/core/ndi/frame-aligner.js
           node --check src/core/playout/native-playout-engine.js
           node --check src/core/playout/output-profile.js
+          node --check src/core/playout/remote-input.js
+          node --check src/core/media/web-input-preview.js
 
       - name: Security regression tests
         run: npm run test:security
@@ -88,6 +92,9 @@ jobs:
 
       - name: FFmpeg browser proxy
         run: npm run test:proxy
+
+      - name: Web input HLS playback
+        run: npm run test:web-input
 
       - name: NDI editorial overlay render regression
         run: npm run test:exhibition-output
