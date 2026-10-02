@@ -317,6 +317,7 @@ declare global {
                     timingMode?: string;
                     outPointSeconds?: number | null;
                     sourceType?: "file" | "input";
+                    inputProtocol?: string;
                     fitMode?: "contain" | "cover" | "stretch";
                     sizePercent?: number;
                 }
@@ -1284,6 +1285,17 @@ function PlayoutPanel({
               )
             : null;
 
+    const selectedInputPreviewUrl =
+        selectedMedia?.sourceType === "input" &&
+        selectedMedia.inputId &&
+        /^https?:\/\//i.test(
+            selectedMedia.path
+        )
+            ? `santtos-input://preview/${encodeURIComponent(
+                  selectedMedia.inputId
+              )}`
+            : null;
+
     const progressPercent =
         selectedClipDuration > 0
             ? Math.min(
@@ -1584,6 +1596,8 @@ function PlayoutPanel({
                 mediaItem.timingMode ?? "unknown",
             sourceType:
                 mediaItem.sourceType ?? "file",
+            inputProtocol:
+                mediaItem.inputProtocol ?? "",
             fitMode:
                 mediaItem.fitMode ?? "contain",
             sizePercent:
@@ -3012,6 +3026,30 @@ function PlayoutPanel({
                                     </div>
                                 )}
                             </>
+                        ) : selectedInputPreviewUrl ? (
+                            <>
+                                <video
+                                    className="program-video program-input-preview-video"
+                                    src={selectedInputPreviewUrl}
+                                    autoPlay
+                                    muted
+                                    playsInline
+                                    onPlaying={() =>
+                                        setPreviewError("")
+                                    }
+                                    onError={() =>
+                                        setPreviewError(
+                                            "A prévia do Input não abriu. O PROGRAM usa uma conexão FFmpeg separada e mostrará o erro real ao pressionar PLAY."
+                                        )
+                                    }
+                                />
+                                {previewError && (
+                                    <div className="program-preview-error" role="alert">
+                                        <strong>PRÉVIA DO INPUT INDISPONÍVEL</strong>
+                                        <span>{previewError}</span>
+                                    </div>
+                                )}
+                            </>
                         ) : selectedMedia?.sourceType === "input" ? (
                             <div className="program-live-input-preview">
                                 <strong>INPUT AO VIVO</strong>
@@ -3019,7 +3057,7 @@ function PlayoutPanel({
                                 <small>
                                     {selectedMedia.inputProtocol?.toUpperCase() ?? "STREAM"}
                                     {" · "}
-                                    saída monitorada pelo PROGRAM / NDI
+                                    SRT é reproduzido diretamente pelo PROGRAM / NDI
                                 </small>
                             </div>
                         ) : (

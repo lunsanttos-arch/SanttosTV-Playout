@@ -3,6 +3,10 @@
 const { spawn } = require("node:child_process");
 const net = require("node:net");
 const { StereoPcmMeter } = require("./stereo-meter");
+const {
+    isRemoteInputUrl,
+    remoteInputArgs
+} = require("../playout/remote-input");
 
 function audioFfmpegArgs(
     filePath,
@@ -10,7 +14,8 @@ function audioFfmpegArgs(
     startSeconds,
     durationSeconds,
     sampleRate = 48000,
-    channels = 2
+    channels = 2,
+    protocolHint = ""
 ) {
     if (typeof filePath !== "string" || !filePath) throw new Error("Mídia de áudio inválida.");
     const explicitStream = Number.isSafeInteger(streamIndex) &&
@@ -24,7 +29,7 @@ function audioFfmpegArgs(
         "-re"
     ];
     const remoteInput =
-        /^(https?:\/\/|srt:\/\/)/i.test(
+        isRemoteInputUrl(
             filePath
         );
 
@@ -39,18 +44,15 @@ function audioFfmpegArgs(
         );
     }
 
-    if (
-        /^https?:\/\//i.test(
-            filePath
-        )
-    ) {
+    if (remoteInput) {
         args.push(
-            "-reconnect",
-            "1",
-            "-reconnect_streamed",
-            "1",
-            "-reconnect_delay_max",
-            "4"
+            ...remoteInputArgs(
+                filePath,
+                {
+                    protocolHint,
+                    realtime: false
+                }
+            )
         );
     }
 
@@ -86,7 +88,8 @@ class NdiAudioSource {
 
     start() {
         const { pipePath, ffmpegPath, filePath, streamIndex,
-            startSeconds = 0, durationSeconds = null } = this.options;
+            startSeconds = 0, durationSeconds = null,
+            protocolHint = "" } = this.options;
         if (!pipePath || !pipePath.startsWith("\\\\.\\pipe\\SanttosAudio-")) {
             throw new Error("Canal NDI de áudio não autorizado.");
         }
@@ -96,7 +99,8 @@ class NdiAudioSource {
             startSeconds,
             durationSeconds,
             this.sampleRate,
-            this.channels
+            this.channels,
+            protocolHint
         );
         const socket = net.createConnection(pipePath);
         this.socket = socket;

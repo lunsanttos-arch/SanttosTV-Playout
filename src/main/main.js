@@ -13,6 +13,14 @@ const fs = require("fs");
 const { fileURLToPath } = require("url");
 const { MEDIA_SCHEME, serveImportedVideo } = require("../core/media/media-protocol");
 const { preparePreviewProxy, cancelActivePreviews } = require("../core/media/preview-proxy");
+const {
+    INPUT_PREVIEW_SCHEME,
+    serveWebInputPreview
+} = require("../core/media/web-input-preview");
+const {
+    isRemoteInputUrl,
+    remoteInputArgs
+} = require("../core/playout/remote-input");
 const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
 const crypto = require("node:crypto");
@@ -97,10 +105,25 @@ let ndiSourceName = isNdiTestBench ? "Santtos TV - QA" : "Santtos TV - PROGRAM";
 const isDevelopment = !app.isPackaged;
 
 // Um protocolo exclusivo permite reproduzir midias com webSecurity habilitado.
-protocol.registerSchemesAsPrivileged([{
-    scheme: MEDIA_SCHEME,
-    privileges: { standard: true, secure: true, stream: true }
-}]);
+protocol.registerSchemesAsPrivileged([
+    {
+        scheme: MEDIA_SCHEME,
+        privileges: {
+            standard: true,
+            secure: true,
+            stream: true
+        }
+    },
+    {
+        scheme: INPUT_PREVIEW_SCHEME,
+        privileges: {
+            standard: true,
+            secure: true,
+            stream: true,
+            supportFetchAPI: true
+        }
+    }
+]);
 
 function isTrustedRendererUrl(rawUrl) {
     try {
@@ -838,7 +861,7 @@ function stopNativePlayback({ engineAction = "stop" } = {}) {
     return playoutEngine.snapshot();
 }
 
-function startNativePlayback(
+async function startNativePlayback(
     filePath,
     startSeconds = 0,
     hashtag = "",
@@ -855,7 +878,7 @@ function startNativePlayback(
 
     const isRemoteInput =
         overlayState?.sourceType === "input" &&
-        /^(https?:\/\/|srt:\/\/)/i.test(filePath);
+        isRemoteInputUrl(filePath);
     const isNetworkFile =
         !isRemoteInput &&
         /^\\\\/.test(filePath);
@@ -1000,16 +1023,16 @@ function startNativePlayback(
     }
 
     if (isRemoteInput) {
-        if (/^https?:\/\//i.test(filePath)) {
-            args.push(
-                "-reconnect",
-                "1",
-                "-reconnect_streamed",
-                "1",
-                "-reconnect_delay_max",
-                "4"
-            );
-        }
+        args.push(
+            ...remoteInputArgs(
+                filePath,
+                {
+                    protocolHint:
+                        programState.inputProtocol,
+                    realtime: true
+                }
+            )
+        );
     }
 
     args.push(
@@ -1107,7 +1130,9 @@ function startNativePlayback(
                 startSeconds: normalizedStartSeconds,
                 durationSeconds: clipRemainingSeconds,
                 sampleRate: profile.sampleRate,
-                channels: profile.channels
+                channels: profile.channels,
+                protocolHint:
+                    programState.inputProtocol ?? ""
             }).start();
             audioOutputStatus = "STARTING";
             audioOutputError = "";
@@ -1157,7 +1182,40 @@ function startNativePlayback(
         }
     );
 
-    const onVideoBytes = (chunk) => assembler.push(chunk);
+    let startupStderr = "";
+    let startupSettled = !isRemoteInput;
+    let resolveStartup;
+    let rejectStartup;
+
+    const startupPromise =
+        isRemoteInput
+            ? new Promise((resolve, reject) => {
+                  resolveStartup = resolve;
+                  rejectStartup = reject;
+              })
+            : Promise.resolve();
+
+    const settleStartupSuccess = () => {
+        if (startupSettled) return;
+        startupSettled = true;
+        resolveStartup?.();
+    };
+
+    const settleStartupFailure = (message) => {
+        if (startupSettled) return;
+        startupSettled = true;
+        rejectStartup?.(
+            new Error(
+                message ||
+                    "O Input não entregou vídeo."
+            )
+        );
+    };
+
+    const onVideoBytes = (chunk) => {
+        settleStartupSuccess();
+        assembler.push(chunk);
+    };
     processRef.stdout.on("data", onVideoBytes);
 
     const stopThisFeed = () => {
@@ -1180,6 +1238,11 @@ function startNativePlayback(
                 data.toString().trim();
 
             if (message) {
+                startupStderr =
+                    (startupStderr +
+                        "\n" +
+                        message)
+                        .slice(-1800);
                 console.warn(
                     `[FFmpeg] ${message}`
                 );
@@ -1193,6 +1256,11 @@ function startNativePlayback(
             console.error(
                 "Falha no playout FFmpeg:",
                 error
+            );
+
+            settleStartupFailure(
+                "Erro ao abrir o Input no FFmpeg: " +
+                    error.message
             );
 
             if (ffmpegProcess === processRef) {
@@ -1213,6 +1281,20 @@ function startNativePlayback(
             console.log(
                 `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`
             );
+
+            if (!startupSettled) {
+                settleStartupFailure(
+                    [
+                        code === 0 && !signal
+                            ? "O Input terminou antes de entregar o primeiro quadro."
+                            : "O FFmpeg não conseguiu abrir o Input.",
+                        startupStderr
+                    ]
+                        .filter(Boolean)
+                        .join("\n")
+                        .slice(-1200)
+                );
+            }
 
             if (ffmpegProcess === processRef) {
                 ffmpegProcess = null;
@@ -1241,6 +1323,41 @@ function startNativePlayback(
             }
         }
     );
+
+    if (isRemoteInput) {
+        let timeout;
+
+        try {
+            await Promise.race([
+                startupPromise,
+                new Promise((_, reject) => {
+                    timeout = setTimeout(
+                        () =>
+                            reject(
+                                new Error(
+                                    "O Input não entregou o primeiro quadro em 12 segundos. Verifique a URL, autenticação, rede ou codec."
+                                )
+                            ),
+                        12000
+                    );
+                })
+            ]);
+        } catch (error) {
+            try {
+                if (!processRef.killed) {
+                    processRef.kill();
+                }
+            } catch {
+                // Processo já encerrado.
+            }
+
+            throw error;
+        } finally {
+            if (timeout) {
+                clearTimeout(timeout);
+            }
+        }
+    }
 
     return {
         ok: true,
@@ -1370,7 +1487,7 @@ function registerIpcHandlers() {
         ) => {
             if (!nativeOutputAllowed) return { ok: true, previewOnly: true };
             try {
-                return startNativePlayback(
+                return await startNativePlayback(
                     filePath,
                     startSeconds,
                     hashtag,
@@ -2416,6 +2533,16 @@ app.whenReady().then(() => {
         startSystem();
         protocol.handle(MEDIA_SCHEME, (request) =>
             serveImportedVideo(request, getMedia(), approvedPreviewPaths)
+        );
+        protocol.handle(INPUT_PREVIEW_SCHEME, (request) =>
+            serveWebInputPreview(
+                request,
+                getWebInputs(),
+                {
+                    ffmpegPath:
+                        resolveFfmpegPath()
+                }
+            )
         );
         session.defaultSession.setPermissionRequestHandler(
             (_webContents, _permission, callback) => callback(false)

@@ -8,6 +8,7 @@ const mainPath = path.join(root, "src", "renderer", "src", "main.tsx");
 const settingsPath = path.join(root, "src", "renderer", "src", "BroadcastSettingsPanel.tsx");
 const librarySettingsPath = path.join(root, "src", "renderer", "src", "LibraryFolderSettingsTab.tsx");
 const electronMainPath = path.join(root, "src", "main", "main.js");
+const rendererIndexPath = path.join(root, "src", "renderer", "index.html");
 const packagePath = path.join(root, "package.json");
 const appIconPath = path.join(root, "build-resources", "icon.ico");
 const brandDir = path.join(root, "src", "renderer", "public", "brand");
@@ -19,6 +20,7 @@ const main = fs.readFileSync(mainPath, "utf8");
 const settings = fs.readFileSync(settingsPath, "utf8");
 const librarySettings = fs.readFileSync(librarySettingsPath, "utf8");
 const electronMain = fs.readFileSync(electronMainPath, "utf8");
+const rendererIndex = fs.readFileSync(rendererIndexPath, "utf8");
 const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 
 assert(fs.existsSync(appIconPath), "Ícone oficial do Santtos Playout deve existir para o build Windows.");
@@ -294,6 +296,13 @@ assert(app.includes("<WebInputsPanel") &&
 assert(app.includes('sourceType !== "input"') &&
     app.includes("program-live-input-preview"),
     "Input remoto não deve ser tratado como arquivo local no preview.");
+assert(
+    app.includes("santtos-input://preview/") &&
+    app.includes("selectedInputPreviewUrl") &&
+    app.includes("program-input-preview-video") &&
+    rendererIndex.includes("santtos-input:"),
+    "HTTP/HLS devem ter prévia real via protocolo interno FFmpeg permitido pela CSP."
+);
 assert(
     webInputs.includes("draggable") &&
     webInputs.includes("startInputDrag") &&
