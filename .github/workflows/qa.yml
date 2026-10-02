@@ -98,6 +98,9 @@ jobs:
       - name: Web input HLS playback
         run: npm run test:web-input
 
+      - name: Dailymotion live diagnostic
+        run: node scripts/debug-dailymotion-live.js
+
       - name: NDI editorial overlay render regression
         run: npm run test:exhibition-output
 
