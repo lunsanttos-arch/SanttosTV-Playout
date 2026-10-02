@@ -1800,6 +1800,36 @@ button {
     color: #eeeeee;
     line-height: 1.4;
 }
+
+.program-engine-error-banner {
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    z-index: 9;
+    padding: 8px 10px;
+    display: grid;
+    gap: 3px;
+    background: rgba(55, 7, 16, 0.94);
+    border: 1px solid #b52e48;
+    border-radius: 6px;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4);
+}
+
+.program-engine-error-banner strong {
+    color: #ff9caf;
+    font-size: 10px;
+    letter-spacing: 0.55px;
+}
+
+.program-engine-error-banner span {
+    max-height: 58px;
+    overflow: auto;
+    color: #ffffff;
+    font-size: 10px;
+    line-height: 1.35;
+    white-space: pre-wrap;
+}
 .program-preview-error small {
     max-width: 620px;
     color: #b5b5b5;
