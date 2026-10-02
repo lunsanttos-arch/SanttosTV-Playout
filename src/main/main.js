@@ -19,6 +19,7 @@ const {
 } = require("../core/media/web-input-preview");
 const {
     isRemoteInputUrl,
+    describeRemoteInputError,
     remoteInputArgs
 } = require("../core/playout/remote-input");
 const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
@@ -1029,6 +1030,10 @@ async function startNativePlayback(
                 {
                     protocolHint:
                         programState.inputProtocol,
+                    userAgent:
+                        programState.inputHttpUserAgent,
+                    referer:
+                        programState.inputHttpReferer,
                     realtime: true
                 }
             )
@@ -1132,7 +1137,11 @@ async function startNativePlayback(
                 sampleRate: profile.sampleRate,
                 channels: profile.channels,
                 protocolHint:
-                    programState.inputProtocol ?? ""
+                    programState.inputProtocol ?? "",
+                userAgent:
+                    programState.inputHttpUserAgent ?? "",
+                referer:
+                    programState.inputHttpReferer ?? ""
             }).start();
             audioOutputStatus = "STARTING";
             audioOutputError = "";
@@ -1283,12 +1292,18 @@ async function startNativePlayback(
             );
 
             if (!startupSettled) {
+                const friendlyError =
+                    describeRemoteInputError(
+                        startupStderr
+                    );
+
                 settleStartupFailure(
                     [
                         code === 0 && !signal
                             ? "O Input terminou antes de entregar o primeiro quadro."
                             : "O FFmpeg não conseguiu abrir o Input.",
-                        startupStderr
+                        friendlyError ||
+                            startupStderr
                     ]
                         .filter(Boolean)
                         .join("\n")
