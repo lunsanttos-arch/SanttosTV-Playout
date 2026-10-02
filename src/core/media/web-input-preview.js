@@ -193,17 +193,28 @@ async function serveWebInputPreview(
             playbackUrl =
                 vlcBridge.videoUrl;
         } catch (error) {
-            if (proxy) {
-                proxy.close();
-                proxy = null;
+            if (
+                (input.engine ?? "auto") !==
+                "auto"
+            ) {
+                if (proxy) {
+                    proxy.close();
+                    proxy = null;
+                }
+
+                return new Response(
+                    String(
+                        error?.message ||
+                        "Não foi possível iniciar a ponte VLC."
+                    ),
+                    { status: 502 }
+                );
             }
 
-            return new Response(
-                String(
-                    error?.message ||
-                    "Não foi possível iniciar a ponte VLC."
-                ),
-                { status: 502 }
+            engine = "ffmpeg";
+            console.warn(
+                "Prévia VLC falhou no modo Automático; usando FFmpeg:",
+                error
             );
         }
     }
