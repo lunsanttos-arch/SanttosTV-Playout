@@ -256,7 +256,7 @@ assert(opec.includes("exhibitionType"), "Programação diária deve permitir mar
 assert(opec.includes('useState("00:00")') &&
     opec.includes('saved.startTime || "00:00"'),
     "Programação deve começar às 00:00 por padrão.");
-assert(app.includes("+ Nova aba"), "Biblioteca deve oferecer criação de sub-aba.");
+assert(app.includes("+ Nova pasta"), "Biblioteca deve oferecer criação de nova pasta.");
 assert(app.includes("selectLibraryFolder"), "Criação/configuração deve usar seletor de pasta.");
 assert(app.includes("scanLibraryCategory"), "Biblioteca deve conseguir atualizar a pasta ativa.");
 assert(app.includes("result.category ?? activeCategory") &&
@@ -281,12 +281,16 @@ const webInputs = fs.readFileSync(
     "utf8"
 );
 assert(app.includes("<WebInputsPanel") &&
+    app.includes("library-module-switch") &&
+    app.includes("INPUT WEB") &&
     webInputs.includes("MÓDULO PREMIUM") &&
     webInputs.includes('value="srt"') &&
     webInputs.includes("HLS / M3U8") &&
     webInputs.includes("sizePercent") &&
-    webInputs.includes('type="range"'),
-    "Biblioteca deve oferecer Inputs premium com HTTP/HLS/SRT, duração/horário e tamanho.");
+    webInputs.includes('type="range"') &&
+    webInputs.includes("sanitizePastedUrl") &&
+    webInputs.includes("WebInputsErrorBoundary"),
+    "Inputs premium devem ficar no topo da Biblioteca e resistir a links colados inválidos sem derrubar o renderer.");
 assert(app.includes('sourceType !== "input"') &&
     app.includes("program-live-input-preview"),
     "Input remoto não deve ser tratado como arquivo local no preview.");
@@ -316,6 +320,18 @@ assert(
     createBlock.indexOf("selectLibraryFolder") >= 0 &&
     createBlock.indexOf("selectLibraryFolder") < createBlock.indexOf("saveLibraryCategories"),
     "Nova aba deve selecionar a pasta antes de ser salva."
+);
+assert(
+    !createBlock.includes("window.prompt") &&
+    createBlock.includes("folderNameFromPath") &&
+    app.includes("+ Nova pasta"),
+    "Nova pasta da Biblioteca deve usar o seletor nativo e não depender de window.prompt."
+);
+assert(
+    !librarySettings.includes("window.prompt") &&
+    librarySettings.includes("selectLibraryFolder") &&
+    librarySettings.includes("+ Nova pasta"),
+    "Configurações da Biblioteca também devem criar pastas sem window.prompt."
 );
 
 assert(main.includes('import "./library-categories.css"'), "CSS das categorias da Biblioteca deve estar carregado.");

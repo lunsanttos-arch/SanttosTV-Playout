@@ -44,15 +44,88 @@ export default function LibraryFolderSettingsTab() {
         }
     }
 
-    function createCategory() {
-        const name = window.prompt("Nome da nova aba da Biblioteca:")?.trim();
-        if (!name) return;
-        const id = `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-        setCategories((current) => [
-            ...current,
-            { id, name: name.slice(0, 40), folderPath: "", builtIn: false }
-        ]);
-        setStatus("Nova aba criada. Escolha a pasta e salve.");
+    function folderNameFromPath(folderPath: string) {
+        const normalized = folderPath
+            .replace(/[\\/]+$/, "")
+            .replace(/\\/g, "/");
+        const segments = normalized
+            .split("/")
+            .filter(Boolean);
+        return (
+            segments[segments.length - 1] ??
+            "Nova pasta"
+        ).slice(0, 40);
+    }
+
+    async function createCategory() {
+        setStatus("Selecione a pasta que deseja adicionar...");
+        try {
+            const result =
+                await (window as any).santtosAPI
+                    .selectLibraryFolder();
+
+            if (
+                !result?.ok ||
+                !result.folderPath
+            ) {
+                setStatus(
+                    result?.canceled
+                        ? "Criação cancelada."
+                        : "Não foi possível selecionar a pasta."
+                );
+                return;
+            }
+
+            const normalized =
+                String(result.folderPath)
+                    .replace(/\\/g, "/")
+                    .replace(/\/+$/, "")
+                    .toLowerCase();
+
+            const duplicate =
+                categories.find(
+                    (item) =>
+                        item.folderPath
+                            .replace(/\\/g, "/")
+                            .replace(/\/+$/, "")
+                            .toLowerCase() ===
+                        normalized
+                );
+
+            if (duplicate) {
+                setStatus(
+                    `A pasta já está cadastrada como "${duplicate.name}".`
+                );
+                return;
+            }
+
+            const id =
+                `custom-${Date.now()}-${Math.random()
+                    .toString(16)
+                    .slice(2)}`;
+
+            setCategories((current) => [
+                ...current,
+                {
+                    id,
+                    name:
+                        folderNameFromPath(
+                            result.folderPath
+                        ),
+                    folderPath:
+                        result.folderPath,
+                    builtIn: false
+                }
+            ]);
+            setStatus(
+                "Pasta adicionada. Clique em Salvar pastas para confirmar."
+            );
+        } catch (error) {
+            console.error(error);
+            setStatus(
+                "Não foi possível selecionar a nova pasta."
+            );
+        }
     }
 
     function removeCategory(id: string) {
@@ -89,7 +162,7 @@ export default function LibraryFolderSettingsTab() {
                     <h2>Pastas da Biblioteca</h2>
                     <p>Cada sub-aba do Playout exibe somente os arquivos da pasta configurada aqui.</p>
                 </div>
-                <button type="button" onClick={createCategory}>+ Nova aba</button>
+                <button type="button" onClick={() => void createCategory()}>+ Nova pasta</button>
             </div>
 
             <div className="library-folder-list">

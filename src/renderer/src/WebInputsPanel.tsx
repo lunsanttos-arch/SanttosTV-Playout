@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { Component, useEffect, useMemo, useState } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import type { MediaItem } from "./App";
 
 export interface WebInput {
@@ -91,7 +92,133 @@ function formatDuration(seconds: number) {
         .join(":");
 }
 
-export default function WebInputsPanel({
+function sanitizePastedUrl(value: string) {
+    return String(value ?? "")
+        .replace(/[\u0000-\u001f\u007f]/g, "")
+        .trim()
+        .replace(/^<(.+)>$/, "$1")
+        .slice(0, 4096);
+}
+
+function protocolFromUrl(
+    value: string
+): WebInput["protocol"] | null {
+    const url =
+        sanitizePastedUrl(value)
+            .toLowerCase();
+
+    if (url.startsWith("srt://")) {
+        return "srt";
+    }
+
+    if (
+        url.startsWith("http://") ||
+        url.startsWith("https://")
+    ) {
+        if (
+            /\.m3u8(?:[?#]|$)/i.test(url)
+        ) {
+            return "hls";
+        }
+
+        return url.startsWith("https://")
+            ? "https"
+            : "http";
+    }
+
+    return null;
+}
+
+function validateDraftUrl(value: string) {
+    const url = sanitizePastedUrl(value);
+
+    if (!url) {
+        return {
+            ok: false,
+            url,
+            error:
+                "Cole um endereço HTTP/HTTPS, M3U8 ou SRT."
+        };
+    }
+
+    if (
+        !/^(https?:\/\/|srt:\/\/)/i.test(
+            url
+        )
+    ) {
+        return {
+            ok: false,
+            url,
+            error:
+                "Formato não suportado. Use http://, https:// ou srt://."
+        };
+    }
+
+    return {
+        ok: true,
+        url,
+        error: ""
+    };
+}
+
+class WebInputsErrorBoundary extends Component<
+    { children: ReactNode },
+    { message: string }
+> {
+    state = {
+        message: ""
+    };
+
+    static getDerivedStateFromError(
+        error: Error
+    ) {
+        return {
+            message:
+                error?.message ||
+                "Falha inesperada no módulo de Inputs."
+        };
+    }
+
+    componentDidCatch(
+        error: Error,
+        info: ErrorInfo
+    ) {
+        console.error(
+            "Falha isolada no módulo de Inputs:",
+            error,
+            info
+        );
+    }
+
+    render() {
+        if (this.state.message) {
+            return (
+                <div className="web-inputs-recovery">
+                    <strong>
+                        O módulo de Inputs encontrou um erro.
+                    </strong>
+                    <span>
+                        {this.state.message}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() =>
+                            this.setState({
+                                message: ""
+                            })
+                        }
+                    >
+                        Reabrir Inputs
+                    </button>
+                </div>
+            );
+        }
+
+        return this.props.children;
+    }
+}
+
+function WebInputsContent({
     onAddToTimeline
 }: Props) {
     const [inputs, setInputs] =
@@ -102,6 +229,8 @@ export default function WebInputsPanel({
         useState<string | null>(null);
     const [status, setStatus] =
         useState("");
+    const [saving, setSaving] =
+        useState(false);
 
     async function load() {
         const result =
@@ -180,50 +309,104 @@ export default function WebInputsPanel({
     }
 
     async function save() {
+        if (saving) return;
+
         setStatus("");
 
-        const result =
-            await window.santtosAPI
-                .saveWebInput({
-                    ...draft,
-                    id:
-                        editingId ??
-                        undefined
-                });
+        const checked =
+            validateDraftUrl(
+                draft.url
+            );
 
-        if (!result.ok) {
+        if (!checked.ok) {
             setStatus(
-                result.error ??
-                    "Não foi possível salvar o Input."
+                checked.error
             );
             return;
         }
 
-        setInputs(
-            result.inputs ?? []
-        );
-        clear();
-        setStatus(
-            "Input salvo."
-        );
+        const detectedProtocol =
+            protocolFromUrl(
+                checked.url
+            );
+
+        setSaving(true);
+
+        try {
+            const result =
+                await window.santtosAPI
+                    .saveWebInput({
+                        ...draft,
+                        url:
+                            checked.url,
+                        protocol:
+                            detectedProtocol ??
+                            draft.protocol,
+                        id:
+                            editingId ??
+                            undefined
+                    });
+
+            if (!result?.ok) {
+                setStatus(
+                    result?.error ??
+                        "Não foi possível salvar o Input."
+                );
+                return;
+            }
+
+            setInputs(
+                result.inputs ?? []
+            );
+            clear();
+            setStatus(
+                "Input salvo."
+            );
+        } catch (error) {
+            console.error(
+                "Falha ao salvar Input:",
+                error
+            );
+            setStatus(
+                "O link não pôde ser salvo. O módulo foi preservado e continua funcionando."
+            );
+        } finally {
+            setSaving(false);
+        }
     }
 
     async function remove(
         id: string
     ) {
-        const result =
-            await window.santtosAPI
-                .removeWebInput(id);
+        try {
+            const result =
+                await window.santtosAPI
+                    .removeWebInput(id);
 
-        if (result.ok) {
-            setInputs(
-                result.inputs ?? []
-            );
-            if (
-                editingId === id
-            ) {
-                clear();
+            if (result?.ok) {
+                setInputs(
+                    result.inputs ?? []
+                );
+                if (
+                    editingId === id
+                ) {
+                    clear();
+                }
+                return;
             }
+
+            setStatus(
+                result?.error ??
+                    "Não foi possível remover o Input."
+            );
+        } catch (error) {
+            console.error(
+                "Falha ao remover Input:",
+                error
+            );
+            setStatus(
+                "Não foi possível remover o Input."
+            );
         }
     }
 
@@ -353,17 +536,57 @@ export default function WebInputsPanel({
                             draft.url
                         }
                         placeholder="https://...m3u8 ou srt://..."
-                        onChange={(event) =>
+                        inputMode="url"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        maxLength={4096}
+                        onPaste={(event) => {
+                            event.preventDefault();
+                            const pasted =
+                                sanitizePastedUrl(
+                                    event.clipboardData
+                                        .getData(
+                                            "text/plain"
+                                        )
+                                );
+                            const detected =
+                                protocolFromUrl(
+                                    pasted
+                                );
                             setDraft(
                                 (current) => ({
                                     ...current,
                                     url:
-                                        event
-                                            .currentTarget
-                                            .value
+                                        pasted,
+                                    protocol:
+                                        detected ??
+                                        current.protocol
                                 })
-                            )
-                        }
+                            );
+                            setStatus("");
+                        }}
+                        onChange={(event) => {
+                            const value =
+                                sanitizePastedUrl(
+                                    event.currentTarget
+                                        .value
+                                );
+                            const detected =
+                                protocolFromUrl(
+                                    value
+                                );
+                            setDraft(
+                                (current) => ({
+                                    ...current,
+                                    url:
+                                        value,
+                                    protocol:
+                                        detected ??
+                                        current.protocol
+                                })
+                            );
+                        }}
                     />
                 </label>
 
@@ -575,13 +798,16 @@ export default function WebInputsPanel({
                     <button
                         type="button"
                         className="primary-button"
+                        disabled={saving}
                         onClick={() =>
                             void save()
                         }
                     >
-                        {editingId
-                            ? "Atualizar input"
-                            : "Salvar input"}
+                        {saving
+                            ? "Salvando..."
+                            : editingId
+                              ? "Atualizar input"
+                              : "Salvar input"}
                     </button>
                 </div>
             </div>
@@ -672,5 +898,17 @@ export default function WebInputsPanel({
                 )}
             </div>
         </div>
+    );
+}
+
+export default function WebInputsPanel(
+    props: Props
+) {
+    return (
+        <WebInputsErrorBoundary>
+            <WebInputsContent
+                {...props}
+            />
+        </WebInputsErrorBoundary>
     );
 }

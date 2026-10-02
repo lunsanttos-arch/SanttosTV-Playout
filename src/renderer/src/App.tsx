@@ -4231,59 +4231,131 @@ function LibraryPanel({
         }
     }
 
-    async function createCategory() {
-        const name = window.prompt("Nome da nova aba da Biblioteca:")?.trim();
-        if (!name) return;
+    function folderNameFromPath(folderPath: string) {
+        const normalized = folderPath
+            .replace(/[\\/]+$/, "")
+            .replace(/\\/g, "/");
+        const segments = normalized
+            .split("/")
+            .filter(Boolean);
+        return (
+            segments[segments.length - 1] ??
+            "Nova pasta"
+        ).slice(0, 40);
+    }
 
-        setCategoryStatus("Selecione a pasta da nova aba...");
+    async function createCategory() {
+        setCategoryStatus(
+            "Selecione a pasta que deseja adicionar à Biblioteca..."
+        );
 
         try {
-            const folderResult = await window.santtosAPI.selectLibraryFolder();
+            const folderResult =
+                await window.santtosAPI.selectLibraryFolder();
 
-            if (!folderResult.ok || !folderResult.folderPath) {
+            if (
+                !folderResult.ok ||
+                !folderResult.folderPath
+            ) {
                 setCategoryStatus(
                     folderResult.canceled
                         ? "Criação cancelada: nenhuma pasta foi selecionada."
-                        : "Não foi possível selecionar a pasta da nova aba."
+                        : "Não foi possível selecionar a nova pasta."
+                );
+                return;
+            }
+
+            const duplicate =
+                categories.find(
+                    (category) =>
+                        category.folderPath
+                            .replace(/\\/g, "/")
+                            .replace(/\/+$/, "")
+                            .toLowerCase() ===
+                        folderResult.folderPath!
+                            .replace(/\\/g, "/")
+                            .replace(/\/+$/, "")
+                            .toLowerCase()
+                );
+
+            if (duplicate) {
+                setLibraryMode("media");
+                setActiveCategoryId(duplicate.id);
+                setCategoryStatus(
+                    `A pasta já está cadastrada como "${duplicate.name}".`
                 );
                 return;
             }
 
             const created: LibraryCategory = {
-                id: `custom-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-                name: name.slice(0, 40),
-                folderPath: folderResult.folderPath,
+                id:
+                    `custom-${Date.now()}-${Math.random()
+                        .toString(16)
+                        .slice(2)}`,
+                name:
+                    folderNameFromPath(
+                        folderResult.folderPath
+                    ),
+                folderPath:
+                    folderResult.folderPath,
                 builtIn: false
             };
 
-            const result = await window.santtosAPI.saveLibraryCategories([
-                ...categories,
-                created
-            ]);
+            const result =
+                await window.santtosAPI
+                    .saveLibraryCategories([
+                        ...categories,
+                        created
+                    ]);
 
             if (!result.ok) {
                 setCategoryStatus(
-                    result.error ?? "Não foi possível criar a aba."
+                    result.error ??
+                        "Não foi possível adicionar a pasta."
                 );
                 return;
             }
 
-            const saved = result.categories ?? [...categories, created];
+            const saved =
+                result.categories ??
+                [...categories, created];
+
             setCategories(saved);
+            setLibraryMode("media");
             setActiveCategoryId(created.id);
             setSearch("");
-            setCategoryStatus(`Aba ${created.name} criada e vinculada à pasta selecionada.`);
 
-            const scanResult = await window.santtosAPI.scanLibraryCategory(created.id);
-            if (scanResult.ok && (scanResult.filePaths?.length ?? 0) > 0) {
-                await onImportDroppedFiles(scanResult.filePaths ?? []);
+            const scanResult =
+                await window.santtosAPI
+                    .scanLibraryCategory(
+                        created.id
+                    );
+
+            if (!scanResult.ok) {
                 setCategoryStatus(
-                    `Aba ${created.name} criada. ${scanResult.filePaths?.length ?? 0} arquivo(s) encontrado(s).`
+                    scanResult.error ??
+                        `Pasta ${created.name} adicionada, mas não foi possível ler os arquivos.`
+                );
+                return;
+            }
+
+            const paths =
+                scanResult.filePaths ?? [];
+
+            if (paths.length > 0) {
+                await onImportDroppedFiles(
+                    paths
                 );
             }
+
+            setCategoryStatus(
+                `Pasta ${created.name} adicionada. ${paths.length} arquivo(s) encontrado(s).`
+            );
         } catch (error) {
             console.error(error);
-            setCategoryStatus("Não foi possível criar a nova aba da Biblioteca.");
+            setCategoryStatus(
+                "Não foi possível adicionar a nova pasta à Biblioteca."
+            );
         }
     }
 
@@ -4311,67 +4383,92 @@ function LibraryPanel({
             }}
         >
             <div className="module-header">
-                <div>
-                    <div className="panel-title">BIBLIOTECA</div>
-                    <h1>{activeCategory?.name ?? "Biblioteca de mídia"}</h1>
+                <div className="library-module-heading">
+                    <div className="library-module-switch">
+                        <button
+                            type="button"
+                            className={
+                                libraryMode === "media"
+                                    ? "active"
+                                    : ""
+                            }
+                            onClick={() => {
+                                setLibraryMode("media");
+                                setCategoryStatus("");
+                            }}
+                        >
+                            BIBLIOTECA
+                        </button>
+                        <button
+                            type="button"
+                            className={
+                                libraryMode === "inputs"
+                                    ? "active premium"
+                                    : "premium"
+                            }
+                            onClick={() => {
+                                setLibraryMode("inputs");
+                                setCategoryStatus("");
+                            }}
+                        >
+                            INPUT WEB
+                        </button>
+                    </div>
+                    <h1>
+                        {libraryMode === "inputs"
+                            ? "Inputs ao vivo"
+                            : activeCategory?.name ?? "Biblioteca de mídia"}
+                    </h1>
                 </div>
-                <button
-                    className="library-refresh-button"
-                    onClick={refreshCategory}
-                    disabled={isRefreshing || !activeCategory}
-                >
-                    {isRefreshing ? "Atualizando..." : "↻ Atualizar"}
-                </button>
+                {libraryMode === "media" && (
+                    <button
+                        className="library-refresh-button"
+                        onClick={refreshCategory}
+                        disabled={isRefreshing || !activeCategory}
+                    >
+                        {isRefreshing ? "Atualizando..." : "↻ Atualizar"}
+                    </button>
+                )}
             </div>
 
-            <div className="library-category-tabs">
-                <button
-                    type="button"
-                    className={
-                        activeCategoryId === "__all__"
-                            ? "active"
-                            : ""
-                    }
-                    onClick={() => {
-                        setLibraryMode("media");
-                        setActiveCategoryId("__all__");
-                        setCategoryStatus("");
-                    }}
-                >
-                    Todas
-                </button>
-                <button
-                    type="button"
-                    className={
-                        libraryMode === "inputs"
-                            ? "active library-inputs-tab"
-                            : "library-inputs-tab"
-                    }
-                    onClick={() => {
-                        setLibraryMode("inputs");
-                        setCategoryStatus("");
-                    }}
-                >
-                    Inputs
-                </button>
-                {categories.map((category) => (
+            {libraryMode === "media" && (
+                <div className="library-category-tabs">
                     <button
-                        key={category.id}
                         type="button"
-                        className={category.id === activeCategoryId ? "active" : ""}
+                        className={
+                            activeCategoryId === "__all__"
+                                ? "active"
+                                : ""
+                        }
                         onClick={() => {
-                            setLibraryMode("media");
-                            setActiveCategoryId(category.id);
+                            setActiveCategoryId("__all__");
                             setCategoryStatus("");
                         }}
                     >
-                        {category.name}
+                        Todas
                     </button>
-                ))}
-                <button type="button" className="library-new-tab" onClick={createCategory}>
-                    + Nova aba
-                </button>
-            </div>
+                    {categories.map((category) => (
+                        <button
+                            key={category.id}
+                            type="button"
+                            className={category.id === activeCategoryId ? "active" : ""}
+                            onClick={() => {
+                                setActiveCategoryId(category.id);
+                                setCategoryStatus("");
+                            }}
+                        >
+                            {category.name}
+                        </button>
+                    ))}
+                    <button
+                        type="button"
+                        className="library-new-tab"
+                        onClick={() => void createCategory()}
+                    >
+                        + Nova pasta
+                    </button>
+                </div>
+            )}
 
             {libraryMode === "inputs" ? (
                 <WebInputsPanel
