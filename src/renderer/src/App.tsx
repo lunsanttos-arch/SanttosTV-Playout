@@ -425,6 +425,8 @@ export default function App() {
         useState<PlannedScheduleBlocker>(null);
     const [programmedEndAtMs, setProgrammedEndAtMs] =
         useState<number | null>(null);
+    const [programmedHasFreeze, setProgrammedHasFreeze] =
+        useState(false);
     const [programmedLive, setProgrammedLive] = useState(false);
     const [rundownApplyRequest, setRundownApplyRequest] = useState<{
         key: number;
@@ -438,11 +440,13 @@ export default function App() {
         remainingSeconds: number | null,
         blocker: PlannedScheduleBlocker,
         endsAtMs: number | null,
+        hasFreeze: boolean,
         live: boolean
     ) => {
         setProgrammedRemainingSeconds(remainingSeconds ?? 0);
         setProgrammedBlocker(blocker);
         setProgrammedEndAtMs(endsAtMs);
+        setProgrammedHasFreeze(hasFreeze);
         setProgrammedLive(live);
     }, []);
 
@@ -658,7 +662,6 @@ export default function App() {
 
     const programmedDurationLabel =
         programmedBlocker === "loop" ? "LOOP"
-            : programmedBlocker === "freeze" ? "FREEZE"
             : programmedBlocker !== null ? "SEM PREVISÃO"
             : programmedEndAtMs !== null
               ? formatProgrammedDuration(programmedRemainingSeconds)
@@ -686,7 +689,18 @@ export default function App() {
                     <div className="master-clock">
                         {clock}
                     </div>
-                    <div className="programmed-time-summary">
+                    <div
+                        className={
+                            programmedHasFreeze
+                                ? "programmed-time-summary has-freeze"
+                                : "programmed-time-summary"
+                        }
+                        title={
+                            programmedHasFreeze
+                                ? "A programação contém pelo menos um item com FREEZE."
+                                : undefined
+                        }
+                    >
                         <div>
                             <span>PROGRAMADO</span>
                             <strong>{programmedDurationLabel}</strong>
@@ -880,6 +894,7 @@ interface PlayoutPanelProps {
         remainingSeconds: number | null,
         blocker: PlannedScheduleBlocker,
         endsAtMs: number | null,
+        hasFreeze: boolean,
         live: boolean
     ) => void;
 }
@@ -1355,12 +1370,14 @@ function PlayoutPanel({
             plannedSchedule.totalSeconds,
             plannedSchedule.blocker,
             programmedEndAtMs,
+            plannedSchedule.hasFreeze,
             true
         );
     }, [
         plannedSchedule.totalSeconds,
         plannedSchedule.end,
         plannedSchedule.blocker,
+        plannedSchedule.hasFreeze,
         programmedStartTime,
         onScheduleSummary
     ]);
