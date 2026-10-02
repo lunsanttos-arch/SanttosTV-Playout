@@ -1282,16 +1282,12 @@ async function startNativePlayback(
                 `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`
             );
 
-            if (
-                !startupSettled &&
-                (
-                    code !== 0 ||
-                    signal
-                )
-            ) {
+            if (!startupSettled) {
                 settleStartupFailure(
                     [
-                        "O FFmpeg não conseguiu abrir o Input.",
+                        code === 0 && !signal
+                            ? "O Input terminou antes de entregar o primeiro quadro."
+                            : "O FFmpeg não conseguiu abrir o Input.",
                         startupStderr
                     ]
                         .filter(Boolean)
