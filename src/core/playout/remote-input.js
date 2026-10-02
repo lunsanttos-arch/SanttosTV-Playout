@@ -1,5 +1,10 @@
 "use strict";
 
+const DEFAULT_BROWSER_USER_AGENT =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+    "AppleWebKit/537.36 (KHTML, like Gecko) " +
+    "Chrome/154.0.0.0 Safari/537.36";
+
 function normalizeProtocolHint(value) {
     const normalized = String(value ?? "").trim().toLowerCase();
     return ["http", "https", "hls", "m3u8", "srt"].includes(normalized)
@@ -25,12 +30,112 @@ function isHlsInput(value, protocolHint = "") {
         /\.m3u8(?:[?#]|$)/i.test(value.trim());
 }
 
+function cleanHeaderValue(value, maxLength) {
+    return typeof value === "string"
+        ? value
+            .replace(/[\r\n\u0000]/g, "")
+            .trim()
+            .slice(0, maxLength)
+        : "";
+}
+
+function automaticReferer(url) {
+    if (typeof url !== "string") return "";
+
+    try {
+        const host =
+            new URL(url).hostname.toLowerCase();
+
+        if (
+            host === "dailymotion.com" ||
+            host.endsWith(".dailymotion.com")
+        ) {
+            return "https://www.dailymotion.com/";
+        }
+    } catch {
+        // URL inválida será rejeitada em remoteInputArgs.
+    }
+
+    return "";
+}
+
+function resolveHttpIdentity(
+    url,
+    {
+        userAgent = "",
+        referer = ""
+    } = {}
+) {
+    const explicitUserAgent =
+        cleanHeaderValue(
+            userAgent,
+            512
+        );
+    const explicitReferer =
+        cleanHeaderValue(
+            referer,
+            2048
+        );
+
+    return {
+        userAgent:
+            explicitUserAgent ||
+            DEFAULT_BROWSER_USER_AGENT,
+        referer:
+            explicitReferer ||
+            automaticReferer(url)
+    };
+}
+
+function describeRemoteInputError(stderr) {
+    const message =
+        String(stderr ?? "")
+            .replace(/\s+/g, " ")
+            .trim();
+
+    if (
+        /\b403\b|forbidden|access denied/i.test(
+            message
+        )
+    ) {
+        return (
+            "HTTP 403: o servidor recusou o Input. " +
+            "Esse endereço pode exigir Referer/User-Agent de navegador " +
+            "ou pode ser um link temporário/assinado que já expirou."
+        );
+    }
+
+    if (
+        /\b401\b|unauthorized/i.test(
+            message
+        )
+    ) {
+        return (
+            "HTTP 401: o servidor exige autenticação para abrir este Input."
+        );
+    }
+
+    if (
+        /404|not found/i.test(
+            message
+        )
+    ) {
+        return (
+            "HTTP 404: o endereço do Input não foi encontrado."
+        );
+    }
+
+    return message;
+}
+
 function remoteInputArgs(
     url,
     {
         protocolHint = "",
         realtime = true,
-        startupTimeoutUs = 15000000
+        startupTimeoutUs = 15000000,
+        userAgent = "",
+        referer = ""
     } = {}
 ) {
     if (!isRemoteInputUrl(url)) {
@@ -43,6 +148,15 @@ function remoteInputArgs(
     ];
 
     if (isHttpInput(url)) {
+        const identity =
+            resolveHttpIdentity(
+                url,
+                {
+                    userAgent,
+                    referer
+                }
+            );
+
         args.push(
             "-rw_timeout",
             String(
@@ -55,7 +169,17 @@ function remoteInputArgs(
                 )
             ),
             "-user_agent",
-            "SanttosTV-Playout/0.3",
+            identity.userAgent
+        );
+
+        if (identity.referer) {
+            args.push(
+                "-referer",
+                identity.referer
+            );
+        }
+
+        args.push(
             "-reconnect",
             "1",
             "-reconnect_streamed",
@@ -76,9 +200,13 @@ function remoteInputArgs(
 }
 
 module.exports = {
+    DEFAULT_BROWSER_USER_AGENT,
     normalizeProtocolHint,
     isRemoteInputUrl,
     isHttpInput,
     isHlsInput,
+    automaticReferer,
+    resolveHttpIdentity,
+    describeRemoteInputError,
     remoteInputArgs
 };

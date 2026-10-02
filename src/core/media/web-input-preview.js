@@ -99,6 +99,10 @@ function serveWebInputPreview(
             {
                 protocolHint:
                     input.protocol,
+                userAgent:
+                    input.httpUserAgent ?? "",
+                referer:
+                    input.httpReferer ?? "",
                 realtime: true
             }
         ),

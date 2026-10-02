@@ -409,6 +409,7 @@ export default function WatermarkSettingsTab() {
                 <div className="watermark-settings-actions">
                     <button
                         type="button"
+                        className="secondary-button"
                         onClick={() =>
                             setDraft({
                                 ...DEFAULT_WATERMARK,

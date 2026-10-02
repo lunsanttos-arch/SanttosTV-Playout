@@ -12,6 +12,8 @@ export interface WebInput {
     endTime: string;
     fitMode: "contain" | "cover" | "stretch";
     sizePercent: number;
+    httpReferer: string;
+    httpUserAgent: string;
     premiumFeature: true;
     createdAt: string;
 }
@@ -33,7 +35,9 @@ const EMPTY_INPUT: Omit<
     durationSeconds: 60,
     endTime: "00:01:00",
     fitMode: "contain",
-    sizePercent: 100
+    sizePercent: 100,
+    httpReferer: "",
+    httpUserAgent: ""
 };
 
 function secondsUntilClock(
@@ -296,7 +300,11 @@ function WebInputsContent({
             fitMode:
                 input.fitMode,
             sizePercent:
-                input.sizePercent ?? 100
+                input.sizePercent ?? 100,
+            httpReferer:
+                input.httpReferer ?? "",
+            httpUserAgent:
+                input.httpUserAgent ?? ""
         });
         setStatus("");
     }
@@ -438,6 +446,10 @@ function WebInputsContent({
                 input.timingMode,
             inputEndTime:
                 input.endTime,
+            inputHttpReferer:
+                input.httpReferer ?? "",
+            inputHttpUserAgent:
+                input.httpUserAgent ?? "",
             fitMode:
                 input.fitMode,
             sizePercent:
@@ -622,6 +634,67 @@ function WebInputsContent({
                         }}
                     />
                 </label>
+
+                {draft.protocol !== "srt" && (
+                    <details className="web-input-http-options">
+                        <summary>Compatibilidade HTTP</summary>
+                        <div className="web-input-http-options-body">
+                            <label>
+                                <span>Referer (opcional)</span>
+                                <input
+                                    value={draft.httpReferer}
+                                    placeholder={
+                                        /dailymotion\.com/i.test(draft.url)
+                                            ? "Automático: https://www.dailymotion.com/"
+                                            : "Ex.: https://site-origem.com/"
+                                    }
+                                    inputMode="url"
+                                    autoCapitalize="off"
+                                    autoCorrect="off"
+                                    spellCheck={false}
+                                    maxLength={2048}
+                                    onChange={(event) =>
+                                        setDraft(
+                                            (current) => ({
+                                                ...current,
+                                                httpReferer:
+                                                    event.currentTarget.value
+                                                        .replace(/[\r\n\u0000]/g, "")
+                                                        .slice(0, 2048)
+                                            })
+                                        )
+                                    }
+                                />
+                            </label>
+                            <label>
+                                <span>User-Agent (opcional)</span>
+                                <input
+                                    value={draft.httpUserAgent}
+                                    placeholder="Automático: navegador Windows/Chrome"
+                                    autoCapitalize="off"
+                                    autoCorrect="off"
+                                    spellCheck={false}
+                                    maxLength={512}
+                                    onChange={(event) =>
+                                        setDraft(
+                                            (current) => ({
+                                                ...current,
+                                                httpUserAgent:
+                                                    event.currentTarget.value
+                                                        .replace(/[\r\n\u0000]/g, "")
+                                                        .slice(0, 512)
+                                            })
+                                        )
+                                    }
+                                />
+                            </label>
+                            <small>
+                                Use estes campos apenas quando a CDN exigir identidade HTTP.
+                                Dailymotion recebe Referer e User-Agent compatíveis automaticamente.
+                            </small>
+                        </div>
+                    </details>
+                )}
 
                 <div className="web-input-row">
                     <label>
@@ -821,6 +894,7 @@ function WebInputsContent({
                     {editingId && (
                         <button
                             type="button"
+                            className="secondary-button"
                             onClick={
                                 clear
                             }
@@ -907,6 +981,7 @@ function WebInputsContent({
 
                                 <button
                                     type="button"
+                                    className="secondary-button"
                                     onDoubleClick={(event) =>
                                         event.stopPropagation()
                                     }
@@ -921,6 +996,7 @@ function WebInputsContent({
 
                                 <button
                                     type="button"
+                                    className="secondary-button danger-secondary"
                                     onDoubleClick={(event) =>
                                         event.stopPropagation()
                                     }

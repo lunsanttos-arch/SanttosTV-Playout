@@ -234,6 +234,42 @@
     color: #ffffff;
 }
 
+.web-input-http-options {
+    padding: 9px 10px;
+    background: #101010;
+    border: 1px solid #343434;
+    border-radius: 6px;
+}
+
+.web-input-http-options summary {
+    color: #c8c8c8;
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    user-select: none;
+}
+
+.web-input-http-options[open] summary {
+    margin-bottom: 9px;
+}
+
+.web-input-http-options-body {
+    display: grid;
+    gap: 9px;
+}
+
+.web-input-http-options-body small {
+    color: #858585;
+    font-size: 10px;
+    line-height: 1.4;
+}
+
+.web-input-item .secondary-button,
+.web-input-actions .secondary-button {
+    min-height: 34px;
+    white-space: nowrap;
+}
+
 .web-input-actions {
     display: flex;
     justify-content: flex-end;
