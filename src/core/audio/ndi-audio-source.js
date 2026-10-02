@@ -17,7 +17,8 @@ function audioFfmpegArgs(
     channels = 2,
     protocolHint = "",
     userAgent = "",
-    referer = ""
+    referer = "",
+    cookie = ""
 ) {
     if (typeof filePath !== "string" || !filePath) throw new Error("Mídia de áudio inválida.");
     const explicitStream = Number.isSafeInteger(streamIndex) &&
@@ -54,6 +55,7 @@ function audioFfmpegArgs(
                     protocolHint,
                     userAgent,
                     referer,
+                    cookie,
                     realtime: false
                 }
             )
@@ -93,7 +95,7 @@ class NdiAudioSource {
     start() {
         const { pipePath, ffmpegPath, filePath, streamIndex,
             startSeconds = 0, durationSeconds = null,
-            protocolHint = "", userAgent = "", referer = "" } = this.options;
+            protocolHint = "", userAgent = "", referer = "", cookie = "" } = this.options;
         if (!pipePath || !pipePath.startsWith("\\\\.\\pipe\\SanttosAudio-")) {
             throw new Error("Canal NDI de áudio não autorizado.");
         }
@@ -106,7 +108,8 @@ class NdiAudioSource {
             this.channels,
             protocolHint,
             userAgent,
-            referer
+            referer,
+            cookie
         );
         const socket = net.createConnection(pipePath);
         this.socket = socket;
