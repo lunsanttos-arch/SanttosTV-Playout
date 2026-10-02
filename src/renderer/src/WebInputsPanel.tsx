@@ -522,15 +522,22 @@ function WebInputsContent({
 
         event.dataTransfer.effectAllowed =
             "copy";
-        event.dataTransfer.setData(
-            "application/x-santtos-timeline-item",
+        const serialized =
             JSON.stringify(
                 mediaItem
-            )
+            );
+
+        event.dataTransfer.setData(
+            "application/x-santtos-timeline-item",
+            serialized
         );
+
+        // Electron/Windows pode descartar MIME customizado durante o drag.
+        // Mantemos um fallback assinado em text/plain para o drop interno.
         event.dataTransfer.setData(
             "text/plain",
-            input.name
+            "SANTTOS_INPUT:" +
+                serialized
         );
     }
 
