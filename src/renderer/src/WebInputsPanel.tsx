@@ -237,6 +237,10 @@ function WebInputsContent({
         useState("");
     const [saving, setSaving] =
         useState(false);
+    const [vlcAvailable, setVlcAvailable] =
+        useState<boolean | null>(null);
+    const [vlcPath, setVlcPath] =
+        useState("");
 
     async function load() {
         const result =
@@ -259,6 +263,29 @@ function WebInputsContent({
                 );
             }
         );
+    }, []);
+
+    useEffect(() => {
+        void window.santtosAPI
+            .getVlcInputStatus()
+            .then((result) => {
+                setVlcAvailable(
+                    Boolean(
+                        result?.available
+                    )
+                );
+                setVlcPath(
+                    result?.path ?? ""
+                );
+            })
+            .catch((error) => {
+                console.error(
+                    "Não foi possível verificar o VLC:",
+                    error
+                );
+                setVlcAvailable(false);
+                setVlcPath("");
+            });
     }, []);
 
     const previewDuration =
@@ -769,10 +796,17 @@ function WebInputsContent({
                                 VLC
                             </option>
                         </select>
+                        <small className="web-input-engine-status">
+                            {vlcAvailable === null
+                                ? "Verificando VLC..."
+                                : vlcAvailable
+                                  ? `VLC detectado${vlcPath ? ` · ${vlcPath}` : ""}`
+                                  : "VLC não encontrado; Automático usa FFmpeg."}
+                        </small>
                     </label>
 
                     <label>
-                        <span>Tamanho no PROGRAM</span
+                        <span>Tamanho no PROGRAM</span>
                         <select
                             value={
                                 draft.fitMode
