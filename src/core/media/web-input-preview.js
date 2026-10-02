@@ -6,6 +6,9 @@ const {
     isHttpInput,
     remoteInputArgs
 } = require("../playout/remote-input");
+const {
+    resolveRemoteInput
+} = require("../playout/remote-input-resolver");
 
 const INPUT_PREVIEW_SCHEME = "santtos-input";
 
@@ -40,7 +43,7 @@ function previewInputId(rawUrl) {
     }
 }
 
-function serveWebInputPreview(
+async function serveWebInputPreview(
     request,
     inputs,
     {
@@ -87,6 +90,29 @@ function serveWebInputPreview(
         );
     }
 
+    let resolved;
+
+    try {
+        resolved =
+            await resolveRemoteInput(
+                input.url,
+                {
+                    userAgent:
+                        input.httpUserAgent ?? "",
+                    referer:
+                        input.httpReferer ?? ""
+                }
+            );
+    } catch (error) {
+        return new Response(
+            String(
+                error?.message ||
+                "Não foi possível resolver a origem do Input."
+            ),
+            { status: 502 }
+        );
+    }
+
     const args = [
         "-hide_banner",
         "-loglevel",
@@ -95,19 +121,21 @@ function serveWebInputPreview(
         "-fflags",
         "+genpts+discardcorrupt",
         ...remoteInputArgs(
-            input.url,
+            resolved.url,
             {
                 protocolHint:
                     input.protocol,
                 userAgent:
-                    input.httpUserAgent ?? "",
+                    resolved.userAgent,
                 referer:
-                    input.httpReferer ?? "",
+                    resolved.referer,
+                cookie:
+                    resolved.cookie,
                 realtime: true
             }
         ),
         "-i",
-        input.url,
+        resolved.url,
         "-map",
         "0:v:0",
         "-map",
