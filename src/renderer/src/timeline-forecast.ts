@@ -199,7 +199,6 @@ export function buildTimelineForecast(
  */
 export type PlannedScheduleBlocker =
     | "loop"
-    | "freeze"
     | "unknown-duration"
     | "invalid-start"
     | null;
@@ -209,6 +208,7 @@ export interface PlannedSchedule {
     end: string;
     totalSeconds: number | null;
     blocker: PlannedScheduleBlocker;
+    hasFreeze: boolean;
 }
 
 function formatPlannedClock(seconds: number): string {
@@ -237,14 +237,15 @@ export function buildPlannedSchedule(
             times,
             end: "SEM PREVISÃO",
             totalSeconds: null,
-            blocker: "invalid-start"
+            blocker: "invalid-start",
+            hasFreeze: items.some(item => item.freezeEnd === true)
         };
     }
     let cursor = match[0] * 3600 + match[1] * 60;
     let total = 0;
+    const hasFreeze = items.some(item => item.freezeEnd === true);
     let blocked:
         | "LOOP ANTERIOR"
-        | "FREEZE ANTERIOR"
         | "DURAÇÃO ANTERIOR DESCONHECIDA"
         | null = null;
     let blocker: PlannedScheduleBlocker = null;
@@ -267,16 +268,16 @@ export function buildPlannedSchedule(
         }
         cursor += clip.length;
         total += clip.length;
-        if (item.freezeEnd) {
-            blocked = "FREEZE ANTERIOR";
-            blocker = "freeze";
-        }
+        // FREEZE é um alerta operacional, não um bloqueio da grade PROGRAMADA.
+        // O horário teórico continua sendo calculado; a previsão AO VIVO
+        // permanece bloqueada até a liberação manual do último frame.
     }
     return {
         times,
         end: blocked ? "SEM PREVISÃO" : formatPlannedClock(cursor),
         totalSeconds: blocked ? null : total,
-        blocker
+        blocker,
+        hasFreeze
     };
 }
 
