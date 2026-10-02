@@ -190,9 +190,12 @@ assert(app.includes("selectedMedia.freezeEnd") &&
 assert(appCss.includes(".timeline-freeze-button.active"),
     "Botão FREEZE ativo deve ser visível para o operador.");
 assert(app.includes("programmedHasFreeze") &&
+    app.includes("programmedFreezeSeconds") &&
     app.includes('"programmed-time-summary has-freeze"') &&
+    app.includes('"ATÉ FREEZE"') &&
+    app.includes("buildFreezeCountdown") &&
     appCss.includes(".programmed-time-summary.has-freeze > div"),
-    "FREEZE na grade deve manter o tempo programado e acender borda vermelha no cabeçalho.");
+    "FREEZE futuro deve acender borda vermelha e mostrar contagem até o próximo FREEZE.");
 const etaCode = fs.readFileSync(
     path.join(root, "src", "renderer", "src", "timeline-forecast.ts"), "utf8"
 );
