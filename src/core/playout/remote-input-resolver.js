@@ -10,18 +10,55 @@ function dailymotionVideoId(value) {
         return null;
     }
 
-    const text = value.trim();
+    let parsed;
 
-    const patterns = [
-        /dailymotion\.com\/video\/([a-z0-9]+)/i,
-        /dailymotion\.com\/embed\/video\/([a-z0-9]+)/i,
-        /dailymotion\.com\/player\/[^/]+\/video\/([a-z0-9]+)/i,
-        /dailymotion\.com\/cdn\/live\/video\/([a-z0-9]+)\.m3u8/i,
-        /dmcdn\.net\/.*?\/([a-z0-9]{5,})\.m3u8/i
-    ];
+    try {
+        parsed =
+            new URL(
+                value.trim()
+            );
+    } catch {
+        return null;
+    }
+
+    const host =
+        parsed.hostname
+            .toLowerCase();
+
+    const isDailymotion =
+        host === "dailymotion.com" ||
+        host.endsWith(".dailymotion.com");
+    const isDmcdn =
+        host === "dmcdn.net" ||
+        host.endsWith(".dmcdn.net");
+
+    if (!isDailymotion && !isDmcdn) {
+        return null;
+    }
+
+    const path =
+        decodeURIComponent(
+            parsed.pathname
+        );
+
+    const patterns =
+        isDailymotion
+            ? [
+                  /\/video\/([a-z0-9]+)/i,
+                  /\/embed\/video\/([a-z0-9]+)/i,
+                  /\/player\/[^/]+\/video\/([a-z0-9]+)/i,
+                  /\/cdn\/live\/video\/([a-z0-9]+)\.m3u8/i
+              ]
+            : [
+                  /\/([a-z0-9]{5,})\.m3u8/i
+              ];
 
     for (const pattern of patterns) {
-        const match = text.match(pattern);
+        const match =
+            path.match(
+                pattern
+            );
+
         if (match?.[1]) {
             return match[1];
         }
