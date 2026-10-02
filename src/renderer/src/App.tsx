@@ -12,6 +12,7 @@ import WebInputsPanel from "./WebInputsPanel";
 import ProgramAudioMeters from "./ProgramAudioMeters";
 import type { NativeAudioStatus } from "./ProgramAudioMeters";
 import { buildTimelineForecast, buildPlannedSchedule, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
+import type { PlannedScheduleBlocker } from "./timeline-forecast";
 import { EXHIBITION_OPTIONS, DEFAULT_EXHIBITION_STYLE, exhibitionLabel, exhibitionPreviewStyle, exhibitionText, normalizeExhibitionType } from "./exhibition";
 import type { ExhibitionStyle, ExhibitionType } from "./exhibition";
 
@@ -420,8 +421,8 @@ export default function App() {
         useState<ExhibitionStyle>(DEFAULT_EXHIBITION_STYLE);
     const [programmedRemainingSeconds, setProgrammedRemainingSeconds] =
         useState(0);
-    const [programmedIndefinite, setProgrammedIndefinite] =
-        useState(false);
+    const [programmedBlocker, setProgrammedBlocker] =
+        useState<PlannedScheduleBlocker>(null);
     const [programmedEndAtMs, setProgrammedEndAtMs] =
         useState<number | null>(null);
     const [programmedLive, setProgrammedLive] = useState(false);
@@ -435,12 +436,12 @@ export default function App() {
     // playout forecast effect or move the predicted entry times.
     const handleScheduleSummary = useCallback((
         remainingSeconds: number | null,
-        indefinite: boolean,
+        blocker: PlannedScheduleBlocker,
         endsAtMs: number | null,
         live: boolean
     ) => {
         setProgrammedRemainingSeconds(remainingSeconds ?? 0);
-        setProgrammedIndefinite(indefinite);
+        setProgrammedBlocker(blocker);
         setProgrammedEndAtMs(endsAtMs);
         setProgrammedLive(live);
     }, []);
@@ -656,12 +657,14 @@ export default function App() {
     }
 
     const programmedDurationLabel =
-        programmedIndefinite ? "LOOP"
+        programmedBlocker === "loop" ? "LOOP"
+            : programmedBlocker === "freeze" ? "FREEZE"
+            : programmedBlocker !== null ? "SEM PREVISÃO"
             : programmedEndAtMs !== null
               ? formatProgrammedDuration(programmedRemainingSeconds)
               : "--:--:--";
     const programmedUntilLabel =
-        programmedIndefinite ? "SEM PREVISÃO"
+        programmedBlocker !== null ? "SEM PREVISÃO"
             : programmedEndAtMs !== null
               ? formatEstimatedClock(programmedEndAtMs, Date.now())
               : programmedLive
@@ -875,7 +878,7 @@ interface PlayoutPanelProps {
     } | null;
     onScheduleSummary: (
         remainingSeconds: number | null,
-        indefinite: boolean,
+        blocker: PlannedScheduleBlocker,
         endsAtMs: number | null,
         live: boolean
     ) => void;
@@ -1350,13 +1353,14 @@ function PlayoutPanel({
 
         onScheduleSummary(
             plannedSchedule.totalSeconds,
-            plannedSchedule.totalSeconds === null,
+            plannedSchedule.blocker,
             programmedEndAtMs,
             true
         );
     }, [
         plannedSchedule.totalSeconds,
         plannedSchedule.end,
+        plannedSchedule.blocker,
         programmedStartTime,
         onScheduleSummary
     ]);
