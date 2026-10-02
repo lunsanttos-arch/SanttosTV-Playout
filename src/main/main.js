@@ -29,6 +29,7 @@ const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
 const { NativePlayoutEngine } = require("../core/playout/native-playout-engine");
+const { videoFilterInput } = require("../core/playout/ffmpeg-stream-map");
 const {
     outputProfile,
     profileSignature
@@ -626,9 +627,9 @@ function buildProgramFilterGraph(
     );
 
     const sourceVideo =
-        Number.isInteger(Number(videoStreamIndex))
-            ? `[0:${Number(videoStreamIndex)}]`
-            : "[0:v:0]";
+        videoFilterInput(
+            videoStreamIndex
+        );
 
     const scaleX = profile.width / 1920;
     const scaleY = profile.height / 1080;
@@ -970,13 +971,20 @@ async function startNativePlayback(
         Number.isFinite(Number(programState.inPointSeconds))
             ? Math.max(0, Number(programState.inPointSeconds))
             : normalizedStartSeconds;
+    const rawOutPoint =
+        programState.outPointSeconds;
     const normalizedOutPoint =
-        Number.isFinite(Number(programState.outPointSeconds))
-            ? Math.max(
-                  normalizedStartSeconds,
-                  Number(programState.outPointSeconds)
+        rawOutPoint === null ||
+        rawOutPoint === undefined
+            ? null
+            : Number.isFinite(
+                  Number(rawOutPoint)
               )
-            : null;
+              ? Math.max(
+                    normalizedStartSeconds,
+                    Number(rawOutPoint)
+                )
+              : null;
     const clipRemainingSeconds =
         normalizedOutPoint !== null
             ? Math.max(
