@@ -35,6 +35,7 @@ const {
 } = require("../core/playout/vlc-input-bridge");
 const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
+const { Writable } = require("node:stream");
 const crypto = require("node:crypto");
 const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
@@ -233,6 +234,7 @@ let activeRemoteInputProxy = null;
 let activeVlcInputBridge = null;
 
 let ndiReady = false;
+let ndiDevNullSink = false;
 let ndiFrameBusy = false;
 let ndiLastError = "";
 let ndiRestartTimer = null;
@@ -1707,6 +1709,7 @@ function registerIpcHandlers() {
             playout: playoutEngine.snapshot(),
             playoutError: playoutLastError || null,
             error: ndiLastError || null,
+            devNullSink: ndiDevNullSink,
             restarting: Boolean(ndiRestartTimer),
             testBench: isTestBench
         })
@@ -2494,11 +2497,58 @@ function startNdiSender() {
         ndiLastError =
             runtime.error ||
             "Runtime NDI com perfil dinamico nao disponivel.";
+
+        if (
+            isDevelopment &&
+            !isNdiTestBench
+        ) {
+            const sink =
+                new Writable({
+                    write(
+                        _chunk,
+                        _encoding,
+                        callback
+                    ) {
+                        callback();
+                    }
+                });
+
+            const processRef = {
+                stdin: sink,
+                killed: false,
+                kill() {
+                    if (this.killed) return;
+                    this.killed = true;
+                    try {
+                        sink.end();
+                    } catch {
+                        // Sink ja encerrado.
+                    }
+                }
+            };
+
+            ndiProcess = processRef;
+            ndiReady = true;
+            ndiDevNullSink = true;
+            ndiAudioSupported = false;
+            ndiAudioReady = false;
+            ndiAudioNativeActive = false;
+            ndiAudioPipe = "";
+            ndiRestartFailures = 0;
+
+            console.warn(
+                "NDI nativo indisponivel; DEV NULL SINK ativo. PROGRAM/VLC/Inputs podem ser testados sem saida NDI real."
+            );
+
+            return;
+        }
+
         console.error(ndiLastError);
         scheduleNdiRestart();
         return;
     }
 
+    ndiDevNullSink = false;
     ndiAudioSupported = true;
     ndiAudioReady = false;
     ndiAudioNativeActive = false;
@@ -2721,6 +2771,7 @@ function stopNdiSender({
 
     ndiFrameBusy = false;
     ndiReady = false;
+    ndiDevNullSink = false;
     ndiAudioReady = false;
     ndiAudioNativeActive = false;
     ndiAudioPipe = "";
