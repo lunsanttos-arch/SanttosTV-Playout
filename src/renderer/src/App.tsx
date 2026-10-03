@@ -306,6 +306,7 @@ declare global {
                 restarting?: boolean;
                 testBench?: boolean;
                 ndiTestMode?: boolean;
+                devNullSink?: boolean;
                 audio?: NativeAudioStatus;
                 playout?: NativePlayoutStatus;
             }>;
@@ -401,6 +402,7 @@ export default function App() {
     const [ndiError, setNdiError] = useState<string | null>(null);
     const [testBench, setTestBench] = useState(false);
     const [ndiTestMode, setNdiTestMode] = useState(false);
+    const [ndiDevNullSink, setNdiDevNullSink] = useState(false);
     const [audioStatus, setAudioStatus] = useState<NativeAudioStatus>({ state: "IDLE" });
     const [nativePlaybackActive, setNativePlaybackActive] = useState(false);
     const [nativePlayout, setNativePlayout] = useState<NativePlayoutStatus>({
@@ -496,6 +498,7 @@ export default function App() {
                 setNdiOnline(status.online);
                 setTestBench(Boolean(status.testBench));
                 setNdiTestMode(Boolean(status.ndiTestMode));
+                setNdiDevNullSink(Boolean(status.devNullSink));
                 setAudioStatus(status.audio ?? { state: "IDLE" });
                 setNdiError(status.error ?? null);
                 setNativePlaybackActive(Boolean(status.nativePlaybackActive));
@@ -753,13 +756,15 @@ export default function App() {
                     >
                         {testBench && !ndiTestMode
                             ? "● PRÉVIA DE TESTE"
-                            : ndiOnline
-                              ? audioStatus.state === "FLOWING"
-                                  ? "● NDI ONLINE — VÍDEO E PCM ESTÉREO"
-                                  : "● NDI ONLINE — ÁUDIO: " + audioStatus.state
-                            : ndiError
-                              ? `● NDI OFFLINE: ${ndiError}`
-                              : "● NDI OFFLINE"}
+                            : ndiDevNullSink
+                              ? "● DEV NULL SINK — SEM NDI REAL"
+                              : ndiOnline
+                                ? audioStatus.state === "FLOWING"
+                                    ? "● NDI ONLINE — VÍDEO E PCM ESTÉREO"
+                                    : "● NDI ONLINE — ÁUDIO: " + audioStatus.state
+                              : ndiError
+                                ? `● NDI OFFLINE: ${ndiError}`
+                                : "● NDI OFFLINE"}
                     </span>
                 </div>
             </header>

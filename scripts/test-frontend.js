@@ -339,6 +339,12 @@ assert(
     "Falha do motor deve aparecer com detalhe dentro do monitor do PROGRAM."
 );
 assert(
+    app.includes("devNullSink") &&
+    app.includes("DEV NULL SINK — SEM NDI REAL") &&
+    electronMain.includes("NDI nativo indisponivel; DEV NULL SINK ativo"),
+    "Desenvolvimento sem sender NDI deve manter PROGRAM/Inputs testáveis com status explícito."
+);
+assert(
     watermarkSettings.includes('className="secondary-button"'),
     "Ação secundária da Marca d'água não deve usar botão branco nativo."
 );
