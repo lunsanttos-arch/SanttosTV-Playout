@@ -52,6 +52,11 @@ const {
 const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
 
+app.commandLine.appendSwitch(
+    "autoplay-policy",
+    "no-user-gesture-required"
+);
+
 const {
     initializeDatabase,
     getSettings,
@@ -261,6 +266,7 @@ let ndiAudioNativeActive = false;
 let audioSource = null;
 let audioOutputStatus = "IDLE";
 let audioOutputError = "";
+let programAudioSequence = 0;
 let stopNdiFrameFeed = null;
 let activeOutputProfile = outputProfile({});
 let activeOutputSignature = profileSignature(activeOutputProfile);
@@ -841,6 +847,52 @@ function buildProgramFilterGraph(
     return chains.join(";");
 }
 
+function sendProgramAudioReset() {
+    programAudioSequence += 1;
+
+    if (
+        mainWindow &&
+        !mainWindow.isDestroyed()
+    ) {
+        mainWindow.webContents.send(
+            "playout:audio-reset",
+            {
+                sequence:
+                    programAudioSequence
+            }
+        );
+    }
+}
+
+function sendProgramAudioPcm(
+    chunk,
+    sampleRate,
+    channels
+) {
+    if (
+        !mainWindow ||
+        mainWindow.isDestroyed() ||
+        !Buffer.isBuffer(chunk) ||
+        chunk.length === 0
+    ) {
+        return;
+    }
+
+    mainWindow.webContents.send(
+        "playout:audio-pcm",
+        {
+            sequence:
+                programAudioSequence,
+            sampleRate,
+            channels,
+            data:
+                Uint8Array.from(
+                    chunk
+                )
+        }
+    );
+}
+
 function stopNativePlayback({ engineAction = "stop" } = {}) {
     if (activeVlcInputBridge) {
         activeVlcInputBridge.stop();
@@ -866,6 +918,9 @@ function stopNativePlayback({ engineAction = "stop" } = {}) {
         audioSource.stop();
         audioSource = null;
     }
+
+    sendProgramAudioReset();
+
     audioOutputStatus = "IDLE";
     audioOutputError = "";
 
@@ -1376,61 +1431,75 @@ async function startNativePlayback(
     });
 
     const selectedAudioIndex = programState.audioStreamIndex;
-    if (ndiAudioSupported && ndiAudioReady && ndiAudioPipe) {
-        try {
-            audioSource = new NdiAudioSource({
-                pipePath: ndiAudioPipe,
-                ffmpegPath,
-                filePath:
-                    isRemoteInput
-                        ? audioPlaybackPath
-                        : filePath,
-                // Midias importadas antes do suporte de áudio não possuem
-                // audioStreamIndex no banco. Nesse caso o FFmpeg usa 0:a:0.
-                streamIndex: Number.isSafeInteger(selectedAudioIndex) &&
-                    selectedAudioIndex >= 0
-                        ? selectedAudioIndex
-                        : null,
-                startSeconds:
-                    activeVlcInputBridge
-                        ? 0
-                        : normalizedStartSeconds,
-                durationSeconds: clipRemainingSeconds,
-                sampleRate: profile.sampleRate,
-                channels: profile.channels,
-                protocolHint:
-                    activeVlcInputBridge
-                        ? ""
-                        : programState.inputProtocol ?? "",
-                userAgent:
-                    activeVlcInputBridge
-                        ? ""
-                        : resolvedRemoteInput?.userAgent ??
-                          programState.inputHttpUserAgent ??
-                          "",
-                referer:
-                    activeVlcInputBridge
-                        ? ""
-                        : resolvedRemoteInput?.referer ??
-                          programState.inputHttpReferer ??
-                          "",
-                cookie:
-                    activeVlcInputBridge
-                        ? ""
-                        : resolvedRemoteInput?.cookie ?? ""
-            }).start();
-            audioOutputStatus = "STARTING";
-            audioOutputError = "";
-        } catch (error) {
-            audioOutputStatus = "ERROR";
-            audioOutputError = String(error?.message || error);
-            console.error("Falha ao iniciar áudio NDI:", error);
-        }
-    } else {
-        audioOutputStatus = ndiAudioSupported ? "PIPE_NOT_READY" : "REBUILD_REQUIRED";
-        audioOutputError = ndiAudioSupported
-            ? "Canal de áudio ainda não foi aberto pelo sender NDI."
-            : "Atualize ndi_test.exe para o sender NDI com perfil dinâmico.";
+
+    try {
+        const routedPipe =
+            ndiAudioSupported &&
+            ndiAudioReady &&
+            ndiAudioPipe
+                ? ndiAudioPipe
+                : "";
+
+        audioSource = new NdiAudioSource({
+            pipePath:
+                routedPipe,
+            ffmpegPath,
+            filePath:
+                isRemoteInput
+                    ? audioPlaybackPath
+                    : filePath,
+            // O mesmo PCM alimenta o medidor, o monitor local e, quando
+            // disponível, o pipe NDI. Assim o operador ouve e mede exatamente
+            // a fonte que o PROGRAM está usando.
+            streamIndex: Number.isSafeInteger(selectedAudioIndex) &&
+                selectedAudioIndex >= 0
+                    ? selectedAudioIndex
+                    : null,
+            startSeconds:
+                activeVlcInputBridge
+                    ? 0
+                    : normalizedStartSeconds,
+            durationSeconds: clipRemainingSeconds,
+            sampleRate: profile.sampleRate,
+            channels: profile.channels,
+            protocolHint:
+                activeVlcInputBridge
+                    ? ""
+                    : programState.inputProtocol ?? "",
+            userAgent:
+                activeVlcInputBridge
+                    ? ""
+                    : resolvedRemoteInput?.userAgent ??
+                      programState.inputHttpUserAgent ??
+                      "",
+            referer:
+                activeVlcInputBridge
+                    ? ""
+                    : resolvedRemoteInput?.referer ??
+                      programState.inputHttpReferer ??
+                      "",
+            cookie:
+                activeVlcInputBridge
+                    ? ""
+                    : resolvedRemoteInput?.cookie ?? "",
+            onPcmData:
+                sendProgramAudioPcm
+        }).start();
+
+        audioOutputStatus = "STARTING";
+        audioOutputError =
+            routedPipe
+                ? ""
+                : ndiDevNullSink
+                  ? "Monitor local do PROGRAM ativo; NDI real indisponível neste PC."
+                  : "Monitor local do PROGRAM ativo; aguardando rota NDI.";
+    } catch (error) {
+        audioOutputStatus = "ERROR";
+        audioOutputError = String(error?.message || error);
+        console.error(
+            "Falha ao iniciar áudio do PROGRAM:",
+            error
+        );
     }
 
     // rawvideo is a byte stream without delimiters. Never pipe it
@@ -1797,7 +1866,7 @@ function registerIpcHandlers() {
                     nativeActive: ndiAudioNativeActive,
                     sampleRate: activeOutputProfile.sampleRate,
                     channels: activeOutputProfile.channels,
-                    receiverVerified: false, route: ndiSourceName },
+                    receiverVerified: false, routedToNdi: false, route: ndiSourceName },
             nativePlaybackActive,
             playout: playoutEngine.snapshot(),
             playoutError: playoutLastError || null,

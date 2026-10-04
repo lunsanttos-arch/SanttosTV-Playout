@@ -280,6 +280,46 @@ contextBridge.exposeInMainWorld(
                 );
         },
 
+        onProgramAudioPcm: (callback) => {
+            if (typeof callback !== "function") {
+                return () => {};
+            }
+
+            const listener = (_event, payload) =>
+                callback(payload);
+
+            ipcRenderer.on(
+                "playout:audio-pcm",
+                listener
+            );
+
+            return () =>
+                ipcRenderer.removeListener(
+                    "playout:audio-pcm",
+                    listener
+                );
+        },
+
+        onProgramAudioReset: (callback) => {
+            if (typeof callback !== "function") {
+                return () => {};
+            }
+
+            const listener = (_event, payload) =>
+                callback(payload);
+
+            ipcRenderer.on(
+                "playout:audio-reset",
+                listener
+            );
+
+            return () =>
+                ipcRenderer.removeListener(
+                    "playout:audio-reset",
+                    listener
+                );
+        },
+
         startPlayoutReport: (mediaItem) =>
             ipcRenderer.invoke(
                 "report:playout-start",

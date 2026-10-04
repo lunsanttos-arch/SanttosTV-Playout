@@ -7,7 +7,7 @@ const path = require("node:path");
 const { execFileSync } = require("node:child_process");
 const ffmpeg = require("ffmpeg-static");
 const { StereoPcmMeter } = require("../src/core/audio/stereo-meter");
-const { audioFfmpegArgs } = require("../src/core/audio/ndi-audio-source");
+const { NdiAudioSource, audioFfmpegArgs } = require("../src/core/audio/ndi-audio-source");
 const { checkNdiRuntime } = require("../src/core/ndi/ndi-capabilities");
 const launcherPreflight = require("./check-ndi-audio");
 assert.equal(launcherPreflight.checkNdiRuntime, checkNdiRuntime,
@@ -35,6 +35,30 @@ assert.equal(meter.snapshot().active, false);
 assert.equal(meter.snapshot().leftDb, -60);
 meter.reset();
 assert.equal(meter.snapshot().audioFrames, 0);
+
+const sourceStatus = new NdiAudioSource({
+    sampleRate: 48000,
+    channels: 2
+});
+sourceStatus.status = "FLOWING";
+sourceStatus.audioBytesSent = samples.length;
+sourceStatus.meter.write(samples);
+const realProgramStatus = sourceStatus.snapshot();
+assert.equal(
+    realProgramStatus.active,
+    true,
+    "Medidor deve marcar PCM real do PROGRAM como ativo sem depender de ACK NDI."
+);
+assert.equal(
+    realProgramStatus.routedToNdi,
+    false,
+    "PCM local pode estar ativo mesmo sem pipe NDI, como no DEV NULL SINK."
+);
+assert(
+    realProgramStatus.leftDb > -20,
+    "Snapshot do PROGRAM deve carregar o nível do PCM real."
+);
+
 const fallbackArgs = audioFfmpegArgs("file.mp4", null, 0, null);
 assert.deepEqual(
     fallbackArgs.slice(fallbackArgs.indexOf("-map"), fallbackArgs.indexOf("-map") + 2),
@@ -137,6 +161,12 @@ try {
         mainSource.includes("audioStreamIndex") &&
         mainSource.includes("Boolean(item.audioCodec)"),
         "Playout deve recuperar áudio de mídias antigas sem índice salvo e reanalisá-las.");
+    assert(
+        mainSource.includes("onPcmData:") &&
+        mainSource.includes("sendProgramAudioPcm") &&
+        mainSource.includes("Monitor local do PROGRAM ativo"),
+        "PCM real do PROGRAM deve alimentar monitor local mesmo sem pipe NDI."
+    );
 
     console.log("NDI AUDIO QA: APROVADO — PCM dinâmico 44.1/48 kHz, mono/stereo, cortes e contrato do sender.");
 } finally {

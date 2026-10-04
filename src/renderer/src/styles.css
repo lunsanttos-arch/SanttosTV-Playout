@@ -1961,6 +1961,25 @@ button {
     cursor: pointer;
 }
 .audio-meter-activate:focus-visible { outline: 2px solid #fff; }
+.audio-monitor-toggle {
+    margin: 0;
+    padding: 3px 2px;
+    font-size: 8px;
+    font-weight: 800;
+    color: #9aa6ad;
+    background: #11161a;
+    border: 1px solid #39464f;
+    border-radius: 3px;
+    cursor: pointer;
+}
+.audio-monitor-toggle.active {
+    color: #b7f4cb;
+    background: #173121;
+    border-color: #3d7650;
+}
+.audio-monitor-toggle:focus-visible {
+    outline: 2px solid #fff;
+}
 .audio-meter-limitation {
     font-size: 8px;
     color: #a3a9b1;

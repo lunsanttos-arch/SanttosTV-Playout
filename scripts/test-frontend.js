@@ -8,6 +8,7 @@ const mainPath = path.join(root, "src", "renderer", "src", "main.tsx");
 const settingsPath = path.join(root, "src", "renderer", "src", "BroadcastSettingsPanel.tsx");
 const librarySettingsPath = path.join(root, "src", "renderer", "src", "LibraryFolderSettingsTab.tsx");
 const electronMainPath = path.join(root, "src", "main", "main.js");
+const preloadPath = path.join(root, "src", "main", "preload.js");
 const rendererIndexPath = path.join(root, "src", "renderer", "index.html");
 const packagePath = path.join(root, "package.json");
 const appIconPath = path.join(root, "build-resources", "icon.ico");
@@ -20,6 +21,7 @@ const main = fs.readFileSync(mainPath, "utf8");
 const settings = fs.readFileSync(settingsPath, "utf8");
 const librarySettings = fs.readFileSync(librarySettingsPath, "utf8");
 const electronMain = fs.readFileSync(electronMainPath, "utf8");
+const preload = fs.readFileSync(preloadPath, "utf8");
 const rendererIndex = fs.readFileSync(rendererIndexPath, "utf8");
 const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 
@@ -99,18 +101,21 @@ const meter = fs.readFileSync(
 assert(meter.includes("createMediaElementSource") &&
     meter.includes("audio.leftDb") && meter.includes("audio.rightDb"),
     "Áudio da prévia e áudio PCM nativo precisam ter canais L/R independentes.");
-assert(meter.includes("if (!mediaUrl) return;") &&
-    !meter.includes("if (nativeOutput || !mediaUrl) return;"),
-    "O monitor da prévia deve continuar funcionando mesmo com NDI ativo/antigo.");
-assert(meter.includes("const pcmAvailable = nativeOutput &&") &&
-    meter.includes("PRÉVIA · ") && meter.includes("NDI ANTIGO") &&
-    meter.includes("PRÉVIA ≠ NDI"),
-    "Ao faltar PCM, exibir níveis de prévia sem alegar que o NDI recebeu áudio.");
-assert(meter.includes("audio.nativeActive === true") &&
-    meter.includes("NDI SEM ACK"),
-    "A UI só pode chamar de NDI PCM após confirmação do sender nativo.");
-assert(meter.includes('audio.state === "NO_TRACK"') &&
-    meter.includes('audio.state === "ERROR"'),
+assert(meter.includes("nativeOutput ||") &&
+    meter.includes("!mediaUrl"),
+    "Em operação nativa, o medidor deve abandonar a prévia Chromium e usar somente o PCM real do PROGRAM.");
+assert(meter.includes("const programPcmAvailable") &&
+    meter.includes("audio.active === true") &&
+    meter.includes("PROGRAM PCM") &&
+    meter.includes("PCM REAL"),
+    "Com PCM real ativo, barras e monitor devem representar a fonte real do PROGRAM.");
+assert(meter.includes("audio.nativeActive ===") &&
+    meter.includes("PROGRAM PCM · NDI"),
+    "A confirmação NDI deve ser indicada separadamente da existência do PCM real do PROGRAM.");
+assert(meter.includes('"NO_TRACK"') &&
+    meter.includes('"ERROR"') &&
+    meter.includes("SEM FAIXA") &&
+    meter.includes("ÁUDIO ERRO"),
     "Falta de faixa e falha no encoder devem ser visíveis junto dos medidores.");
 
 assert(!app.includes("DIAGNÓSTICO DO PLAYOUT") &&
@@ -353,6 +358,20 @@ assert(
     app.includes("DEV NULL SINK — SEM NDI REAL") &&
     electronMain.includes("NDI nativo indisponivel; DEV NULL SINK ativo"),
     "Desenvolvimento sem sender NDI deve manter PROGRAM/Inputs testáveis com status explícito."
+);
+const programAudioMeters = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "ProgramAudioMeters.tsx"),
+    "utf8"
+);
+assert(
+    programAudioMeters.includes("onProgramAudioPcm") &&
+    programAudioMeters.includes("PROGRAM PCM") &&
+    programAudioMeters.includes("MONITOR ON") &&
+    programAudioMeters.includes("PCM REAL") &&
+    app.includes("muted={nativeOutputEnabled}") &&
+    preload.includes("playout:audio-pcm") &&
+    electronMain.includes("sendProgramAudioPcm"),
+    "Monitor de áudio deve tocar e medir o PCM real do PROGRAM, sem usar a prévia como falsa saída."
 );
 assert(
     watermarkSettings.includes('className="secondary-button"'),
