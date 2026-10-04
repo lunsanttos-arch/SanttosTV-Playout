@@ -110,8 +110,10 @@ assert(meter.includes("const programPcmAvailable") &&
 assert(meter.includes("audio.nativeActive ===") &&
     meter.includes("PROGRAM PCM · NDI"),
     "A confirmação NDI deve ser indicada separadamente da existência do PCM real do PROGRAM.");
-assert(meter.includes('audio.state === "NO_TRACK"') &&
-    meter.includes('audio.state === "ERROR"'),
+assert(meter.includes('"NO_TRACK"') &&
+    meter.includes('"ERROR"') &&
+    meter.includes("SEM FAIXA") &&
+    meter.includes("ÁUDIO ERRO"),
     "Falta de faixa e falha no encoder devem ser visíveis junto dos medidores.");
 
 assert(!app.includes("DIAGNÓSTICO DO PLAYOUT") &&
