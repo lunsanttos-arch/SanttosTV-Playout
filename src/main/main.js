@@ -1078,6 +1078,10 @@ async function startNativePlayback(
                 `Input pré-carregado assumido pelo PROGRAM | motor=${selectedInputEngine}`
             );
         } else {
+            // Se a troca chegou antes da pré-carga terminar, invalida o
+            // preparo pendente para evitar uma segunda ponte abrindo depois.
+            inputPrebuffer.cancel();
+
             resolvedRemoteInput =
                 await resolveRemoteInput(
                     filePath,
