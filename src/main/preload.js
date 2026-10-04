@@ -215,6 +215,21 @@ contextBridge.exposeInMainWorld(
                 "ndi:status"
             ),
 
+        prepareNdiInput: (
+            filePath,
+            overlayState = {}
+        ) =>
+            ipcRenderer.invoke(
+                "ndi:prepare-input",
+                filePath,
+                overlayState
+            ),
+
+        cancelPreparedNdiInput: () =>
+            ipcRenderer.invoke(
+                "ndi:cancel-prepared-input"
+            ),
+
         playNdiFile: (
             filePath,
             startSeconds = 0,
