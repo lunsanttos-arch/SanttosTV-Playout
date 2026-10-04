@@ -354,6 +354,20 @@ assert(
     electronMain.includes("NDI nativo indisponivel; DEV NULL SINK ativo"),
     "Desenvolvimento sem sender NDI deve manter PROGRAM/Inputs testáveis com status explícito."
 );
+const programAudioMeters = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "ProgramAudioMeters.tsx"),
+    "utf8"
+);
+assert(
+    programAudioMeters.includes("onProgramAudioPcm") &&
+    programAudioMeters.includes("PROGRAM PCM") &&
+    programAudioMeters.includes("MONITOR ON") &&
+    programAudioMeters.includes("PCM REAL") &&
+    app.includes("muted={nativeOutputEnabled}") &&
+    preload.includes("playout:audio-pcm") &&
+    electronMain.includes("sendProgramAudioPcm"),
+    "Monitor de áudio deve tocar e medir o PCM real do PROGRAM, sem usar a prévia como falsa saída."
+);
 assert(
     watermarkSettings.includes('className="secondary-button"'),
     "Ação secundária da Marca d'água não deve usar botão branco nativo."
