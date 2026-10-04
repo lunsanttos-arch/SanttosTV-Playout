@@ -371,6 +371,19 @@ declare global {
             onNativePlayoutEnded: (
                 callback: (status: NativePlayoutStatus) => void
             ) => () => void;
+            onProgramAudioPcm: (
+                callback: (payload: {
+                    sequence: number;
+                    sampleRate: number;
+                    channels: number;
+                    data: Uint8Array | ArrayBuffer;
+                }) => void
+            ) => () => void;
+            onProgramAudioReset: (
+                callback: (payload: {
+                    sequence: number;
+                }) => void
+            ) => () => void;
             startPlayoutReport: (
                 mediaItem: MediaItem & {
                     plannedDurationSeconds: number;
@@ -3140,6 +3153,7 @@ function PlayoutPanel({
                                     className="program-video"
                                     src={selectedMediaUrl}
                                     preload="auto"
+                                    muted={nativeOutputEnabled}
                                     onTimeUpdate={(event) =>
                                         handleProgramTimeUpdate(
                                             event.currentTarget
