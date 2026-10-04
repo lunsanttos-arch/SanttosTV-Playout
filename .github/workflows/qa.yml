@@ -82,6 +82,7 @@ jobs:
           node --check src/core/playout/remote-input-resolver.js
           node --check src/core/playout/remote-input-proxy.js
           node --check src/core/playout/vlc-input-bridge.js
+          node --check src/core/playout/input-prebuffer.js
           node --check src/core/playout/ffmpeg-stream-map.js
           node --check src/core/media/web-input-preview.js
 
@@ -99,6 +100,9 @@ jobs:
 
       - name: Web input HLS playback
         run: npm run test:web-input
+
+      - name: Web Input prebuffer regression
+        run: npm run test:input-prebuffer
 
       - name: VLC Input bridge regression
         run: npm run test:vlc-input

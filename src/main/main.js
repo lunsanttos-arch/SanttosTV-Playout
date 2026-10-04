@@ -33,6 +33,9 @@ const {
     selectInputEngine,
     startVlcInputBridge
 } = require("../core/playout/vlc-input-bridge");
+const {
+    InputPrebufferManager
+} = require("../core/playout/input-prebuffer");
 const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
 const { Writable } = require("node:stream");
@@ -232,6 +235,15 @@ let ndiProcess = null;
 let ffmpegProcess = null;
 let activeRemoteInputProxy = null;
 let activeVlcInputBridge = null;
+const inputPrebuffer =
+    new InputPrebufferManager({
+        resolveRemoteInput,
+        createRemoteHlsProxy,
+        findVlcPath,
+        selectInputEngine,
+        startVlcInputBridge,
+        ttlMs: 20000
+    });
 
 let ndiReady = false;
 let ndiDevNullSink = false;
@@ -888,6 +900,45 @@ function stopNativePlayback({ engineAction = "stop" } = {}) {
     return playoutEngine.snapshot();
 }
 
+async function prepareInputPrebuffer(
+    filePath,
+    overlayState = {}
+) {
+    const registered =
+        getWebInputs().some(
+            (item) =>
+                item.url === filePath
+        );
+
+    if (!registered) {
+        throw new Error(
+            "O Input deve estar cadastrado antes da pré-carga."
+        );
+    }
+
+    const status =
+        await inputPrebuffer.prepare(
+            filePath,
+            overlayState
+        );
+
+    console.log(
+        status?.ready
+            ? `Input pré-carregado: ${overlayState.itemId || path.basename(filePath)} | motor=${status.engine}`
+            : "Pré-carga do Input descartada."
+    );
+
+    return status;
+}
+
+function cancelInputPrebuffer() {
+    inputPrebuffer.cancel();
+    return {
+        ok: true,
+        ...inputPrebuffer.status()
+    };
+}
+
 async function startNativePlayback(
     filePath,
     startSeconds = 0,
@@ -1003,117 +1054,146 @@ async function startNativePlayback(
         "ffmpeg";
 
     if (isRemoteInput) {
-        resolvedRemoteInput =
-            await resolveRemoteInput(
+        const warmed =
+            inputPrebuffer.take(
                 filePath,
-                {
-                    userAgent:
-                        programState.inputHttpUserAgent,
-                    referer:
-                        programState.inputHttpReferer
-                }
+                programState
             );
 
-        playbackPath =
-            resolvedRemoteInput.url;
-        audioPlaybackPath =
-            resolvedRemoteInput.url;
-
-        const vlcPath =
-            findVlcPath();
-
-        selectedInputEngine =
-            selectInputEngine(
-                programState.inputEngine,
-                resolvedRemoteInput.provider,
-                Boolean(vlcPath)
-            );
-
-        let sourceForBridge =
-            resolvedRemoteInput.url;
-
-        if (
-            resolvedRemoteInput.provider ===
-            "dailymotion"
-        ) {
+        if (warmed) {
+            resolvedRemoteInput =
+                warmed.resolved;
+            selectedInputEngine =
+                warmed.engine;
             activeRemoteInputProxy =
-                await createRemoteHlsProxy(
-                    resolvedRemoteInput
-                );
-
-            sourceForBridge =
-                activeRemoteInputProxy.url;
+                warmed.proxy || null;
+            activeVlcInputBridge =
+                warmed.vlcBridge || null;
+            playbackPath =
+                warmed.playbackPath;
+            audioPlaybackPath =
+                warmed.audioPlaybackPath;
 
             console.log(
-                `Input Dailymotion encapsulado pelo proxy local 127.0.0.1:${activeRemoteInputProxy.port}.`
+                `Input pré-carregado assumido pelo PROGRAM | motor=${selectedInputEngine}`
             );
-        }
+        } else {
+            // Se a troca chegou antes da pré-carga terminar, invalida o
+            // preparo pendente para evitar uma segunda ponte abrindo depois.
+            inputPrebuffer.cancel();
 
-        if (
-            selectedInputEngine ===
-            "vlc"
-        ) {
-            try {
-                activeVlcInputBridge =
-                    await startVlcInputBridge(
-                        sourceForBridge,
-                        {
-                            vlcPath,
-                            userAgent:
-                                resolvedRemoteInput.provider === "dailymotion"
-                                    ? ""
-                                    : resolvedRemoteInput.userAgent,
-                            referer:
-                                resolvedRemoteInput.provider === "dailymotion"
-                                    ? ""
-                                    : resolvedRemoteInput.referer,
-                            withAudioCopy:
-                                true
-                        }
+            resolvedRemoteInput =
+                await resolveRemoteInput(
+                    filePath,
+                    {
+                        userAgent:
+                            programState.inputHttpUserAgent,
+                        referer:
+                            programState.inputHttpReferer
+                    }
+                );
+
+            playbackPath =
+                resolvedRemoteInput.url;
+            audioPlaybackPath =
+                resolvedRemoteInput.url;
+
+            const vlcPath =
+                findVlcPath();
+
+            selectedInputEngine =
+                selectInputEngine(
+                    programState.inputEngine,
+                    resolvedRemoteInput.provider,
+                    Boolean(vlcPath)
+                );
+
+            let sourceForBridge =
+                resolvedRemoteInput.url;
+
+            if (
+                resolvedRemoteInput.provider ===
+                "dailymotion"
+            ) {
+                activeRemoteInputProxy =
+                    await createRemoteHlsProxy(
+                        resolvedRemoteInput
                     );
 
-                playbackPath =
-                    activeVlcInputBridge.videoUrl;
-                audioPlaybackPath =
-                    activeVlcInputBridge.audioUrl ||
-                    activeVlcInputBridge.videoUrl;
+                sourceForBridge =
+                    activeRemoteInputProxy.url;
 
                 console.log(
-                    `Input usando ponte VLC: ${path.basename(activeVlcInputBridge.executable)} -> vídeo UDP ${activeVlcInputBridge.videoPort}` +
-                    `${activeVlcInputBridge.audioPort ? ` / áudio UDP ${activeVlcInputBridge.audioPort}` : ""}.`
+                    `Input Dailymotion encapsulado pelo proxy local 127.0.0.1:${activeRemoteInputProxy.port}.`
                 );
-            } catch (error) {
-                if (
-                    (programState.inputEngine ?? "auto") !==
-                    "auto"
-                ) {
-                    throw error;
-                }
+            }
 
-                selectedInputEngine =
-                    "ffmpeg";
+            if (
+                selectedInputEngine ===
+                "vlc"
+            ) {
+                try {
+                    activeVlcInputBridge =
+                        await startVlcInputBridge(
+                            sourceForBridge,
+                            {
+                                vlcPath,
+                                userAgent:
+                                    resolvedRemoteInput.provider === "dailymotion"
+                                        ? ""
+                                        : resolvedRemoteInput.userAgent,
+                                referer:
+                                    resolvedRemoteInput.provider === "dailymotion"
+                                        ? ""
+                                        : resolvedRemoteInput.referer,
+                                withAudioCopy:
+                                    true
+                            }
+                        );
+
+                    playbackPath =
+                        activeVlcInputBridge.videoUrl;
+                    audioPlaybackPath =
+                        activeVlcInputBridge.audioUrl ||
+                        activeVlcInputBridge.videoUrl;
+
+                    console.log(
+                        `Input usando ponte VLC: ${path.basename(activeVlcInputBridge.executable)} -> vídeo UDP ${activeVlcInputBridge.videoPort}` +
+                        `${activeVlcInputBridge.audioPort ? ` / áudio UDP ${activeVlcInputBridge.audioPort}` : ""}.`
+                    );
+                } catch (error) {
+                    if (
+                        (programState.inputEngine ?? "auto") !==
+                        "auto"
+                    ) {
+                        throw error;
+                    }
+
+                    selectedInputEngine =
+                        "ffmpeg";
+                    playbackPath =
+                        sourceForBridge;
+                    audioPlaybackPath =
+                        sourceForBridge;
+
+                    console.warn(
+                        "Ponte VLC falhou no modo Automático; usando FFmpeg:",
+                        error
+                    );
+                }
+            } else {
                 playbackPath =
                     sourceForBridge;
                 audioPlaybackPath =
                     sourceForBridge;
-
-                console.warn(
-                    "Ponte VLC falhou no modo Automático; usando FFmpeg:",
-                    error
-                );
             }
-        } else {
-            playbackPath =
-                sourceForBridge;
-            audioPlaybackPath =
-                sourceForBridge;
-        }
 
-        console.log(
-            `Input remoto resolvido: ${resolvedRemoteInput.provider}` +
-            `${resolvedRemoteInput.providerId ? `/${resolvedRemoteInput.providerId}` : ""}` +
-            ` | motor=${selectedInputEngine}`
-        );
+            console.log(
+                `Input remoto resolvido: ${resolvedRemoteInput.provider}` +
+                `${resolvedRemoteInput.providerId ? `/${resolvedRemoteInput.providerId}` : ""}` +
+                ` | motor=${selectedInputEngine}`
+            );
+        }
     }
     const normalizedInPoint =
         Number.isFinite(Number(programState.inPointSeconds))
@@ -1154,6 +1234,15 @@ async function startNativePlayback(
             ` | OUT=${normalizedOutPoint ?? "EOF"}`
     );
 
+    const warmedUdp =
+        Boolean(
+            isRemoteInput &&
+            activeVlcInputBridge &&
+            /^udp:\/\//i.test(
+                playbackPath
+            )
+        );
+
     const args = [
         "-hide_banner",
         "-loglevel",
@@ -1164,9 +1253,13 @@ async function startNativePlayback(
         "-err_detect",
         "ignore_err",
         "-probesize",
-        "10000000",
+        warmedUdp
+            ? "1000000"
+            : "10000000",
         "-analyzeduration",
-        "10000000"
+        warmedUdp
+            ? "500000"
+            : "10000000"
     ];
 
     if (
@@ -1710,9 +1803,58 @@ function registerIpcHandlers() {
             playoutError: playoutLastError || null,
             error: ndiLastError || null,
             devNullSink: ndiDevNullSink,
+            preparedInput:
+                inputPrebuffer.status(),
             restarting: Boolean(ndiRestartTimer),
             testBench: isTestBench
         })
+    );
+
+    registerTrustedHandle(
+        "ndi:prepare-input",
+        async (
+            _event,
+            filePath,
+            overlayState = {}
+        ) => {
+            if (!nativeOutputAllowed) {
+                return {
+                    ok: true,
+                    previewOnly: true
+                };
+            }
+
+            try {
+                const status =
+                    await prepareInputPrebuffer(
+                        filePath,
+                        overlayState
+                    );
+
+                return {
+                    ok: true,
+                    ...status
+                };
+            } catch (error) {
+                console.error(
+                    "Pré-carga do Input falhou:",
+                    error
+                );
+
+                return {
+                    ok: false,
+                    error:
+                        error?.message ||
+                        String(error)
+                };
+            }
+        }
+    );
+
+    registerTrustedHandle(
+        "ndi:cancel-prepared-input",
+        async () =>
+            cancelInputPrebuffer()
     );
 
     registerTrustedHandle(

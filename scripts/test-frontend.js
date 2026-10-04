@@ -329,6 +329,16 @@ assert(
     "Inputs Web devem permitir Automático/FFmpeg/VLC e mostrar detecção do VLC."
 );
 assert(
+    app.includes("prepareNdiInput") &&
+    app.includes("cancelPreparedNdiInput") &&
+    app.includes("remaining <= 5") &&
+    app.includes("PRÉ-CARREGANDO INPUT") &&
+    app.includes("INPUT PRONTO") &&
+    electronMain.includes('"ndi:prepare-input"') &&
+    electronMain.includes("Input pré-carregado assumido pelo PROGRAM"),
+    "O próximo Input deve ser pré-carregado 5s antes e reutilizado pelo PROGRAM."
+);
+assert(
     webInputs.includes("const value =") &&
     !/setDraft\([\s\S]{0,220}event\.currentTarget\.value/.test(webInputs),
     "Formulário de Input deve capturar o valor do evento antes do updater React."

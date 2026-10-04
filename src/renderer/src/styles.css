@@ -1994,6 +1994,36 @@ button {
     font-weight: 800;
     color: #dfc47a !important;
 }
+
+.input-prebuffer-badge {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    padding: 2px 6px;
+    border: 1px solid #4a4a4a;
+    border-radius: 999px;
+    font-size: 9px !important;
+    font-weight: 800;
+    letter-spacing: 0.45px;
+}
+
+.input-prebuffer-badge.loading {
+    color: #d9c47e;
+    background: #2a2414;
+    border-color: #6b5c27;
+}
+
+.input-prebuffer-badge.ready {
+    color: #a9efb6;
+    background: #14271a;
+    border-color: #315f3d;
+}
+
+.input-prebuffer-badge.error {
+    color: #ffb0b0;
+    background: #2a1515;
+    border-color: #6c2d2d;
+}
 @media (max-width: 1200px) {
     .program-column {
         grid-template-columns: 1fr;
