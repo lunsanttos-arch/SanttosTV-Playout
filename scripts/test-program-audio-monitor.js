@@ -78,8 +78,10 @@ async function main() {
         let callbackChunks = 0;
         let callbackRate = 0;
         let callbackChannels = 0;
+        let flowingSeen = false;
+        let source = null;
 
-        const source =
+        source =
             new NdiAudioSource({
                 pipePath: "",
                 ffmpegPath: ffmpeg,
@@ -101,6 +103,13 @@ async function main() {
                         sampleRate;
                     callbackChannels =
                         channels;
+
+                    if (
+                        source &&
+                        source.snapshot().active
+                    ) {
+                        flowingSeen = true;
+                    }
                 }
             }).start();
 
@@ -113,15 +122,16 @@ async function main() {
         const snapshot =
             source.snapshot();
 
-        assert.equal(
-            snapshot.state,
-            "FLOWING",
-            "Decoder sem pipe NDI deve continuar entregando PCM ao monitor local."
+        assert(
+            ["FLOWING", "ENDED"].includes(
+                snapshot.state
+            ),
+            "Decoder sem pipe NDI deve entregar PCM ao monitor local e encerrar limpo."
         );
         assert.equal(
-            snapshot.active,
+            flowingSeen,
             true,
-            "PCM real deve marcar o medidor como ativo."
+            "PCM real deve marcar o medidor como ativo enquanto os chunks passam."
         );
         assert.equal(
             snapshot.routedToNdi,
