@@ -8,6 +8,7 @@ const mainPath = path.join(root, "src", "renderer", "src", "main.tsx");
 const settingsPath = path.join(root, "src", "renderer", "src", "BroadcastSettingsPanel.tsx");
 const librarySettingsPath = path.join(root, "src", "renderer", "src", "LibraryFolderSettingsTab.tsx");
 const electronMainPath = path.join(root, "src", "main", "main.js");
+const preloadPath = path.join(root, "src", "main", "preload.js");
 const rendererIndexPath = path.join(root, "src", "renderer", "index.html");
 const packagePath = path.join(root, "package.json");
 const appIconPath = path.join(root, "build-resources", "icon.ico");
@@ -20,6 +21,7 @@ const main = fs.readFileSync(mainPath, "utf8");
 const settings = fs.readFileSync(settingsPath, "utf8");
 const librarySettings = fs.readFileSync(librarySettingsPath, "utf8");
 const electronMain = fs.readFileSync(electronMainPath, "utf8");
+const preload = fs.readFileSync(preloadPath, "utf8");
 const rendererIndex = fs.readFileSync(rendererIndexPath, "utf8");
 const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 
