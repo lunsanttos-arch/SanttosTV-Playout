@@ -310,6 +310,25 @@ declare global {
                 audio?: NativeAudioStatus;
                 playout?: NativePlayoutStatus;
             }>;
+            prepareNdiInput: (
+                filePath: string,
+                overlayState?: {
+                    itemId?: string;
+                    sourceType?: "file" | "input";
+                    inputProtocol?: string;
+                    inputHttpReferer?: string;
+                    inputHttpUserAgent?: string;
+                    inputEngine?: "auto" | "ffmpeg" | "vlc";
+                }
+            ) => Promise<{
+                ok: boolean;
+                ready?: boolean;
+                engine?: string | null;
+                error?: string;
+            }>;
+            cancelPreparedNdiInput: () => Promise<{
+                ok: boolean;
+            }>;
             playNdiFile: (
                 filePath: string,
                 startSeconds?: number,
@@ -1000,6 +1019,9 @@ function PlayoutPanel({
     const [freezeHoldItemId, setFreezeHoldItemId] =
         useState<string | null>(null);
     const activeReportIdRef = useRef<string | null>(null);
+    const preparedInputIdRef = useRef<string | null>(null);
+    const [inputPrebufferState, setInputPrebufferState] =
+        useState<"idle" | "loading" | "ready" | "error">("idle");
     const lastProgressRef = useRef({
         position: Number.NaN,
         atMs: Date.now()
@@ -1249,6 +1271,139 @@ function PlayoutPanel({
                   selectedMediaIndex - 1
               ] ?? null
             : null;
+
+    useEffect(() => {
+        const remaining =
+            nativePlayout.itemId === selectedMedia?.id &&
+            Number.isFinite(
+                nativePlayout.remainingSeconds
+            )
+                ? Number(
+                      nativePlayout.remainingSeconds
+                  )
+                : null;
+
+        const shouldPrepare =
+            nativeOutputEnabled &&
+            isPlaying &&
+            nativePlayout.state === "PLAYING" &&
+            !selectedMedia?.loop &&
+            !selectedMedia?.freezeEnd &&
+            nextMedia?.sourceType === "input" &&
+            remaining !== null &&
+            remaining > 0.1 &&
+            remaining <= 5;
+
+        if (shouldPrepare && nextMedia) {
+            if (
+                preparedInputIdRef.current ===
+                nextMedia.id
+            ) {
+                return;
+            }
+
+            const targetId =
+                nextMedia.id;
+
+            preparedInputIdRef.current =
+                targetId;
+            setInputPrebufferState(
+                "loading"
+            );
+
+            void window.santtosAPI
+                .prepareNdiInput(
+                    nextMedia.path,
+                    buildOverlayState(
+                        nextMedia,
+                        0
+                    )
+                )
+                .then((result) => {
+                    if (
+                        preparedInputIdRef.current !==
+                        targetId
+                    ) {
+                        return;
+                    }
+
+                    if (
+                        result.ok &&
+                        result.ready !== false
+                    ) {
+                        setInputPrebufferState(
+                            "ready"
+                        );
+                    } else {
+                        setInputPrebufferState(
+                            "error"
+                        );
+                        console.warn(
+                            "Pré-carga do próximo Input falhou; o PROGRAM atual continua normalmente:",
+                            result.error
+                        );
+                    }
+                })
+                .catch((error) => {
+                    if (
+                        preparedInputIdRef.current !==
+                        targetId
+                    ) {
+                        return;
+                    }
+
+                    setInputPrebufferState(
+                        "error"
+                    );
+                    console.warn(
+                        "Pré-carga do próximo Input falhou; o PROGRAM atual continua normalmente:",
+                        error
+                    );
+                });
+
+            return;
+        }
+
+        if (
+            preparedInputIdRef.current &&
+            (
+                !nextMedia ||
+                preparedInputIdRef.current !==
+                    nextMedia.id ||
+                !isPlaying ||
+                nativePlayout.state !==
+                    "PLAYING" ||
+                selectedMedia?.loop ||
+                selectedMedia?.freezeEnd
+            )
+        ) {
+            preparedInputIdRef.current =
+                null;
+            setInputPrebufferState(
+                "idle"
+            );
+
+            void window.santtosAPI
+                .cancelPreparedNdiInput()
+                .catch((error) =>
+                    console.error(
+                        "Falha ao cancelar pré-carga do Input:",
+                        error
+                    )
+                );
+        }
+    }, [
+        nativeOutputEnabled,
+        isPlaying,
+        nativePlayout.state,
+        nativePlayout.itemId,
+        nativePlayout.remainingSeconds,
+        selectedMedia?.id,
+        selectedMedia?.loop,
+        selectedMedia?.freezeEnd,
+        nextMedia?.id,
+        nextMedia?.sourceType
+    ]);
 
     const selectedClipIn = getClipIn(selectedMedia);
     const selectedClipOut = getClipOut(selectedMedia);
@@ -2090,7 +2245,16 @@ function PlayoutPanel({
 
         if (nativeOutputEnabled) {
             await window.santtosAPI.stopNdiFile();
+            await window.santtosAPI
+                .cancelPreparedNdiInput()
+                .catch(() => undefined);
         }
+
+        preparedInputIdRef.current =
+            null;
+        setInputPrebufferState(
+            "idle"
+        );
 
         const video = videoRef.current;
         const inPoint = getClipIn(selectedMedia);
@@ -2248,6 +2412,17 @@ function PlayoutPanel({
             await startNativeNdi(
                 nextToPlay,
                 nextIn
+            );
+        }
+
+        if (
+            preparedInputIdRef.current ===
+            nextToPlay.id
+        ) {
+            preparedInputIdRef.current =
+                null;
+            setInputPrebufferState(
+                "idle"
             );
         }
 
@@ -3278,6 +3453,21 @@ function PlayoutPanel({
                                         : ""}
                                 </span>
                                 <span className="next-entry-forecast">{describeForecast(nextMedia)}</span>
+                                {nextMedia.sourceType === "input" &&
+                                    inputPrebufferState !== "idle" && (
+                                        <span
+                                            className={
+                                                "input-prebuffer-badge " +
+                                                inputPrebufferState
+                                            }
+                                        >
+                                            {inputPrebufferState === "loading"
+                                                ? "PRÉ-CARREGANDO INPUT…"
+                                                : inputPrebufferState === "ready"
+                                                  ? "INPUT PRONTO"
+                                                  : "PRÉ-CARGA FALHOU · TENTARÁ NO PLAY"}
+                                        </span>
+                                    )}
                             </>
                         )}
                     </section>
