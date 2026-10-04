@@ -125,6 +125,9 @@ jobs:
       - name: Native NDI PCM stereo source and meter regression
         run: npm run test:ndi-audio
 
+      - name: Real PROGRAM audio monitor regression
+        run: npm run test:program-audio-monitor
+
       - name: Backend regression tests
         run: npm run test:backend
 
