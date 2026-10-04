@@ -93,12 +93,19 @@ class NdiAudioSource {
     }
 
     start() {
-        const { pipePath, ffmpegPath, filePath, streamIndex,
+        const { pipePath = "", ffmpegPath, filePath, streamIndex,
             startSeconds = 0, durationSeconds = null,
-            protocolHint = "", userAgent = "", referer = "", cookie = "" } = this.options;
-        if (!pipePath || !pipePath.startsWith("\\\\.\\pipe\\SanttosAudio-")) {
+            protocolHint = "", userAgent = "", referer = "", cookie = "",
+            onPcmData = null } = this.options;
+
+        const hasNdiPipe =
+            typeof pipePath === "string" &&
+            pipePath.startsWith("\\\\.\\pipe\\SanttosAudio-");
+
+        if (pipePath && !hasNdiPipe) {
             throw new Error("Canal NDI de áudio não autorizado.");
         }
+
         const args = audioFfmpegArgs(
             filePath,
             streamIndex,
@@ -111,45 +118,114 @@ class NdiAudioSource {
             referer,
             cookie
         );
-        const socket = net.createConnection(pipePath);
-        this.socket = socket;
-        socket.on("connect", () => {
-            if (this.stopped) { socket.destroy(); return; }
-            this.connected = true;
+
+        const startDecoder = (socket = null) => {
+            if (this.stopped) {
+                socket?.destroy();
+                return;
+            }
+
+            this.connected =
+                Boolean(socket);
             this.child = spawn(ffmpegPath, args, {
                 windowsHide: true,
                 stdio: ["ignore", "pipe", "pipe"]
             });
-            const child = this.child;
+
+            const child =
+                this.child;
+            let ffmpegError = "";
+
             child.stdout.on("data", (chunk) => {
                 if (this.stopped || this.child !== child) return;
+
                 this.meter.write(chunk);
                 this.audioBytesSent += chunk.length;
                 this.status = "FLOWING";
+
+                if (typeof onPcmData === "function") {
+                    try {
+                        onPcmData(
+                            chunk,
+                            this.sampleRate,
+                            this.channels
+                        );
+                    } catch {
+                        // Monitor local nunca pode interromper o playout.
+                    }
+                }
             });
-            child.stdout.pipe(socket, { end: true }); // built-in backpressure
-            let ffmpegError = "";
+
+            if (socket) {
+                child.stdout.pipe(
+                    socket,
+                    { end: true }
+                );
+            }
+
             child.stderr.on("data", data => {
-                ffmpegError = (ffmpegError + data.toString()).slice(-700);
+                ffmpegError =
+                    (ffmpegError + data.toString())
+                        .slice(-700);
             });
-            child.on("error", err => this.fail("FFmpeg áudio: " + err.message));
+
+            child.on(
+                "error",
+                err =>
+                    this.fail(
+                        "FFmpeg áudio: " +
+                        err.message
+                    )
+            );
+
             child.on("exit", (code, signal) => {
                 if (this.stopped || this.child !== child) return;
+
                 this.child = null;
-                this.status = code === 0 && !signal ? "ENDED" : "ERROR";
+                this.status =
+                    code === 0 && !signal
+                        ? "ENDED"
+                        : "ERROR";
+
                 if (this.status === "ERROR") {
-                    this.error = "Decodificação de áudio falhou: " +
-                        (ffmpegError || ("código " + code));
+                    this.error =
+                        "Decodificação de áudio falhou: " +
+                        (
+                            ffmpegError ||
+                            ("código " + code)
+                        );
                 }
-                socket.end();
+
+                socket?.end();
             });
+        };
+
+        if (!hasNdiPipe) {
+            startDecoder();
+            return this;
+        }
+
+        const socket =
+            net.createConnection(pipePath);
+        this.socket = socket;
+
+        socket.on("connect", () => {
+            startDecoder(socket);
         });
+
         socket.on("error", err => {
-            if (!this.stopped) this.fail("Pipe de áudio NDI: " + err.message);
+            if (!this.stopped) {
+                this.fail(
+                    "Pipe de áudio NDI: " +
+                    err.message
+                );
+            }
         });
+
         socket.on("close", () => {
             this.connected = false;
         });
+
         return this;
     }
 
@@ -164,7 +240,9 @@ class NdiAudioSource {
     stop() {
         this.stopped = true;
         if (this.child) {
-            this.child.stdout.unpipe(this.socket);
+            if (this.socket) {
+                this.child.stdout.unpipe(this.socket);
+            }
             if (!this.child.killed) this.child.kill();
         }
         if (this.socket) this.socket.destroy();
@@ -174,14 +252,22 @@ class NdiAudioSource {
     }
 
     snapshot() {
+        const meter =
+            this.meter.snapshot();
+
         return {
             state: this.status,
             error: this.error || null,
             connected: this.connected,
+            active:
+                this.status === "FLOWING" &&
+                meter.active === true,
+            routedToNdi:
+                this.connected,
             bytesSent: this.audioBytesSent,
             sampleRate: this.sampleRate,
             channels: this.channels,
-            ...this.meter.snapshot()
+            ...meter
         };
     }
 }
