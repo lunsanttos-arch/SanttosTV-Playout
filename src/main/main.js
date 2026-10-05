@@ -852,8 +852,13 @@ function buildProgramFilterGraph(
         );
     }
 
+    const previewFpsExpression =
+        profile.fpsN / profile.fpsD > 30
+            ? `${profile.fpsN}/${profile.fpsD * 2}`
+            : profile.fpsExpression;
+
     chains.push(
-        "[previewSource]scale=640:-2:flags=fast_bilinear,fps=25,format=yuvj420p[preview]"
+        `[previewSource]scale=640:-2:flags=fast_bilinear,fps=${previewFpsExpression},format=yuvj420p[preview]`
     );
 
     return chains.join(";");
