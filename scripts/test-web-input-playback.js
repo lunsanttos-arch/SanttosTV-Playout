@@ -541,6 +541,38 @@ async function main() {
                 "-"
             ]);
 
+            await runFfmpeg([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-nostdin",
+                "-fflags",
+                "+genpts+discardcorrupt",
+                ...remoteInputArgs(
+                    url,
+                    {
+                        protocolHint: "hls",
+                        realtime: true
+                    }
+                ),
+                "-ss",
+                "2.000",
+                "-i",
+                url,
+                "-t",
+                "0.5",
+                "-map",
+                "0:v:0",
+                "-an",
+                "-f",
+                "null",
+                "-"
+            ]);
+
+            console.log(
+                "WEB INPUT RESUME QA: HLS remoto aceita retomada a partir do timecode salvo."
+            );
+
             const controller =
                 new AbortController();
             const previewResponse =
