@@ -3239,23 +3239,33 @@ function PlayoutPanel({
 
                     <div className="program-media-row">
                         <div className="program-monitor">
-                        {nativeOutputEnabled &&
-                          nativeProgramPreviewUrl ? (
-                            <img
-                                className="program-video program-native-preview-frame"
-                                src={nativeProgramPreviewUrl}
-                                alt="Prévia exata do PROGRAM nativo"
-                                draggable={false}
-                            />
-                        ) : nativeOutputEnabled &&
-                          nativePlayout.state === "PLAYING" ? (
-                            <div className="program-live-input-preview program-native-preview-waiting">
-                                <strong>PROGRAM NO AR</strong>
-                                <span>Sincronizando monitor…</span>
-                                <small>
-                                    O NDI continua sendo alimentado pelo mesmo motor.
-                                </small>
-                            </div>
+                        {nativeOutputEnabled ? (
+                            nativeProgramPreviewUrl ? (
+                                <img
+                                    className="program-video program-native-preview-frame"
+                                    src={nativeProgramPreviewUrl}
+                                    alt="Prévia exata do PROGRAM nativo"
+                                    draggable={false}
+                                />
+                            ) : (
+                                <div className="program-live-input-preview program-native-preview-waiting">
+                                    <strong>
+                                        {nativePlayout.state === "PLAYING"
+                                            ? "PROGRAM NO AR"
+                                            : nativePlayout.state === "PAUSED"
+                                              ? "PROGRAM PAUSADO"
+                                              : "PROGRAM OFF AIR"}
+                                    </strong>
+                                    <span>
+                                        {nativePlayout.state === "PLAYING"
+                                            ? "Sincronizando monitor…"
+                                            : "Aguardando o motor nativo."}
+                                    </span>
+                                    <small>
+                                        O monitor mostra somente os quadros reais do PROGRAM.
+                                    </small>
+                                </div>
+                            )
                         ) : selectedMediaUrl ? (
                             <>
                                 <video
