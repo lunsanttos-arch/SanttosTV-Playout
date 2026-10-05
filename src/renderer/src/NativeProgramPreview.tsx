@@ -211,9 +211,7 @@ export default function NativeProgramPreview({
                         setHasFrame(true);
                     }
 
-                    if (decodeError) {
-                        setDecodeError("");
-                    }
+                    setDecodeError("");
                 } finally {
                     bitmap.close();
                 }
