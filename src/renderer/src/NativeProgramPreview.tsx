@@ -154,64 +154,62 @@ export default function NativeProgramPreview({
                     );
 
                 try {
-                    if (
-                        !mountedRef.current ||
-                        sequence !==
-                            activeSequenceRef.current
-                    ) {
-                        continue;
-                    }
-
                     const canvas =
                         canvasRef.current;
-
-                    if (!canvas) {
-                        continue;
-                    }
-
-                    if (
-                        canvas.width !==
-                            bitmap.width ||
-                        canvas.height !==
-                            bitmap.height
-                    ) {
-                        canvas.width =
-                            bitmap.width;
-                        canvas.height =
-                            bitmap.height;
-                    }
-
-                    const context =
-                        canvas.getContext(
-                            "2d",
-                            {
-                                alpha: false
-                            }
-                        );
-
-                    if (!context) {
-                        throw new Error(
-                            "Canvas 2D indisponível."
-                        );
-                    }
-
-                    context.drawImage(
-                        bitmap,
-                        0,
-                        0,
-                        canvas.width,
-                        canvas.height
-                    );
+                    const shouldDraw =
+                        mountedRef.current &&
+                        sequence ===
+                            activeSequenceRef.current &&
+                        Boolean(canvas);
 
                     if (
-                        !hasFrameRef.current
+                        shouldDraw &&
+                        canvas
                     ) {
-                        hasFrameRef.current =
-                            true;
-                        setHasFrame(true);
-                    }
+                        if (
+                            canvas.width !==
+                                bitmap.width ||
+                            canvas.height !==
+                                bitmap.height
+                        ) {
+                            canvas.width =
+                                bitmap.width;
+                            canvas.height =
+                                bitmap.height;
+                        }
 
-                    setDecodeError("");
+                        const context =
+                            canvas.getContext(
+                                "2d",
+                                {
+                                    alpha: false
+                                }
+                            );
+
+                        if (!context) {
+                            throw new Error(
+                                "Canvas 2D indisponível."
+                            );
+                        }
+
+                        context.drawImage(
+                            bitmap,
+                            0,
+                            0,
+                            canvas.width,
+                            canvas.height
+                        );
+
+                        if (
+                            !hasFrameRef.current
+                        ) {
+                            hasFrameRef.current =
+                                true;
+                            setHasFrame(true);
+                        }
+
+                        setDecodeError("");
+                    }
                 } finally {
                     bitmap.close();
                 }
