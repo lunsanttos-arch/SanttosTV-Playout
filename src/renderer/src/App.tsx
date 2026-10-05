@@ -1570,6 +1570,48 @@ function PlayoutPanel({
         currentTime
     );
 
+    const topbarUntilAtMs = (() => {
+        if (
+            !freezeCountdown.hasUpcomingFreeze
+        ) {
+            return timelineForecast.endsAtMs;
+        }
+
+        const selectedIndex =
+            selectedMedia
+                ? timelineQueue.findIndex(
+                      (item) =>
+                          item.id ===
+                          selectedMedia.id
+                  )
+                : -1;
+
+        const upcomingFreeze =
+            timelineQueue
+                .slice(
+                    Math.max(
+                        0,
+                        selectedIndex
+                    )
+                )
+                .find(
+                    (item) =>
+                        item.freezeEnd ===
+                        true
+                );
+
+        if (!upcomingFreeze) {
+            return null;
+        }
+
+        return (
+            timelineForecast.entries.get(
+                upcomingFreeze.id
+            )?.endsAtMs ??
+            null
+        );
+    })();
+
     function describeForecast(item: MediaItem | null, isCurrent = false): string {
         if (!item) return "Nenhum próximo vídeo";
         return describeForecastEntry(
@@ -1580,51 +1622,10 @@ function PlayoutPanel({
     }
 
     useEffect(() => {
-        let liveUntilAtMs =
-            timelineForecast.endsAtMs;
-
-        if (
-            freezeCountdown.hasUpcomingFreeze
-        ) {
-            const selectedIndex =
-                selectedMedia
-                    ? timelineQueue.findIndex(
-                          (item) =>
-                              item.id ===
-                              selectedMedia.id
-                      )
-                    : -1;
-
-            const upcomingFreeze =
-                timelineQueue
-                    .slice(
-                        Math.max(
-                            0,
-                            selectedIndex
-                        )
-                    )
-                    .find(
-                        (item) =>
-                            item.freezeEnd ===
-                            true
-                    );
-
-            const freezeEntry =
-                upcomingFreeze
-                    ? timelineForecast.entries.get(
-                          upcomingFreeze.id
-                      )
-                    : undefined;
-
-            liveUntilAtMs =
-                freezeEntry?.endsAtMs ??
-                null;
-        }
-
         onScheduleSummary(
             plannedSchedule.totalSeconds,
             plannedSchedule.blocker,
-            liveUntilAtMs,
+            topbarUntilAtMs,
             freezeCountdown.hasUpcomingFreeze,
             freezeCountdown.seconds,
             timelineForecast.isLive
@@ -1633,13 +1634,10 @@ function PlayoutPanel({
         plannedSchedule.totalSeconds,
         plannedSchedule.end,
         plannedSchedule.blocker,
+        topbarUntilAtMs,
         freezeCountdown.hasUpcomingFreeze,
         freezeCountdown.seconds,
-        timelineForecast.endsAtMs,
         timelineForecast.isLive,
-        timelineForecast.entries,
-        selectedMedia?.id,
-        timelineQueue,
         onScheduleSummary
     ]);
 
