@@ -384,6 +384,18 @@ declare global {
                     sequence: number;
                 }) => void
             ) => () => void;
+            onProgramPreviewFrame: (
+                callback: (payload: {
+                    sequence: number;
+                    mime: string;
+                    data: Uint8Array | ArrayBuffer;
+                }) => void
+            ) => () => void;
+            onProgramPreviewReset: (
+                callback: (payload: {
+                    sequence: number;
+                }) => void
+            ) => () => void;
             startPlayoutReport: (
                 mediaItem: MediaItem & {
                     plannedDurationSeconds: number;
@@ -1003,6 +1015,74 @@ function PlayoutPanel({
         const interval = window.setInterval(() => setTimelineClock(Date.now()), 1000);
         return () => window.clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        const replacePreviewUrl = (
+            nextUrl: string
+        ) => {
+            const previous =
+                nativeProgramPreviewUrlRef.current;
+
+            nativeProgramPreviewUrlRef.current =
+                nextUrl;
+            setNativeProgramPreviewUrl(
+                nextUrl
+            );
+
+            if (
+                previous &&
+                previous !== nextUrl
+            ) {
+                URL.revokeObjectURL(
+                    previous
+                );
+            }
+        };
+
+        const unsubscribeFrame =
+            window.santtosAPI
+                .onProgramPreviewFrame(
+                    (payload) => {
+                        const bytes =
+                            payload.data instanceof
+                            Uint8Array
+                                ? payload.data
+                                : new Uint8Array(
+                                      payload.data
+                                  );
+                        const blob =
+                            new Blob(
+                                [bytes],
+                                {
+                                    type:
+                                        payload.mime ||
+                                        "image/jpeg"
+                                }
+                            );
+                        replacePreviewUrl(
+                            URL.createObjectURL(
+                                blob
+                            )
+                        );
+                    }
+                );
+
+        const unsubscribeReset =
+            window.santtosAPI
+                .onProgramPreviewReset(
+                    () => {
+                        replacePreviewUrl(
+                            ""
+                        );
+                    }
+                );
+
+        return () => {
+            unsubscribeFrame();
+            unsubscribeReset();
+            replacePreviewUrl("");
+        };
+    }, []);
     const [duration, setDuration] =
         useState(0);
     const [isPlaying, setIsPlaying] =
@@ -1026,6 +1106,10 @@ function PlayoutPanel({
         useState<Record<string, string>>({});
     const [previewError, setPreviewError] = useState("");
     const [previewPreparing, setPreviewPreparing] = useState(false);
+    const [nativeProgramPreviewUrl, setNativeProgramPreviewUrl] =
+        useState("");
+    const nativeProgramPreviewUrlRef =
+        useRef("");
     const [editingFilm, setEditingFilm] =
         useState<MediaItem | null>(null);
     const clipAdvanceGuardRef = useRef(false);
@@ -1630,6 +1714,11 @@ function PlayoutPanel({
             atMs: sampledAtMs
         };
 
+        setIsPlaying(
+            nativePlayout.state ===
+                "PLAYING"
+        );
+
         const video = videoRef.current;
         if (!video) return;
 
@@ -1657,7 +1746,6 @@ function PlayoutPanel({
             }
         }
 
-        setIsPlaying(nativePlayout.state === "PLAYING");
     }, [
         nativeOutputEnabled,
         nativePlayout.generation,
@@ -3145,7 +3233,24 @@ function PlayoutPanel({
 
                     <div className="program-media-row">
                         <div className="program-monitor">
-                        {selectedMediaUrl ? (
+                        {nativeOutputEnabled &&
+                          nativeProgramPreviewUrl ? (
+                            <img
+                                className="program-video program-native-preview-frame"
+                                src={nativeProgramPreviewUrl}
+                                alt="Prévia exata do PROGRAM nativo"
+                                draggable={false}
+                            />
+                        ) : nativeOutputEnabled &&
+                          nativePlayout.state === "PLAYING" ? (
+                            <div className="program-live-input-preview program-native-preview-waiting">
+                                <strong>PROGRAM NO AR</strong>
+                                <span>Sincronizando monitor…</span>
+                                <small>
+                                    O NDI continua sendo alimentado pelo mesmo motor.
+                                </small>
+                            </div>
+                        ) : selectedMediaUrl ? (
                             <>
                                 <video
                                     id="program-video"
