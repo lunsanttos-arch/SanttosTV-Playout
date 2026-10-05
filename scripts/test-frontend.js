@@ -149,6 +149,12 @@ assert(app.includes("nativePlayout.state === \"PLAYING\"") &&
     app.includes("pauseNdiFile"),
     "PROGRAM deve ser controlado pelo motor nativo, incluindo pausa e fim de bloco.");
 assert(
+    electronMain.includes("isHlsInput(") &&
+    electronMain.includes('preferredInputEngine === "auto"') &&
+    electronMain.includes('selectedInputEngine =\n                    "vlc"'),
+    "Input HLS em AUTO deve usar o mesmo motor VLC com ou sem prebuffer para preservar sincronismo A/V."
+);
+assert(
     electronMain.includes('pausedPlayout.state === "PAUSED"') &&
     electronMain.includes("samePausedItem") &&
     electronMain.includes("pausedPlayout.positionSeconds") &&
