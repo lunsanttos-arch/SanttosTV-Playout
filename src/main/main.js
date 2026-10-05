@@ -1200,10 +1200,12 @@ async function startNativePlayback(
 
     if (isRemoteInput) {
         const warmed =
-            inputPrebuffer.take(
-                filePath,
-                programState
-            );
+            samePausedItem
+                ? null
+                : inputPrebuffer.take(
+                      filePath,
+                      programState
+                  );
 
         if (warmed) {
             resolvedRemoteInput =
@@ -1292,7 +1294,11 @@ async function startNativePlayback(
                                         ? ""
                                         : resolvedRemoteInput.referer,
                                 withAudioCopy:
-                                    true
+                                    true,
+                            startTimeSeconds:
+                                    samePausedItem
+                                        ? normalizedStartSeconds
+                                        : 0
                             }
                         );
 
@@ -1409,7 +1415,10 @@ async function startNativePlayback(
 
     if (
         normalizedStartSeconds > 0 &&
-        !isRemoteInput
+        (
+            !isRemoteInput ||
+            samePausedItem
+        )
     ) {
         args.push(
             "-ss",
@@ -1595,6 +1604,11 @@ async function startNativePlayback(
                 activeVlcInputBridge
                     ? ""
                     : resolvedRemoteInput?.cookie ?? "",
+            seekRemote:
+                Boolean(
+                    samePausedItem &&
+                    !activeVlcInputBridge
+                ),
             onPcmData:
                 sendProgramAudioPcm
         }).start();
