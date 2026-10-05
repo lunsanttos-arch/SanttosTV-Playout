@@ -850,6 +850,26 @@ button {
 
     background: #000000;
 }
+
+.program-native-preview {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000000;
+}
+
+.program-native-preview-canvas {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    image-rendering: auto;
+}
+
+.program-native-preview .program-native-preview-waiting {
+    position: absolute;
+    inset: 0;
+}
 .timeline-item {
     display: flex;
     align-items: center;

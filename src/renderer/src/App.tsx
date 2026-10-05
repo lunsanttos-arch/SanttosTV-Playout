@@ -10,6 +10,7 @@ import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
 import WebInputsPanel from "./WebInputsPanel";
 import ProgramAudioMeters from "./ProgramAudioMeters";
+import NativeProgramPreview from "./NativeProgramPreview";
 import type { NativeAudioStatus } from "./ProgramAudioMeters";
 import { buildTimelineForecast, buildPlannedSchedule, buildFreezeCountdown, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
 import type { PlannedScheduleBlocker } from "./timeline-forecast";
@@ -1016,79 +1017,6 @@ function PlayoutPanel({
         return () => window.clearInterval(interval);
     }, []);
 
-    useEffect(() => {
-        const replacePreviewUrl = (
-            nextUrl: string
-        ) => {
-            const previous =
-                nativeProgramPreviewUrlRef.current;
-
-            nativeProgramPreviewUrlRef.current =
-                nextUrl;
-            setNativeProgramPreviewUrl(
-                nextUrl
-            );
-
-            if (
-                previous &&
-                previous !== nextUrl
-            ) {
-                URL.revokeObjectURL(
-                    previous
-                );
-            }
-        };
-
-        const unsubscribeFrame =
-            window.santtosAPI
-                .onProgramPreviewFrame(
-                    (payload) => {
-                        const bytes =
-                            payload.data instanceof
-                            Uint8Array
-                                ? payload.data
-                                : new Uint8Array(
-                                      payload.data
-                                  );
-                        const copy =
-                            new Uint8Array(
-                                bytes.byteLength
-                            );
-                        copy.set(bytes);
-
-                        const blob =
-                            new Blob(
-                                [copy.buffer],
-                                {
-                                    type:
-                                        payload.mime ||
-                                        "image/jpeg"
-                                }
-                            );
-                        replacePreviewUrl(
-                            URL.createObjectURL(
-                                blob
-                            )
-                        );
-                    }
-                );
-
-        const unsubscribeReset =
-            window.santtosAPI
-                .onProgramPreviewReset(
-                    () => {
-                        replacePreviewUrl(
-                            ""
-                        );
-                    }
-                );
-
-        return () => {
-            unsubscribeFrame();
-            unsubscribeReset();
-            replacePreviewUrl("");
-        };
-    }, []);
     const [duration, setDuration] =
         useState(0);
     const [isPlaying, setIsPlaying] =
@@ -1112,10 +1040,6 @@ function PlayoutPanel({
         useState<Record<string, string>>({});
     const [previewError, setPreviewError] = useState("");
     const [previewPreparing, setPreviewPreparing] = useState(false);
-    const [nativeProgramPreviewUrl, setNativeProgramPreviewUrl] =
-        useState("");
-    const nativeProgramPreviewUrlRef =
-        useRef("");
     const [editingFilm, setEditingFilm] =
         useState<MediaItem | null>(null);
     const clipAdvanceGuardRef = useRef(false);
@@ -3240,32 +3164,9 @@ function PlayoutPanel({
                     <div className="program-media-row">
                         <div className="program-monitor">
                         {nativeOutputEnabled ? (
-                            nativeProgramPreviewUrl ? (
-                                <img
-                                    className="program-video program-native-preview-frame"
-                                    src={nativeProgramPreviewUrl}
-                                    alt="Prévia exata do PROGRAM nativo"
-                                    draggable={false}
-                                />
-                            ) : (
-                                <div className="program-live-input-preview program-native-preview-waiting">
-                                    <strong>
-                                        {nativePlayout.state === "PLAYING"
-                                            ? "PROGRAM NO AR"
-                                            : nativePlayout.state === "PAUSED"
-                                              ? "PROGRAM PAUSADO"
-                                              : "PROGRAM OFF AIR"}
-                                    </strong>
-                                    <span>
-                                        {nativePlayout.state === "PLAYING"
-                                            ? "Sincronizando monitor…"
-                                            : "Aguardando o motor nativo."}
-                                    </span>
-                                    <small>
-                                        O monitor mostra somente os quadros reais do PROGRAM.
-                                    </small>
-                                </div>
-                            )
+                            <NativeProgramPreview
+                                state={nativePlayout.state}
+                            />
                         ) : selectedMediaUrl ? (
                             <>
                                 <video
