@@ -149,6 +149,13 @@ assert(app.includes("nativePlayout.state === \"PLAYING\"") &&
     app.includes("pauseNdiFile"),
     "PROGRAM deve ser controlado pelo motor nativo, incluindo pausa e fim de bloco.");
 assert(
+    electronMain.includes("const previewFpsExpression =") &&
+    electronMain.includes("profile.fpsN / profile.fpsD > 30") &&
+    electronMain.includes("fps=${previewFpsExpression}") &&
+    !electronMain.includes("fps=25,format=yuvj420p[preview]"),
+    "Preview do PROGRAM deve seguir a cadência real da saída, limitado a meia cadência acima de 30 fps."
+);
+assert(
     electronMain.includes("isHlsInput(") &&
     electronMain.includes('preferredInputEngine === "auto"') &&
     electronMain.includes('selectedInputEngine =\n                    "vlc"'),
