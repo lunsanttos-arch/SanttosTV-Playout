@@ -1462,7 +1462,17 @@ async function startNativePlayback(
         profile.ffmpegPixelFormat,
         "-f",
         "rawvideo",
-        "pipe:1",
+        "pipe:1"
+    );
+
+    if (clipRemainingSeconds !== null) {
+        args.push(
+            "-t",
+            clipRemainingSeconds.toFixed(3)
+        );
+    }
+
+    args.push(
         "-map",
         "[preview]",
         "-an",
