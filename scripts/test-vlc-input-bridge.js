@@ -154,6 +154,24 @@ assert(
     )
 );
 
+const resumedArgs =
+    buildVlcArgs(
+        "https://example.com/vod.m3u8",
+        {
+            videoPort: 32011,
+            audioPort: 32012,
+            startTimeSeconds:
+                17.25
+        }
+    );
+
+assert(
+    resumedArgs.includes(
+        "--start-time=17.250"
+    ),
+    "PAUSE -> PLAY de Input Web via VLC deve reabrir a fonte no timecode salvo."
+);
+
 assert.equal(
     udpInputUrl(32001),
     "udp://127.0.0.1:32001?overrun_nonfatal=1&fifo_size=5000000"
