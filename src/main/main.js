@@ -19,6 +19,7 @@ const {
 } = require("../core/media/web-input-preview");
 const {
     isRemoteInputUrl,
+    isHlsInput,
     describeRemoteInputError,
     remoteInputArgs
 } = require("../core/playout/remote-input");
@@ -1254,6 +1255,28 @@ async function startNativePlayback(
                     resolvedRemoteInput.provider,
                     Boolean(vlcPath)
                 );
+
+            const preferredInputEngine =
+                String(
+                    programState.inputEngine ??
+                    "auto"
+                ).toLowerCase();
+
+            // Mantém o mesmo motor com ou sem prebuffer. Para HLS em AUTO,
+            // o VLC funciona como tuner único e entrega vídeo/áudio na mesma
+            // referência de tempo, evitando diferenças de partida entre dois
+            // decoders HTTP independentes.
+            if (
+                preferredInputEngine === "auto" &&
+                vlcPath &&
+                isHlsInput(
+                    resolvedRemoteInput.url,
+                    programState.inputProtocol
+                )
+            ) {
+                selectedInputEngine =
+                    "vlc";
+            }
 
             let sourceForBridge =
                 resolvedRemoteInput.url;
