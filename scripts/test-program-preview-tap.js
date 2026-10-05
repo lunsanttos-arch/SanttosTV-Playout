@@ -97,6 +97,8 @@ try {
             "rawvideo",
             "-y",
             raw,
+            "-t",
+            "0.4",
             "-map",
             "[preview]",
             "-an",
