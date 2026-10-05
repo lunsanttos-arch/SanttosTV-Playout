@@ -1988,14 +1988,7 @@ function PlayoutPanel({
             );
         }
 
-        if (result.playout) {
-            // Atualiza o estado autoritativo imediatamente. Isso elimina a
-            // janela do polling em que PAUSE já aconteceu no backend, mas a
-            // interface ainda poderia enxergar PLAYING.
-            setNativePlayout(
-                result.playout
-            );
-        }
+        return result;
     }
 
     // Só FAULT real do motor derruba o PROGRAM. PAUSED pode ser uma
@@ -2269,13 +2262,20 @@ function PlayoutPanel({
         try {
             if (nativeOutputEnabled) {
                 // PROGRAM nasce no motor nativo. O Chromium é apenas preview.
-                await startNativeNdi(
-                    mediaToPlay,
-                    resumeAt
+                const nativeStart =
+                    await startNativeNdi(
+                        mediaToPlay,
+                        resumeAt
+                    );
+                const authoritativeStart =
+                    nativeStart?.playout?.positionSeconds ??
+                    resumeAt;
+                setCurrentTime(
+                    authoritativeStart
                 );
-                setCurrentTime(resumeAt);
                 lastProgressRef.current = {
-                    position: resumeAt,
+                    position:
+                        authoritativeStart,
                     atMs: Date.now()
                 };
                 setIsPlaying(true);
@@ -2284,7 +2284,8 @@ function PlayoutPanel({
 
                 if (video) {
                     try {
-                        video.currentTime = resumeAt;
+                        video.currentTime =
+                            authoritativeStart;
                         await video.play();
                     } catch {
                         setPreviewError(
@@ -2330,11 +2331,6 @@ function PlayoutPanel({
         if (nativeOutputEnabled) {
             const result = await window.santtosAPI.pauseNdiFile();
             if (result.playout) {
-                // Não espere o polling de 250 ms: PAUSED e o timecode salvo
-                // precisam entrar na UI no mesmo clique do operador.
-                setNativePlayout(
-                    result.playout
-                );
                 setCurrentTime(
                     result.playout.positionSeconds
                 );
