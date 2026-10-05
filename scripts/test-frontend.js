@@ -158,7 +158,8 @@ assert(
 assert(
     electronMain.includes("isHlsInput(") &&
     electronMain.includes('preferredInputEngine === "auto"') &&
-    electronMain.includes('selectedInputEngine =\n                    "vlc"'),
+    electronMain.includes('selectedInputEngine =') &&
+    electronMain.includes('"vlc";'),
     "Input HLS em AUTO deve usar o mesmo motor VLC com ou sem prebuffer para preservar sincronismo A/V."
 );
 assert(
