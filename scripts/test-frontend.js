@@ -189,6 +189,12 @@ assert(
     !app.includes("start.getTime() +") ,
     "Topbar ATÉ deve mostrar o horário real estimado do PROGRAM, não duração somada ao início 00:00."
 );
+assert(
+    app.includes("lastLiveTopbarUntilAtMsRef") &&
+    app.includes('nativePlayout.state === "PAUSED"') &&
+    app.includes("topbarUntilAtMsWithPause"),
+    "Ao pausar, o ATÉ deve manter o último horário estimado em vez de ficar vazio."
+);
 assert(app.includes("forecastRunning") &&
     app.includes("Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000"),
     "Previsão ESTIMADA deve invalidar dados obsoletos, sem apagar o horário PROGRAMADO.");
