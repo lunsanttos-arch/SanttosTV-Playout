@@ -734,8 +734,11 @@ export default function App() {
                 : "SEM PREVISÃO"
             : programmedBlocker === "loop" ? "LOOP"
             : programmedBlocker !== null ? "SEM PREVISÃO"
-            : programmedEndAtMs !== null
-              ? formatProgrammedDuration(programmedRemainingSeconds)
+            : programmedRemainingSeconds > 0 ||
+              programmedLive
+              ? formatProgrammedDuration(
+                    programmedRemainingSeconds
+                )
               : "--:--:--";
     const programmedDurationTitle =
         programmedHasFreeze
