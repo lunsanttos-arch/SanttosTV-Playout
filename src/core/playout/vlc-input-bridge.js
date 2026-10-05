@@ -257,7 +257,8 @@ function buildVlcArgs(
         audioPort = null,
         userAgent = "",
         referer = "",
-        networkCachingMs = 1200
+        networkCachingMs = 1200,
+        startTimeSeconds = 0
     } = {}
 ) {
     if (
@@ -334,6 +335,22 @@ function buildVlcArgs(
         );
     }
 
+    const normalizedStartTime =
+        Number.isFinite(
+            Number(startTimeSeconds)
+        )
+            ? Math.max(
+                  0,
+                  Number(startTimeSeconds)
+              )
+            : 0;
+
+    if (normalizedStartTime > 0) {
+        args.push(
+            `--start-time=${normalizedStartTime.toFixed(3)}`
+        );
+    }
+
     args.push(
         sourceUrl,
         `--sout=${vlcSout(
@@ -360,6 +377,7 @@ async function startVlcInputBridge(
         referer = "",
         withAudioCopy = true,
         networkCachingMs = 1200,
+        startTimeSeconds = 0,
         spawnImpl = spawn
     } = {}
 ) {
@@ -388,7 +406,8 @@ async function startVlcInputBridge(
                 audioPort,
                 userAgent,
                 referer,
-                networkCachingMs
+                networkCachingMs,
+                startTimeSeconds
             }
         );
 
