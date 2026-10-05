@@ -1122,13 +1122,35 @@ async function startNativePlayback(
     // O caminho já foi validado no scanner assíncrono da Biblioteca; no PLAY,
     // o FFmpeg passa a ser a fonte de verdade e reporta falha sem congelar a UI.
 
-    const normalizedStartSeconds =
+    const requestedStartSeconds =
         Number.isFinite(Number(startSeconds))
             ? Math.max(
                   0,
                   Number(startSeconds)
               )
             : 0;
+
+    // PAUSE -> PLAY precisa ser decidido pelo relógio autoritativo do motor,
+    // não por um estado React que pode estar até um ciclo de polling atrasado.
+    // Se o mesmo item continua pausado, sempre retomamos do timecode salvo no
+    // NativePlayoutEngine, mesmo que o renderer envie startSeconds antigo.
+    const pausedPlayout =
+        playoutEngine.snapshot();
+    const requestedItemId =
+        typeof overlayState?.itemId === "string"
+            ? overlayState.itemId
+            : null;
+    const samePausedItem =
+        pausedPlayout.state === "PAUSED" &&
+        pausedPlayout.filePath === filePath &&
+        (
+            requestedItemId === null ||
+            pausedPlayout.itemId === requestedItemId
+        );
+    const normalizedStartSeconds =
+        samePausedItem
+            ? pausedPlayout.positionSeconds
+            : requestedStartSeconds;
 
     if (
         !ndiReady ||
@@ -1908,7 +1930,9 @@ async function startNativePlayback(
         ok: true,
         filePath,
         startSeconds:
-            normalizedStartSeconds
+            normalizedStartSeconds,
+        playout:
+            playoutEngine.snapshot()
     };
 }
 
