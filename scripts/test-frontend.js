@@ -195,6 +195,14 @@ assert(
     app.includes("topbarUntilAtMsWithPause"),
     "Ao pausar, o ATÉ deve manter o último horário estimado em vez de ficar vazio."
 );
+assert(
+    app.includes("lastLiveProgrammedRemainingSecondsRef") &&
+    app.includes("topbarProgrammedRemainingSeconds") &&
+    app.includes("timelineForecast.remainingSeconds") &&
+    app.includes("programIsPaused") &&
+    app.includes("plannedSchedule.totalSeconds"),
+    "PROGRAMADO deve contar o tempo restante ao vivo, congelar no PAUSE e usar a duração total antes do PLAY."
+);
 assert(app.includes("forecastRunning") &&
     app.includes("Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000"),
     "Previsão ESTIMADA deve invalidar dados obsoletos, sem apagar o horário PROGRAMADO.");
