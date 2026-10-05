@@ -2450,7 +2450,10 @@ function PlayoutPanel({
     ) {
         setFreezeHoldItemId(null);
 
-        await finishExecutionReport(
+        // Relatório não pode bloquear o corte do PROGRAM.
+        // finishExecutionReport limpa o report ativo de forma síncrona
+        // antes de aguardar o IPC/banco, então podemos concluir em paralelo.
+        void finishExecutionReport(
             reason === "completed" ? "EXECUTADO" : "PULADO",
             selectedMedia,
             reason === "completed"
@@ -2511,13 +2514,17 @@ function PlayoutPanel({
             )
         );
         clipAdvanceGuardRef.current = false;
-        await delay(120);
 
         if (nativeOutputEnabled) {
+            // O motor nativo não depende do DOM/React para trocar de mídia.
+            // Não espere os 120 ms do player de prévia: abre o próximo
+            // decoder imediatamente e mantém o último frame até o novo chegar.
             await startNativeNdi(
                 nextToPlay,
                 nextIn
             );
+        } else {
+            await delay(120);
         }
 
         if (

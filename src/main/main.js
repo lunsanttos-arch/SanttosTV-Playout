@@ -976,8 +976,8 @@ function stopNativePlayback({ engineAction = "stop" } = {}) {
     }
 
     if (
-        engineAction !==
-        "pause"
+        engineAction ===
+        "stop"
     ) {
         sendProgramPreviewReset();
     }
