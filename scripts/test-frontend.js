@@ -206,8 +206,9 @@ assert(
 assert(
     app.includes("void finishExecutionReport(") &&
     app.includes("O motor nativo não depende do DOM/React para trocar de mídia.") &&
-    app.includes("} else {\n            await delay(120);") &&
-    electronMain.includes('engineAction === "stop"') &&
+    app.includes("await delay(120);") &&
+    app.indexOf("await startNativeNdi(") < app.indexOf("await delay(120);", app.indexOf("async function playNextMedia")) &&
+    electronMain.includes('engineAction ===\n        "stop"') &&
     electronMain.includes("sendProgramPreviewReset()"),
     "CUT nativo não pode esperar relatório/React e deve manter o último frame até o próximo decoder entregar imagem."
 );
