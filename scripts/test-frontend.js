@@ -203,6 +203,14 @@ assert(
     app.includes("plannedSchedule.totalSeconds"),
     "PROGRAMADO deve contar o tempo restante ao vivo, congelar no PAUSE e usar a duração total antes do PLAY."
 );
+assert(
+    app.includes("void finishExecutionReport(") &&
+    app.includes("O motor nativo não depende do DOM/React para trocar de mídia.") &&
+    app.includes("} else {\n            await delay(120);") &&
+    electronMain.includes('engineAction === "stop"') &&
+    electronMain.includes("sendProgramPreviewReset()"),
+    "CUT nativo não pode esperar relatório/React e deve manter o último frame até o próximo decoder entregar imagem."
+);
 assert(app.includes("forecastRunning") &&
     app.includes("Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000"),
     "Previsão ESTIMADA deve invalidar dados obsoletos, sem apagar o horário PROGRAMADO.");
