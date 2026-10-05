@@ -373,16 +373,23 @@ assert(
     electronMain.includes("sendProgramAudioPcm"),
     "Monitor de áudio deve tocar e medir o PCM real do PROGRAM, sem usar a prévia como falsa saída."
 );
+const nativeProgramPreview = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "NativeProgramPreview.tsx"),
+    "utf8"
+);
 assert(
-    app.includes("onProgramPreviewFrame") &&
-    app.includes("nativeProgramPreviewUrl") &&
-    app.includes("Prévia exata do PROGRAM nativo") &&
+    app.includes("NativeProgramPreview") &&
+    nativeProgramPreview.includes("onProgramPreviewFrame") &&
+    nativeProgramPreview.includes("createImageBitmap") &&
+    nativeProgramPreview.includes("program-native-preview-canvas") &&
+    nativeProgramPreview.includes("pendingFrameRef") &&
+    !nativeProgramPreview.includes("URL.createObjectURL") &&
     preload.includes("playout:preview-frame") &&
     preload.includes("playout:preview-reset") &&
     electronMain.includes("sendProgramPreviewFrame") &&
     electronMain.includes("pipe:3") &&
     electronMain.includes("[preview]"),
-    "Preview do PROGRAM deve vir do mesmo FFmpeg nativo por tap MJPEG, sem player HLS separado."
+    "Preview do PROGRAM deve vir do mesmo FFmpeg nativo por canvas, descartando frames atrasados sem blob URL revogado."
 );
 assert(
     watermarkSettings.includes('className="secondary-button"'),
