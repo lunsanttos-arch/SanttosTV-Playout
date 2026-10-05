@@ -18,7 +18,8 @@ function audioFfmpegArgs(
     protocolHint = "",
     userAgent = "",
     referer = "",
-    cookie = ""
+    cookie = "",
+    seekRemote = false
 ) {
     if (typeof filePath !== "string" || !filePath) throw new Error("Mídia de áudio inválida.");
     const explicitStream = Number.isSafeInteger(streamIndex) &&
@@ -39,7 +40,10 @@ function audioFfmpegArgs(
     if (
         startSeconds > 0 &&
         Number.isFinite(startSeconds) &&
-        !remoteInput
+        (
+            !remoteInput ||
+            seekRemote
+        )
     ) {
         args.push(
             "-ss",
@@ -96,6 +100,7 @@ class NdiAudioSource {
         const { pipePath = "", ffmpegPath, filePath, streamIndex,
             startSeconds = 0, durationSeconds = null,
             protocolHint = "", userAgent = "", referer = "", cookie = "",
+            seekRemote = false,
             onPcmData = null } = this.options;
 
         const hasNdiPipe =
@@ -116,7 +121,8 @@ class NdiAudioSource {
             protocolHint,
             userAgent,
             referer,
-            cookie
+            cookie,
+            seekRemote
         );
 
         const startDecoder = (socket = null) => {
