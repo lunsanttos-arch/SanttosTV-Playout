@@ -148,6 +148,14 @@ assert(app.includes("nativePlayout.state === \"PLAYING\"") &&
     app.includes("onNativePlayoutEnded") &&
     app.includes("pauseNdiFile"),
     "PROGRAM deve ser controlado pelo motor nativo, incluindo pausa e fim de bloco.");
+assert(
+    electronMain.includes('pausedPlayout.state === "PAUSED"') &&
+    electronMain.includes("samePausedItem") &&
+    electronMain.includes("pausedPlayout.positionSeconds") &&
+    electronMain.includes("playout:\n            playoutEngine.snapshot()") &&
+    app.includes("setNativePlayout(\n                    result.playout\n                )"),
+    "PAUSE -> PLAY imediato deve retomar do timecode autoritativo salvo, sem depender do polling da UI."
+);
 assert(app.includes("program-progress-slider") &&
     app.includes("seekProgram") &&
     app.includes("seekNdiFile"),
