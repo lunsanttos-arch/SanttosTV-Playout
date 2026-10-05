@@ -75,6 +75,28 @@ assert(args.includes("pipe:1"));
 assert(args.includes("50.000"));
 assert(args.includes("11.000"));
 
+const remoteResumeArgs =
+    audioFfmpegArgs(
+        "https://example.com/vod.m3u8",
+        null,
+        11,
+        30,
+        48000,
+        2,
+        "hls",
+        "",
+        "",
+        "",
+        true
+    );
+
+assert(
+    remoteResumeArgs.includes(
+        "11.000"
+    ),
+    "Áudio do Input Web deve aplicar seek ao retomar um PAUSE."
+);
+
 const mono441 = audioFfmpegArgs("filme.mp4", 2, 0, null, 44100, 1);
 assert(mono441.includes("44100"));
 assert.deepEqual(
