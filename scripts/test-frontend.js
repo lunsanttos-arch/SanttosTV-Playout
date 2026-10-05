@@ -181,6 +181,14 @@ assert(app.includes("sampledAtMs: lastProgressRef.current.atMs"),
 assert(app.includes("programmedEndAtMs") &&
     !app.includes("timelineClock + delay * 1000"),
     "Relógio de entrada deve reutilizar ETA real e não o cálculo antigo.");
+assert(
+    app.includes("topbarUntilAtMs") &&
+    app.includes("timelineForecast.endsAtMs") &&
+    app.includes("timelineForecast.entries.get") &&
+    app.includes("formatEstimatedClock") &&
+    !app.includes("start.getTime() +") ,
+    "Topbar ATÉ deve mostrar o horário real estimado do PROGRAM, não duração somada ao início 00:00."
+);
 assert(app.includes("forecastRunning") &&
     app.includes("Math.abs(timelineClock - lastProgressRef.current.atMs) <= 4000"),
     "Previsão ESTIMADA deve invalidar dados obsoletos, sem apagar o horário PROGRAMADO.");

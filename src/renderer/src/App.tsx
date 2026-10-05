@@ -742,9 +742,13 @@ export default function App() {
             ? "ATÉ FREEZE"
             : "PROGRAMADO";
     const programmedUntilLabel =
-        programmedBlocker !== null ? "SEM PREVISÃO"
-            : programmedEndAtMs !== null
-              ? formatEstimatedClock(programmedEndAtMs, Date.now())
+        programmedEndAtMs !== null
+            ? formatEstimatedClock(
+                  programmedEndAtMs,
+                  Date.now()
+              )
+            : programmedBlocker !== null
+              ? "SEM PREVISÃO"
               : programmedLive
                 ? "SEM PREVISÃO"
                 : "AGUARDANDO REPRODUÇÃO";
@@ -1566,6 +1570,48 @@ function PlayoutPanel({
         currentTime
     );
 
+    const topbarUntilAtMs = (() => {
+        if (
+            !freezeCountdown.hasUpcomingFreeze
+        ) {
+            return timelineForecast.endsAtMs;
+        }
+
+        const selectedIndex =
+            selectedMedia
+                ? timelineQueue.findIndex(
+                      (item) =>
+                          item.id ===
+                          selectedMedia.id
+                  )
+                : -1;
+
+        const upcomingFreeze =
+            timelineQueue
+                .slice(
+                    Math.max(
+                        0,
+                        selectedIndex
+                    )
+                )
+                .find(
+                    (item) =>
+                        item.freezeEnd ===
+                        true
+                );
+
+        if (!upcomingFreeze) {
+            return null;
+        }
+
+        return (
+            timelineForecast.entries.get(
+                upcomingFreeze.id
+            )?.endsAtMs ??
+            null
+        );
+    })();
+
     function describeForecast(item: MediaItem | null, isCurrent = false): string {
         if (!item) return "Nenhum próximo vídeo";
         return describeForecastEntry(
@@ -1576,45 +1622,22 @@ function PlayoutPanel({
     }
 
     useEffect(() => {
-        let programmedEndAtMs: number | null = null;
-
-        if (
-            plannedSchedule.totalSeconds !== null
-        ) {
-            const startParts =
-                programmedStartTime
-                    .split(":")
-                    .map(Number);
-            const start =
-                new Date();
-            start.setHours(
-                startParts[0] || 0,
-                startParts[1] || 0,
-                0,
-                0
-            );
-
-            programmedEndAtMs =
-                start.getTime() +
-                plannedSchedule.totalSeconds *
-                    1000;
-        }
-
         onScheduleSummary(
             plannedSchedule.totalSeconds,
             plannedSchedule.blocker,
-            programmedEndAtMs,
+            topbarUntilAtMs,
             freezeCountdown.hasUpcomingFreeze,
             freezeCountdown.seconds,
-            true
+            timelineForecast.isLive
         );
     }, [
         plannedSchedule.totalSeconds,
         plannedSchedule.end,
         plannedSchedule.blocker,
+        topbarUntilAtMs,
         freezeCountdown.hasUpcomingFreeze,
         freezeCountdown.seconds,
-        programmedStartTime,
+        timelineForecast.isLive,
         onScheduleSummary
     ]);
 
