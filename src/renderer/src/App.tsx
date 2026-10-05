@@ -1050,6 +1050,7 @@ function PlayoutPanel({
     const [freezeHoldItemId, setFreezeHoldItemId] =
         useState<string | null>(null);
     const activeReportIdRef = useRef<string | null>(null);
+    const lastLiveTopbarUntilAtMsRef = useRef<number | null>(null);
     const preparedInputIdRef = useRef<string | null>(null);
     const [inputPrebufferState, setInputPrebufferState] =
         useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -1612,6 +1613,22 @@ function PlayoutPanel({
         );
     })();
 
+    if (
+        topbarUntilAtMs !== null &&
+        timelineForecast.isLive
+    ) {
+        lastLiveTopbarUntilAtMsRef.current =
+            topbarUntilAtMs;
+    }
+
+    const topbarUntilAtMsWithPause =
+        nativePlayout.state === "PAUSED"
+            ? (
+                  topbarUntilAtMs ??
+                  lastLiveTopbarUntilAtMsRef.current
+              )
+            : topbarUntilAtMs;
+
     function describeForecast(item: MediaItem | null, isCurrent = false): string {
         if (!item) return "Nenhum próximo vídeo";
         return describeForecastEntry(
@@ -1625,7 +1642,7 @@ function PlayoutPanel({
         onScheduleSummary(
             plannedSchedule.totalSeconds,
             plannedSchedule.blocker,
-            topbarUntilAtMs,
+            topbarUntilAtMsWithPause,
             freezeCountdown.hasUpcomingFreeze,
             freezeCountdown.seconds,
             timelineForecast.isLive
@@ -1634,7 +1651,7 @@ function PlayoutPanel({
         plannedSchedule.totalSeconds,
         plannedSchedule.end,
         plannedSchedule.blocker,
-        topbarUntilAtMs,
+        topbarUntilAtMsWithPause,
         freezeCountdown.hasUpcomingFreeze,
         freezeCountdown.seconds,
         timelineForecast.isLive,
