@@ -852,7 +852,7 @@ function buildProgramFilterGraph(
     }
 
     chains.push(
-        "[previewSource]scale=640:-2:flags=fast_bilinear,fps=15,format=yuvj420p[preview]"
+        "[previewSource]scale=640:-2:flags=fast_bilinear,fps=25,format=yuvj420p[preview]"
     );
 
     return chains.join(";");
