@@ -975,7 +975,12 @@ function stopNativePlayback({ engineAction = "stop" } = {}) {
         stopProgramPreviewFeed = null;
     }
 
-    sendProgramPreviewReset();
+    if (
+        engineAction !==
+        "pause"
+    ) {
+        sendProgramPreviewReset();
+    }
 
     if (audioSource) {
         audioSource.stop();
