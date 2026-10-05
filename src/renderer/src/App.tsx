@@ -1050,9 +1050,15 @@ function PlayoutPanel({
                                 : new Uint8Array(
                                       payload.data
                                   );
+                        const copy =
+                            new Uint8Array(
+                                bytes.byteLength
+                            );
+                        copy.set(bytes);
+
                         const blob =
                             new Blob(
-                                [bytes],
+                                [copy.buffer],
                                 {
                                     type:
                                         payload.mime ||
