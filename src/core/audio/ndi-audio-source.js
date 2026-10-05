@@ -27,15 +27,46 @@ function audioFfmpegArgs(
     const normalizedRate = [44100, 48000].includes(Number(sampleRate))
         ? Number(sampleRate) : 48000;
     const normalizedChannels = Number(channels) === 1 ? 1 : 2;
-    const args = [
-        "-hide_banner", "-loglevel", "warning", "-nostdin",
-        "-fflags", "+genpts",
-        "-re"
-    ];
+    const udpInput =
+        /^udp:\/\//i.test(
+            filePath
+        );
     const remoteInput =
         isRemoteInputUrl(
             filePath
         );
+
+    const args = [
+        "-hide_banner",
+        "-loglevel",
+        "warning",
+        "-nostdin",
+        "-fflags",
+        udpInput
+            ? "+genpts+discardcorrupt"
+            : "+genpts"
+    ];
+
+    // A ponte VLC já entrega UDP na cadência real. Aplicar -re novamente
+    // cria uma segunda régua de tempo e pode deixar o áudio atrás do vídeo.
+    if (!udpInput) {
+        args.push(
+            "-re"
+        );
+    }
+
+    if (udpInput) {
+        // Igual ao decoder de vídeo do PROGRAM: probe curto para não criar
+        // um buffer inicial diferente entre imagem e áudio.
+        args.push(
+            "-probesize",
+            "1000000",
+            "-analyzeduration",
+            "500000",
+            "-max_delay",
+            "0"
+        );
+    }
 
     if (
         startSeconds > 0 &&
@@ -72,10 +103,24 @@ function audioFfmpegArgs(
         args.push("-t", durationSeconds.toFixed(3));
     }
     args.push(
-        "-map", explicitStream ? "0:" + streamIndex : "0:a:0", "-vn", "-sn", "-dn",
-        "-ac", String(normalizedChannels), "-ar", String(normalizedRate),
-        "-c:a", "pcm_f32le",
-        "-f", "f32le", "pipe:1"
+        "-map",
+        explicitStream
+            ? "0:" + streamIndex
+            : "0:a:0",
+        "-vn",
+        "-sn",
+        "-dn",
+        "-af",
+        "aresample=async=1:first_pts=0",
+        "-ac",
+        String(normalizedChannels),
+        "-ar",
+        String(normalizedRate),
+        "-c:a",
+        "pcm_f32le",
+        "-f",
+        "f32le",
+        "pipe:1"
     );
     return args;
 }
