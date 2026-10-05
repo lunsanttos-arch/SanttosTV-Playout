@@ -44,6 +44,7 @@ const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
 const { NativePlayoutEngine } = require("../core/playout/native-playout-engine");
+const { JpegFrameParser } = require("../core/playout/program-preview-tap");
 const { videoFilterInput } = require("../core/playout/ffmpeg-stream-map");
 const {
     outputProfile,
@@ -268,6 +269,8 @@ let audioOutputStatus = "IDLE";
 let audioOutputError = "";
 let programAudioSequence = 0;
 let stopNdiFrameFeed = null;
+let stopProgramPreviewFeed = null;
+let programPreviewSequence = 0;
 let activeOutputProfile = outputProfile({});
 let activeOutputSignature = profileSignature(activeOutputProfile);
 const playoutEngine = new NativePlayoutEngine();
@@ -834,17 +837,69 @@ function buildProgramFilterGraph(
         }
     }
 
+    chains.push(
+        `[${current}]split=2[programSource][previewSource]`
+    );
+
     if (profile.scanMode === "interlaced") {
         chains.push(
-            `[${current}]tinterlace=mode=interleave_top,format=${profile.ffmpegPixelFormat}[program]`
+            `[programSource]tinterlace=mode=interleave_top,format=${profile.ffmpegPixelFormat}[program]`
         );
     } else {
         chains.push(
-            `[${current}]format=${profile.ffmpegPixelFormat}[program]`
+            `[programSource]format=${profile.ffmpegPixelFormat}[program]`
         );
     }
 
+    chains.push(
+        "[previewSource]scale=640:-2:flags=fast_bilinear,fps=25,format=yuvj420p[preview]"
+    );
+
     return chains.join(";");
+}
+
+function sendProgramPreviewReset() {
+    programPreviewSequence += 1;
+
+    if (
+        mainWindow &&
+        !mainWindow.isDestroyed()
+    ) {
+        mainWindow.webContents.send(
+            "playout:preview-reset",
+            {
+                sequence:
+                    programPreviewSequence
+            }
+        );
+    }
+}
+
+function sendProgramPreviewFrame(
+    frame
+) {
+    if (
+        !mainWindow ||
+        mainWindow.isDestroyed() ||
+        !Buffer.isBuffer(frame) ||
+        frame.length === 0
+    ) {
+        return;
+    }
+
+    mainWindow.webContents.send(
+        "playout:preview-frame",
+        {
+            sequence:
+                programPreviewSequence,
+            mime:
+                "image/jpeg",
+            data:
+                Uint8Array.from(
+                    frame
+                )
+        }
+    );
 }
 
 function sendProgramAudioReset() {
@@ -914,6 +969,19 @@ function stopNativePlayback({ engineAction = "stop" } = {}) {
         stopNdiFrameFeed();
         stopNdiFrameFeed = null;
     }
+
+    if (stopProgramPreviewFeed) {
+        stopProgramPreviewFeed();
+        stopProgramPreviewFeed = null;
+    }
+
+    if (
+        engineAction !==
+        "pause"
+    ) {
+        sendProgramPreviewReset();
+    }
+
     if (audioSource) {
         audioSource.stop();
         audioSource = null;
@@ -1397,6 +1465,28 @@ async function startNativePlayback(
         "pipe:1"
     );
 
+    if (clipRemainingSeconds !== null) {
+        args.push(
+            "-t",
+            clipRemainingSeconds.toFixed(3)
+        );
+    }
+
+    args.push(
+        "-map",
+        "[preview]",
+        "-an",
+        "-sn",
+        "-dn",
+        "-c:v",
+        "mjpeg",
+        "-q:v",
+        "5",
+        "-f",
+        "image2pipe",
+        "pipe:3"
+    );
+
     console.log(
         `Iniciando playout FFmpeg: ${path.basename(filePath)} @ ${normalizedStartSeconds.toFixed(3)}s` +
         ` | ${profile.resolution} ${profile.fpsText} ${profile.scanMode} ${profile.pixelFormat}` +
@@ -1410,6 +1500,7 @@ async function startNativePlayback(
             windowsHide: true,
             stdio: [
                 "ignore",
+                "pipe",
                 "pipe",
                 "pipe"
             ]
@@ -1572,6 +1663,51 @@ async function startNativePlayback(
     };
     processRef.stdout.on("data", onVideoBytes);
 
+    const previewPipe =
+        processRef.stdio[3];
+    const previewParser =
+        new JpegFrameParser(
+            (frame) => {
+                if (
+                    ffmpegProcess !==
+                    processRef
+                ) {
+                    return;
+                }
+
+                sendProgramPreviewFrame(
+                    frame
+                );
+            }
+        );
+
+    const onPreviewBytes =
+        (chunk) =>
+            previewParser.write(
+                chunk
+            );
+
+    if (previewPipe) {
+        previewPipe.on(
+            "data",
+            onPreviewBytes
+        );
+    }
+
+    const stopThisPreviewFeed = () => {
+        if (previewPipe) {
+            previewPipe.off(
+                "data",
+                onPreviewBytes
+            );
+        }
+
+        previewParser.reset();
+    };
+
+    stopProgramPreviewFeed =
+        stopThisPreviewFeed;
+
     const stopThisFeed = () => {
         if (!feedActive) return;
         feedActive = false;
@@ -1639,6 +1775,15 @@ async function startNativePlayback(
         "exit",
         (code, signal) => {
             stopThisFeed();
+
+            if (
+                stopProgramPreviewFeed ===
+                stopThisPreviewFeed
+            ) {
+                stopThisPreviewFeed();
+                stopProgramPreviewFeed = null;
+            }
+
             if (stopNdiFrameFeed === stopThisFeed) {
                 stopNdiFrameFeed = null;
             }

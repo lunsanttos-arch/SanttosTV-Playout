@@ -374,6 +374,17 @@ assert(
     "Monitor de áudio deve tocar e medir o PCM real do PROGRAM, sem usar a prévia como falsa saída."
 );
 assert(
+    app.includes("onProgramPreviewFrame") &&
+    app.includes("nativeProgramPreviewUrl") &&
+    app.includes("Prévia exata do PROGRAM nativo") &&
+    preload.includes("playout:preview-frame") &&
+    preload.includes("playout:preview-reset") &&
+    electronMain.includes("sendProgramPreviewFrame") &&
+    electronMain.includes("pipe:3") &&
+    electronMain.includes("[preview]"),
+    "Preview do PROGRAM deve vir do mesmo FFmpeg nativo por tap MJPEG, sem player HLS separado."
+);
+assert(
     watermarkSettings.includes('className="secondary-button"'),
     "Ação secundária da Marca d'água não deve usar botão branco nativo."
 );

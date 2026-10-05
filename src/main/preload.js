@@ -320,6 +320,46 @@ contextBridge.exposeInMainWorld(
                 );
         },
 
+        onProgramPreviewFrame: (callback) => {
+            if (typeof callback !== "function") {
+                return () => {};
+            }
+
+            const listener = (_event, payload) =>
+                callback(payload);
+
+            ipcRenderer.on(
+                "playout:preview-frame",
+                listener
+            );
+
+            return () =>
+                ipcRenderer.removeListener(
+                    "playout:preview-frame",
+                    listener
+                );
+        },
+
+        onProgramPreviewReset: (callback) => {
+            if (typeof callback !== "function") {
+                return () => {};
+            }
+
+            const listener = (_event, payload) =>
+                callback(payload);
+
+            ipcRenderer.on(
+                "playout:preview-reset",
+                listener
+            );
+
+            return () =>
+                ipcRenderer.removeListener(
+                    "playout:preview-reset",
+                    listener
+                );
+        },
+
         startPlayoutReport: (mediaItem) =>
             ipcRenderer.invoke(
                 "report:playout-start",
