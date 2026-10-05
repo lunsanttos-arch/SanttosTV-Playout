@@ -742,9 +742,13 @@ export default function App() {
             ? "ATÉ FREEZE"
             : "PROGRAMADO";
     const programmedUntilLabel =
-        programmedBlocker !== null ? "SEM PREVISÃO"
-            : programmedEndAtMs !== null
-              ? formatEstimatedClock(programmedEndAtMs, Date.now())
+        programmedEndAtMs !== null
+            ? formatEstimatedClock(
+                  programmedEndAtMs,
+                  Date.now()
+              )
+            : programmedBlocker !== null
+              ? "SEM PREVISÃO"
               : programmedLive
                 ? "SEM PREVISÃO"
                 : "AGUARDANDO REPRODUÇÃO";
@@ -1576,37 +1580,54 @@ function PlayoutPanel({
     }
 
     useEffect(() => {
-        let programmedEndAtMs: number | null = null;
+        let liveUntilAtMs =
+            timelineForecast.endsAtMs;
 
         if (
-            plannedSchedule.totalSeconds !== null
+            freezeCountdown.hasUpcomingFreeze
         ) {
-            const startParts =
-                programmedStartTime
-                    .split(":")
-                    .map(Number);
-            const start =
-                new Date();
-            start.setHours(
-                startParts[0] || 0,
-                startParts[1] || 0,
-                0,
-                0
-            );
+            const selectedIndex =
+                selectedMedia
+                    ? timelineQueue.findIndex(
+                          (item) =>
+                              item.id ===
+                              selectedMedia.id
+                      )
+                    : -1;
 
-            programmedEndAtMs =
-                start.getTime() +
-                plannedSchedule.totalSeconds *
-                    1000;
+            const upcomingFreeze =
+                timelineQueue
+                    .slice(
+                        Math.max(
+                            0,
+                            selectedIndex
+                        )
+                    )
+                    .find(
+                        (item) =>
+                            item.freezeEnd ===
+                            true
+                    );
+
+            const freezeEntry =
+                upcomingFreeze
+                    ? timelineForecast.entries.get(
+                          upcomingFreeze.id
+                      )
+                    : undefined;
+
+            liveUntilAtMs =
+                freezeEntry?.endsAtMs ??
+                null;
         }
 
         onScheduleSummary(
             plannedSchedule.totalSeconds,
             plannedSchedule.blocker,
-            programmedEndAtMs,
+            liveUntilAtMs,
             freezeCountdown.hasUpcomingFreeze,
             freezeCountdown.seconds,
-            true
+            timelineForecast.isLive
         );
     }, [
         plannedSchedule.totalSeconds,
@@ -1614,7 +1635,11 @@ function PlayoutPanel({
         plannedSchedule.blocker,
         freezeCountdown.hasUpcomingFreeze,
         freezeCountdown.seconds,
-        programmedStartTime,
+        timelineForecast.endsAtMs,
+        timelineForecast.isLive,
+        timelineForecast.entries,
+        selectedMedia?.id,
+        timelineQueue,
         onScheduleSummary
     ]);
 
