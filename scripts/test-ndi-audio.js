@@ -97,6 +97,27 @@ assert(
     "Áudio do Input Web deve aplicar seek ao retomar um PAUSE."
 );
 
+const udpBridgeArgs =
+    audioFfmpegArgs(
+        "udp://127.0.0.1:32002?overrun_nonfatal=1&fifo_size=5000000",
+        null,
+        0,
+        null,
+        48000,
+        2
+    );
+
+assert(
+    !udpBridgeArgs.includes("-re"),
+    "Áudio vindo da ponte VLC/UDP não pode receber -re novamente."
+);
+assert(
+    udpBridgeArgs.includes("1000000") &&
+    udpBridgeArgs.includes("500000") &&
+    udpBridgeArgs.includes("aresample=async=1:first_pts=0"),
+    "Áudio UDP deve usar probe curto e correção de deriva para acompanhar o vídeo."
+);
+
 const mono441 = audioFfmpegArgs("filme.mp4", 2, 0, null, 44100, 1);
 assert(mono441.includes("44100"));
 assert.deepEqual(
