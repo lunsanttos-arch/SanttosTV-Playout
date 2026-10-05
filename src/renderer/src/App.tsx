@@ -1051,6 +1051,8 @@ function PlayoutPanel({
         useState<string | null>(null);
     const activeReportIdRef = useRef<string | null>(null);
     const lastLiveTopbarUntilAtMsRef = useRef<number | null>(null);
+    const lastLiveProgrammedRemainingSecondsRef =
+        useRef<number | null>(null);
     const preparedInputIdRef = useRef<string | null>(null);
     const [inputPrebufferState, setInputPrebufferState] =
         useState<"idle" | "loading" | "ready" | "error">("idle");
@@ -1629,6 +1631,35 @@ function PlayoutPanel({
               )
             : topbarUntilAtMs;
 
+    if (
+        timelineForecast.remainingSeconds !== null &&
+        timelineForecast.isLive
+    ) {
+        lastLiveProgrammedRemainingSecondsRef.current =
+            timelineForecast.remainingSeconds;
+    }
+
+    const programIsPaused =
+        nativeOutputEnabled
+            ? nativePlayout.state === "PAUSED"
+            : Boolean(
+                  selectedMedia &&
+                  !isPlaying
+              );
+
+    const topbarProgrammedRemainingSeconds =
+        freezeCountdown.hasUpcomingFreeze
+            ? freezeCountdown.seconds
+            : programIsPaused
+              ? (
+                    timelineForecast.remainingSeconds ??
+                    lastLiveProgrammedRemainingSecondsRef.current ??
+                    plannedSchedule.totalSeconds
+                )
+              : timelineForecast.isLive
+                ? timelineForecast.remainingSeconds
+                : plannedSchedule.totalSeconds;
+
     function describeForecast(item: MediaItem | null, isCurrent = false): string {
         if (!item) return "Nenhum próximo vídeo";
         return describeForecastEntry(
@@ -1640,7 +1671,7 @@ function PlayoutPanel({
 
     useEffect(() => {
         onScheduleSummary(
-            plannedSchedule.totalSeconds,
+            topbarProgrammedRemainingSeconds,
             plannedSchedule.blocker,
             topbarUntilAtMsWithPause,
             freezeCountdown.hasUpcomingFreeze,
@@ -1648,7 +1679,7 @@ function PlayoutPanel({
             timelineForecast.isLive
         );
     }, [
-        plannedSchedule.totalSeconds,
+        topbarProgrammedRemainingSeconds,
         plannedSchedule.end,
         plannedSchedule.blocker,
         topbarUntilAtMsWithPause,
