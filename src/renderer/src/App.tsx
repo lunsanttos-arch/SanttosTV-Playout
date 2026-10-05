@@ -1987,6 +1987,15 @@ function PlayoutPanel({
                     "Falha ao iniciar saída NDI."
             );
         }
+
+        if (result.playout) {
+            // Atualiza o estado autoritativo imediatamente. Isso elimina a
+            // janela do polling em que PAUSE já aconteceu no backend, mas a
+            // interface ainda poderia enxergar PLAYING.
+            setNativePlayout(
+                result.playout
+            );
+        }
     }
 
     // Só FAULT real do motor derruba o PROGRAM. PAUSED pode ser uma
@@ -2321,9 +2330,17 @@ function PlayoutPanel({
         if (nativeOutputEnabled) {
             const result = await window.santtosAPI.pauseNdiFile();
             if (result.playout) {
-                setCurrentTime(result.playout.positionSeconds);
+                // Não espere o polling de 250 ms: PAUSED e o timecode salvo
+                // precisam entrar na UI no mesmo clique do operador.
+                setNativePlayout(
+                    result.playout
+                );
+                setCurrentTime(
+                    result.playout.positionSeconds
+                );
                 lastProgressRef.current = {
-                    position: result.playout.positionSeconds,
+                    position:
+                        result.playout.positionSeconds,
                     atMs: Date.now()
                 };
             }
