@@ -1840,12 +1840,14 @@ async function startNativePlayback(
                         completeFrame,
                         {
                             allowDrop:
-                                ndiFrameReady
+                                ndiFrameReady ||
+                                isRemoteInput
                         }
                     );
 
                 if (
                     !ndiFrameReady &&
+                    !isRemoteInput &&
                     !omtCanContinue
                 ) {
                     const omtTarget =
