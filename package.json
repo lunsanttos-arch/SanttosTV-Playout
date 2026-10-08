@@ -28,7 +28,7 @@
     "test:ndi-audio": "node scripts/test-ndi-audio.js && node scripts/test-ndi-pipe.js && node scripts/test-ndi-native-audio.js",
     "test:ndi-video": "node scripts/test-ndi-frame-aligner.js",
     "test:frontend": "npm exec tsc -- --noEmit && npm run build:renderer && node scripts/test-frontend.js",
-    "test": "npm run test:security && npm run test:media-stream && npm run test:proxy && npm run test:web-input && npm run test:input-prebuffer && npm run test:vlc-input && npm run test:exhibition-output && npm run test:timeline-forecast && npm run test:output-profile && npm run test:playout-engine && npm run test:ndi-audio && npm run test:program-audio-monitor && npm run test:program-preview-tap && npm run test:ndi-video && npm run test:omt && npm run test:testbench && npm run test:backend && npm run test:frontend",
+    "test": "npm run test:security && npm run test:media-stream && npm run test:proxy && npm run test:web-input && npm run test:input-prebuffer && npm run test:vlc-input && npm run test:exhibition-output && npm run test:timeline-forecast && npm run test:output-profile && npm run test:playout-engine && npm run test:ndi-audio && npm run test:program-audio-monitor && npm run test:program-preview-tap && npm run test:ndi-video && npm run test:omt && npm run test:server-media && npm run test:testbench && npm run test:backend && npm run test:frontend",
     "stress:smoke": "node scripts/stress-playout.js smoke",
     "stress:quick": "node scripts/stress-playout.js quick",
     "stress:day": "node scripts/stress-playout.js day",
@@ -40,7 +40,8 @@
     "test:input-prebuffer": "node scripts/test-input-prebuffer.js",
     "test:program-audio-monitor": "node scripts/test-program-audio-monitor.js",
     "test:program-preview-tap": "node scripts/test-program-preview-tap.js",
-    "test:omt": "node scripts/test-omt-output.js"
+    "test:omt": "node scripts/test-omt-output.js",
+    "test:server-media": "node scripts/test-server-media.js"
   },
   "dependencies": {
     "@derhuerst/ffprobe-static": "5.3.0",
