@@ -44,6 +44,7 @@ const crypto = require("node:crypto");
 const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
+const { OmtOutput } = require("../core/omt/omt-output");
 const { NativePlayoutEngine } = require("../core/playout/native-playout-engine");
 const { ProgramClock } = require("../core/playout/program-clock");
 const { JpegFrameParser } = require("../core/playout/program-preview-tap");
@@ -240,6 +241,10 @@ const FONT_FILES = {
 
 let mainWindow = null;
 let ndiProcess = null;
+let omtOutput = null;
+let omtRestartTimer = null;
+let omtRestartFailures = 0;
+let omtStopping = false;
 let ffmpegProcess = null;
 let activeRemoteInputProxy = null;
 let activeVlcInputBridge = null;
@@ -323,11 +328,11 @@ function createWindow() {
         height: 900,
         minWidth: 1100,
         minHeight: 700,
-        backgroundColor: "#0b0b0b",
+        backgroundColor: "#0B0B10",
         icon: resolveAppIcon(),
-        title: isNdiTestBench ? "Santtos TV Automation — TESTE NDI (FONTE QA)"
-            : isTestBench ? "Santtos TV Automation — BANCADA"
-            : "Santtos TV Automation",
+        title: isNdiTestBench ? "SanTTos Playout — TESTE NDI (FONTE QA)"
+            : isTestBench ? "SanTTos Playout — BANCADA"
+            : "SanTTos Playout",
         webPreferences: {
             nodeIntegration: false,
             contextIsolation: true,
