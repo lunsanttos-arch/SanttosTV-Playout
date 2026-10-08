@@ -80,6 +80,7 @@ jobs:
           node --check src/core/audio/ndi-audio-source.js
           node --check src/core/ndi/ndi-capabilities.js
           node --check src/core/ndi/frame-aligner.js
+          node --check src/core/playout/program-clock.js
           node --check src/core/playout/native-playout-engine.js
           node --check src/core/playout/output-profile.js
           node --check src/core/playout/remote-input.js
