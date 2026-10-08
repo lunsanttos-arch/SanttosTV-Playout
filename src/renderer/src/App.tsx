@@ -1250,6 +1250,8 @@ function PlayoutPanel({
     const preparedInputIdRef = useRef<string | null>(null);
     const [inputPrebufferState, setInputPrebufferState] =
         useState<"idle" | "loading" | "ready" | "error">("idle");
+    const serverCurrentPreloadIdRef =
+        useRef<string | null>(null);
     const serverPreloadIdRef =
         useRef<string | null>(null);
     const [serverPreloadState, setServerPreloadState] =
@@ -1503,6 +1505,45 @@ function PlayoutPanel({
                   selectedMediaIndex - 1
               ] ?? null
             : null;
+
+    useEffect(() => {
+        if (
+            isPlaying ||
+            !selectedMedia ||
+            selectedMedia.sourceType === "input"
+        ) {
+            return;
+        }
+
+        if (
+            serverCurrentPreloadIdRef.current ===
+            selectedMedia.id
+        ) {
+            return;
+        }
+
+        const targetId =
+            selectedMedia.id;
+
+        serverCurrentPreloadIdRef.current =
+            targetId;
+
+        void window.santtosAPI
+            .prepareServerMedia(
+                selectedMedia.path
+            )
+            .catch((error) =>
+                console.warn(
+                    "Pré-carga do primeiro material do servidor falhou:",
+                    error
+                )
+            );
+    }, [
+        isPlaying,
+        selectedMedia?.id,
+        selectedMedia?.path,
+        selectedMedia?.sourceType
+    ]);
 
     useEffect(() => {
         if (
