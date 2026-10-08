@@ -83,6 +83,33 @@ contextBridge.exposeInMainWorld(
                 id
             ),
 
+        getServerMediaSettings: () =>
+            ipcRenderer.invoke(
+                "server-media:get-settings"
+            ),
+
+        saveServerMediaSettings: (settings) =>
+            ipcRenderer.invoke(
+                "server-media:set-settings",
+                settings
+            ),
+
+        selectServerMediaRoot: () =>
+            ipcRenderer.invoke(
+                "server-media:select-root"
+            ),
+
+        prepareServerMedia: (filePath) =>
+            ipcRenderer.invoke(
+                "server-media:prepare",
+                filePath
+            ),
+
+        clearServerMediaCache: () =>
+            ipcRenderer.invoke(
+                "server-media:clear-cache"
+            ),
+
         getLibraryCategories: () =>
             ipcRenderer.invoke(
                 "library-categories:get"
