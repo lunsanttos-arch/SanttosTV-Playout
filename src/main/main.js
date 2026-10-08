@@ -255,6 +255,7 @@ let omtRestartTimer = null;
 let omtRestartFailures = 0;
 let omtStopping = false;
 let omtLastError = "";
+let serverMediaHealthTimer = null;
 let ffmpegProcess = null;
 let activeRemoteInputProxy = null;
 let activeVlcInputBridge = null;
@@ -3742,6 +3743,42 @@ function restartNdiSenderForProfile() {
     startNdiSender();
 }
 
+function stopServerMediaHealthMonitor() {
+    if (
+        serverMediaHealthTimer
+    ) {
+        clearInterval(
+            serverMediaHealthTimer
+        );
+
+        serverMediaHealthTimer =
+            null;
+    }
+}
+
+function startServerMediaHealthMonitor() {
+    stopServerMediaHealthMonitor();
+
+    const probe = () => {
+        void serverMedia
+            .probeRoot()
+            .catch((error) =>
+                console.warn(
+                    "Teste de disponibilidade do servidor de mídia falhou:",
+                    error
+                )
+            );
+    };
+
+    probe();
+
+    serverMediaHealthTimer =
+        setInterval(
+            probe,
+            10000
+        );
+}
+
 function startSystem() {
     console.log(
         "Inicializando Santtos TV Automation..."
@@ -3755,6 +3792,7 @@ function startSystem() {
         app.getPath("userData"),
         app.getPath("cache")
     );
+    startServerMediaHealthMonitor();
     initializeLibraryCategories(app.getPath("userData"));
     initializeWebInputs(app.getPath("userData"));
     initializePlayoutReports({
@@ -3830,6 +3868,7 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
+    stopServerMediaHealthMonitor();
     cancelActivePreviews();
     closeOpenEntriesAsSkipped();
     stopNativePlayback();
