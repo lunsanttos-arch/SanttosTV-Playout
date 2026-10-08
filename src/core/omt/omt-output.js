@@ -20,6 +20,7 @@ class OmtOutput {
 
         this.process = null;
         this.audioSocket = null;
+        this.audioReconnectTimer = null;
         this.audioPipe = "";
         this.online = false;
         this.audioReady = false;
@@ -403,6 +404,24 @@ class OmtOutput {
                         false;
 
                     this.emitState();
+
+                    if (
+                        !this.stopping &&
+                        this.process &&
+                        this.audioReady &&
+                        !this.audioReconnectTimer
+                    ) {
+                        this.audioReconnectTimer =
+                            setTimeout(
+                                () => {
+                                    this.audioReconnectTimer =
+                                        null;
+
+                                    this.connectAudio();
+                                },
+                                250
+                            );
+                    }
                 }
             }
         );
@@ -489,6 +508,18 @@ class OmtOutput {
 
     stop() {
         this.stopping = true;
+
+        if (
+            this.audioReconnectTimer
+        ) {
+            clearTimeout(
+                this.audioReconnectTimer
+            );
+
+            this.audioReconnectTimer =
+                null;
+        }
+
         this.online = false;
         this.audioReady = false;
         this.audioActive = false;
