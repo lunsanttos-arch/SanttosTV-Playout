@@ -1566,6 +1566,11 @@ function PlayoutPanel({
         }
 
         if (
+            (
+                isPlaying &&
+                selectedMedia?.sourceType ===
+                    "input"
+            ) ||
             !nextMedia ||
             nextMedia.sourceType === "input"
         ) {
@@ -1644,6 +1649,8 @@ function PlayoutPanel({
             });
     }, [
         serverMediaEnabled,
+        isPlaying,
+        selectedMedia?.sourceType,
         nextMedia?.id,
         nextMedia?.path,
         nextMedia?.sourceType
