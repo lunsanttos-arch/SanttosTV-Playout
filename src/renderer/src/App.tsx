@@ -165,6 +165,21 @@ interface LibraryCategory {
     builtIn?: boolean;
 }
 
+interface ServerMediaStatus {
+    enabled: boolean;
+    rootPath: string;
+    cacheEnabled: boolean;
+    cacheMaxGb: number;
+    prefetchNext: boolean;
+    cacheFolder: string;
+    cachedFiles: number;
+    cachedBytes: number;
+    activeJobs: number;
+    serverReachable: boolean | null;
+    lastServerCheckAt: number;
+    error: string | null;
+}
+
 const DEFAULT_WATERMARK_STYLE: WatermarkStyle = {
     filePath: "",
     widthPx: 180,
@@ -229,6 +244,50 @@ declare global {
                     startTime: string;
                     items: RundownItem[];
                 };
+                error?: string;
+            }>;
+            getServerMediaSettings: () => Promise<{
+                ok: boolean;
+                settings?: {
+                    enabled: boolean;
+                    rootPath: string;
+                    cacheEnabled: boolean;
+                    cacheMaxGb: number;
+                    prefetchNext: boolean;
+                    cacheFolder: string;
+                };
+                status?: ServerMediaStatus;
+                error?: string;
+            }>;
+            saveServerMediaSettings: (settings: {
+                enabled: boolean;
+                rootPath: string;
+                cacheEnabled: boolean;
+                cacheMaxGb: number;
+                prefetchNext: boolean;
+            }) => Promise<{
+                ok: boolean;
+                settings?: unknown;
+                status?: ServerMediaStatus;
+                error?: string;
+            }>;
+            selectServerMediaRoot: () => Promise<{
+                ok: boolean;
+                canceled?: boolean;
+                folderPath?: string;
+            }>;
+            prepareServerMedia: (filePath: string) => Promise<{
+                ok: boolean;
+                applicable?: boolean;
+                state?: string;
+                playbackPath?: string;
+                cached?: boolean;
+                status?: ServerMediaStatus;
+                error?: string;
+            }>;
+            clearServerMediaCache: () => Promise<{
+                ok: boolean;
+                status?: ServerMediaStatus;
                 error?: string;
             }>;
             getLibraryCategories: () => Promise<LibraryCategory[]>;
@@ -323,6 +382,7 @@ declare global {
                     audioBytes: number;
                     error: string | null;
                 };
+                serverMedia?: ServerMediaStatus;
                 playoutError?: string | null;
                 error?: string | null;
                 restarting?: boolean;
@@ -486,6 +546,8 @@ export default function App() {
         audioBytes: 0,
         error: null as string | null
     });
+    const [serverMediaStatus, setServerMediaStatus] =
+        useState<ServerMediaStatus | null>(null);
     const [nativePlayout, setNativePlayout] = useState<NativePlayoutStatus>({
         generation: 0,
         state: "IDLE",
@@ -591,6 +653,11 @@ export default function App() {
                 );
                 if (status.omt) {
                     setOmtStatus(status.omt);
+                }
+                if (status.serverMedia) {
+                    setServerMediaStatus(
+                        status.serverMedia
+                    );
                 }
                 if (status.playout) {
                     setNativePlayout(status.playout);
@@ -899,6 +966,29 @@ export default function App() {
                                   : "● OMT INICIANDO"}
                         </span>
                     )}
+                    {serverMediaStatus?.enabled && (
+                        <span
+                            title={
+                                serverMediaStatus.error ??
+                                `${serverMediaStatus.rootPath || "Servidor"} · ${serverMediaStatus.cachedFiles} arquivo(s) em cache`
+                            }
+                            className={
+                                serverMediaStatus.serverReachable === false
+                                    ? "status-output-warning"
+                                    : serverMediaStatus.serverReachable === true
+                                      ? "status-online"
+                                      : "status-clock"
+                            }
+                        >
+                            {serverMediaStatus.serverReachable === false
+                                ? "● SERVER OFFLINE — CACHE ATIVO"
+                                : serverMediaStatus.activeJobs > 0
+                                  ? "● SERVER — PRÉ-CARREGANDO"
+                                  : serverMediaStatus.serverReachable === true
+                                    ? "● SERVER ONLINE"
+                                    : "● SERVER PRONTO"}
+                        </span>
+                    )}
                 </div>
             </header>
 
@@ -1160,6 +1250,10 @@ function PlayoutPanel({
     const preparedInputIdRef = useRef<string | null>(null);
     const [inputPrebufferState, setInputPrebufferState] =
         useState<"idle" | "loading" | "ready" | "error">("idle");
+    const serverPreloadIdRef =
+        useRef<string | null>(null);
+    const [serverPreloadState, setServerPreloadState] =
+        useState<"idle" | "loading" | "ready" | "error">("idle");
     const lastProgressRef = useRef({
         position: Number.NaN,
         atMs: Date.now()
@@ -1409,6 +1503,90 @@ function PlayoutPanel({
                   selectedMediaIndex - 1
               ] ?? null
             : null;
+
+    useEffect(() => {
+        if (
+            !nextMedia ||
+            nextMedia.sourceType === "input"
+        ) {
+            serverPreloadIdRef.current =
+                null;
+            setServerPreloadState(
+                "idle"
+            );
+            return;
+        }
+
+        if (
+            serverPreloadIdRef.current ===
+            nextMedia.id
+        ) {
+            return;
+        }
+
+        const targetId =
+            nextMedia.id;
+
+        serverPreloadIdRef.current =
+            targetId;
+        setServerPreloadState(
+            "loading"
+        );
+
+        void window.santtosAPI
+            .prepareServerMedia(
+                nextMedia.path
+            )
+            .then((result) => {
+                if (
+                    serverPreloadIdRef.current !==
+                    targetId
+                ) {
+                    return;
+                }
+
+                if (
+                    result.ok &&
+                    result.applicable
+                ) {
+                    setServerPreloadState(
+                        result.state === "ready"
+                            ? "ready"
+                            : "idle"
+                    );
+                } else if (
+                    result.ok
+                ) {
+                    setServerPreloadState(
+                        "idle"
+                    );
+                } else {
+                    setServerPreloadState(
+                        "error"
+                    );
+                }
+            })
+            .catch((error) => {
+                if (
+                    serverPreloadIdRef.current !==
+                    targetId
+                ) {
+                    return;
+                }
+
+                setServerPreloadState(
+                    "error"
+                );
+                console.warn(
+                    "Pré-carga Server Media falhou:",
+                    error
+                );
+            });
+    }, [
+        nextMedia?.id,
+        nextMedia?.path,
+        nextMedia?.sourceType
+    ]);
 
     useEffect(() => {
         const remaining =
@@ -3701,6 +3879,21 @@ function PlayoutPanel({
                                                 : inputPrebufferState === "ready"
                                                   ? "INPUT PRONTO"
                                                   : "PRÉ-CARGA FALHOU · TENTARÁ NO PLAY"}
+                                        </span>
+                                    )}
+                                {nextMedia.sourceType !== "input" &&
+                                    serverPreloadState !== "idle" && (
+                                        <span
+                                            className={
+                                                "input-prebuffer-badge " +
+                                                serverPreloadState
+                                            }
+                                        >
+                                            {serverPreloadState === "loading"
+                                                ? "COPIANDO DO SERVIDOR…"
+                                                : serverPreloadState === "ready"
+                                                  ? "CACHE LOCAL PRONTO"
+                                                  : "CACHE FALHOU · USARÁ SERVIDOR"}
                                         </span>
                                     )}
                             </>
