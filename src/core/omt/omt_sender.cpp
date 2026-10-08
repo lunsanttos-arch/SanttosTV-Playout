@@ -507,6 +507,9 @@ int main(
     std::string qualityText =
         "low";
 
+    bool runtimeProbe =
+        false;
+
     int width = 1920;
     int height = 1080;
     int fpsN = 30000;
@@ -533,10 +536,18 @@ int main(
                    "VIDEO_STDIN_V1 "
                    "AUDIO_PIPE_V1 "
                    "I420_TO_UYVY_V1 "
-                   "DYNAMIC_PROFILE_V1"
+                   "DYNAMIC_PROFILE_V1 "
+                   "RUNTIME_PROBE_V1"
                 << std::endl;
 
             return 0;
+        }
+
+        if (
+            arg == "--runtime-probe"
+        ) {
+            runtimeProbe = true;
+            continue;
         }
 
         if (
@@ -755,6 +766,20 @@ int main(
             << std::endl;
 
         return 1;
+    }
+
+    if (runtimeProbe) {
+        std::cout
+            << "OMT RUNTIME READY"
+            << std::endl;
+
+        api.destroy(sender);
+
+        if (api.shutdown) {
+            api.shutdown();
+        }
+
+        return 0;
     }
 
     if (api.setInfo) {
