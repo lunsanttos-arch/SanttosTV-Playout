@@ -2,10 +2,27 @@
 
 const assert = require("node:assert/strict");
 const { NativePlayoutEngine } = require("../src/core/playout/native-playout-engine");
+const { ProgramClock } = require("../src/core/playout/program-clock");
 const {
     normalizeStreamIndex,
     videoFilterInput
 } = require("../src/core/playout/ffmpeg-stream-map");
+
+let monotonicNs = 1_000_000_000n;
+let wallMs = 2_000_000;
+const programClock = new ProgramClock({
+    monotonicNowNs: () => monotonicNs,
+    wallNowMs: () => wallMs
+});
+
+assert.equal(programClock.nowMs(), 0);
+monotonicNs += 2_500_000_000n;
+wallMs -= 60_000;
+assert.equal(
+    programClock.nowMs(),
+    2500,
+    "Relógio do PROGRAM não pode voltar quando o relógio civil for ajustado."
+);
 
 let nowMs = 1_000_000;
 const engine = new NativePlayoutEngine({ now: () => nowMs });
@@ -110,4 +127,4 @@ assert.equal(
     null
 );
 
-console.log("PLAYOUT ENGINE QA: APROVADO — relógio nativo, stream mapping, pausa, seek, fim e falha.");
+console.log("PLAYOUT ENGINE QA: APROVADO — ProgramClock monotônico, stream mapping, pausa, seek, fim e falha.");
