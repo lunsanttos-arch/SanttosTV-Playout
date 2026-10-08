@@ -43,6 +43,7 @@ class ServerMediaManager {
         this.lastError = "";
         this.lastServerCheckAt = 0;
         this.serverReachable = null;
+        this.activeSourcePath = "";
     }
 
     initialize(userDataPath) {
@@ -346,12 +347,39 @@ class ServerMediaManager {
         }
     }
 
-    async statSource(filePath) {
+    async statSource(
+        filePath,
+        timeoutMs = 4000
+    ) {
+        let timer = null;
+
         try {
-            const stat =
-                await fs.promises.stat(
+            const statPromise =
+                fs.promises.stat(
                     filePath
                 );
+
+            const timeoutPromise =
+                new Promise(
+                    (_resolve, reject) => {
+                        timer =
+                            setTimeout(
+                                () =>
+                                    reject(
+                                        new Error(
+                                            "Tempo limite ao acessar o servidor."
+                                        )
+                                    ),
+                                timeoutMs
+                            );
+                    }
+                );
+
+            const stat =
+                await Promise.race([
+                    statPromise,
+                    timeoutPromise
+                ]);
 
             if (!stat.isFile()) {
                 throw new Error(
@@ -371,7 +399,97 @@ class ServerMediaManager {
                     ? error.message
                     : String(error);
             throw error;
+        } finally {
+            if (timer) {
+                clearTimeout(timer);
+            }
         }
+    }
+
+    async probeRoot() {
+        if (
+            !this.settings.enabled ||
+            !this.settings.rootPath
+        ) {
+            this.serverReachable =
+                null;
+            this.lastError = "";
+
+            return this.status();
+        }
+
+        let timer = null;
+
+        try {
+            const statPromise =
+                fs.promises.stat(
+                    this.settings.rootPath
+                );
+
+            const timeoutPromise =
+                new Promise(
+                    (_resolve, reject) => {
+                        timer =
+                            setTimeout(
+                                () =>
+                                    reject(
+                                        new Error(
+                                            "Tempo limite ao testar a raiz do servidor."
+                                        )
+                                    ),
+                                4000
+                            );
+                    }
+                );
+
+            const stat =
+                await Promise.race([
+                    statPromise,
+                    timeoutPromise
+                ]);
+
+            if (!stat.isDirectory()) {
+                throw new Error(
+                    "A raiz configurada não é uma pasta."
+                );
+            }
+
+            this.serverReachable =
+                true;
+            this.lastServerCheckAt =
+                Date.now();
+            this.lastError = "";
+        } catch (error) {
+            this.serverReachable =
+                false;
+            this.lastServerCheckAt =
+                Date.now();
+            this.lastError =
+                error instanceof Error
+                    ? error.message
+                    : String(error);
+        } finally {
+            if (timer) {
+                clearTimeout(timer);
+            }
+        }
+
+        return this.status();
+    }
+
+    markActive(filePath) {
+        this.activeSourcePath =
+            this.isServerMediaPath(
+                filePath
+            )
+                ? normalizedPath(
+                      filePath
+                  )
+                : "";
+    }
+
+    clearActive() {
+        this.activeSourcePath = "";
     }
 
     cacheMatches(entry, stat) {
@@ -716,7 +834,9 @@ class ServerMediaManager {
             if (
                 this.jobs.has(
                     item.key
-                )
+                ) ||
+                item.key ===
+                    this.activeSourcePath
             ) {
                 continue;
             }
@@ -806,6 +926,10 @@ class ServerMediaManager {
                 bytes,
             activeJobs:
                 this.jobs.size,
+            activeServerMedia:
+                Boolean(
+                    this.activeSourcePath
+                ),
             serverReachable:
                 this.serverReachable,
             lastServerCheckAt:
