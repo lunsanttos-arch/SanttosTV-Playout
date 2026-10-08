@@ -301,6 +301,10 @@ declare global {
             getNdiStatus: () => Promise<{
                 online: boolean;
                 source: string;
+                profile?: {
+                    ndiEnabled?: boolean;
+                    omtEnabled?: boolean;
+                };
                 nativePlaybackActive?: boolean;
                 programClock?: {
                     kind: string;
@@ -461,6 +465,8 @@ export default function App() {
         useState("00:00:00");
     const [ndiOnline, setNdiOnline] =
         useState(false);
+    const [ndiConfiguredEnabled, setNdiConfiguredEnabled] =
+        useState(true);
     const [ndiError, setNdiError] = useState<string | null>(null);
     const [testBench, setTestBench] = useState(false);
     const [ndiTestMode, setNdiTestMode] = useState(false);
@@ -571,6 +577,9 @@ export default function App() {
                     await window.santtosAPI
                         .getNdiStatus();
                 setNdiOnline(status.online);
+                setNdiConfiguredEnabled(
+                    status.profile?.ndiEnabled !== false
+                );
                 setTestBench(Boolean(status.testBench));
                 setNdiTestMode(Boolean(status.ndiTestMode));
                 setNdiDevNullSink(Boolean(status.devNullSink));
@@ -846,22 +855,29 @@ export default function App() {
                           : testBench ? "● BANCADA ISOLADA — SEM NDI"
                           : "● SISTEMA ONLINE"}
                     </span>
-                    <span
-                        title={ndiError ?? undefined}
-                        className={ndiOnline ? "status-online" : ""}
-                    >
-                        {testBench && !ndiTestMode
-                            ? "● PRÉVIA DE TESTE"
-                            : ndiDevNullSink
-                              ? "● DEV NULL SINK — SEM NDI REAL"
-                              : ndiOnline
-                                ? audioStatus.state === "FLOWING"
-                                    ? "● NDI ONLINE — VÍDEO E PCM ESTÉREO"
-                                    : "● NDI ONLINE — ÁUDIO: " + audioStatus.state
-                              : ndiError
-                                ? `● NDI OFFLINE: ${ndiError}`
-                                : "● NDI OFFLINE"}
-                    </span>
+                    {ndiConfiguredEnabled ||
+                     testBench ? (
+                        <span
+                            title={ndiError ?? undefined}
+                            className={ndiOnline ? "status-online" : ""}
+                        >
+                            {testBench && !ndiTestMode
+                                ? "● PRÉVIA DE TESTE"
+                                : ndiDevNullSink
+                                  ? "● DEV NULL SINK — SEM NDI REAL"
+                                  : ndiOnline
+                                    ? audioStatus.state === "FLOWING"
+                                        ? "● NDI ONLINE — VÍDEO E PCM ESTÉREO"
+                                        : "● NDI ONLINE — ÁUDIO: " + audioStatus.state
+                                  : ndiError
+                                    ? `● NDI OFFLINE: ${ndiError}`
+                                    : "● NDI OFFLINE"}
+                        </span>
+                    ) : (
+                        <span className="status-disabled">
+                            ○ NDI DESATIVADO
+                        </span>
+                    )}
                     {omtStatus.enabled && (
                         <span
                             title={
