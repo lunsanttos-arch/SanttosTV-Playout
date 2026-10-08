@@ -3752,7 +3752,8 @@ function startSystem() {
         migrateLegacy: !isTestBench
     });
     serverMedia.initialize(
-        app.getPath("userData")
+        app.getPath("userData"),
+        app.getPath("cache")
     );
     initializeLibraryCategories(app.getPath("userData"));
     initializeWebInputs(app.getPath("userData"));
