@@ -1553,9 +1553,7 @@ async function startNativePlayback(
         "warning",
         "-nostdin",
         "-fflags",
-        warmedUdp
-            ? "+genpts+discardcorrupt+nobuffer"
-            : "+genpts+discardcorrupt",
+        "+genpts+discardcorrupt",
         "-err_detect",
         "ignore_err",
         "-probesize",
@@ -1570,10 +1568,10 @@ async function startNativePlayback(
 
     if (warmedUdp) {
         args.push(
+            "-thread_queue_size",
+            "4096",
             "-max_delay",
-            "0",
-            "-flags",
-            "low_delay"
+            "250000"
         );
     }
 
