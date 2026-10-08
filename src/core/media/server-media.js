@@ -515,10 +515,16 @@ class ServerMediaManager {
             };
         }
 
-        if (!this.settings.cacheEnabled) {
+        if (
+            !this.settings.cacheEnabled ||
+            !this.settings.prefetchNext
+        ) {
             return {
                 applicable: true,
-                state: "direct",
+                state:
+                    this.settings.cacheEnabled
+                        ? "prefetch-disabled"
+                        : "direct",
                 sourcePath: filePath,
                 playbackPath: filePath
             };
