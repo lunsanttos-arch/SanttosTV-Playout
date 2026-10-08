@@ -41,6 +41,10 @@ class ServerMediaManager {
         this.index = new Map();
         this.jobs = new Map();
         this.prefetchTail = Promise.resolve();
+        this.prefetchSuspended = false;
+        this.prefetchSuspendReason = "";
+        this.prefetchGeneration = 0;
+        this.activeTransferAbort = null;
         this.lastError = "";
         this.lastServerCheckAt = 0;
         this.serverReachable = null;
@@ -412,6 +416,12 @@ class ServerMediaManager {
     }
 
     async probeRoot() {
+        // Durante Input Web no ar, nenhuma operação SMB de manutenção pode
+        // disputar threadpool/rede com o caminho de contribuição em tempo real.
+        if (this.prefetchSuspended) {
+            return this.status();
+        }
+
         if (
             !this.settings.enabled ||
             !this.settings.rootPath
@@ -495,6 +505,50 @@ class ServerMediaManager {
 
     clearActive() {
         this.activeSourcePath = "";
+    }
+
+    setRealtimePriority(
+        enabled,
+        reason = ""
+    ) {
+        const next =
+            enabled === true;
+
+        if (
+            next ===
+            this.prefetchSuspended
+        ) {
+            if (next && reason) {
+                this.prefetchSuspendReason =
+                    String(reason);
+            }
+
+            return this.status();
+        }
+
+        this.prefetchSuspended =
+            next;
+        this.prefetchSuspendReason =
+            next
+                ? String(
+                      reason ||
+                      "realtime"
+                  )
+                : "";
+        this.prefetchGeneration += 1;
+
+        if (
+            next &&
+            this.activeTransferAbort
+        ) {
+            try {
+                this.activeTransferAbort.abort();
+            } catch {
+                // Cancelamento é best-effort; o pipeline trata o encerramento.
+            }
+        }
+
+        return this.status();
     }
 
     cacheMatches(entry, stat) {
@@ -585,6 +639,19 @@ class ServerMediaManager {
             };
         }
 
+        if (this.prefetchSuspended) {
+            return {
+                applicable: true,
+                state: "suspended",
+                sourcePath: filePath,
+                playbackPath: filePath,
+                cached: false,
+                reason:
+                    this.prefetchSuspendReason ||
+                    "realtime"
+            };
+        }
+
         if (
             !this.settings.cacheEnabled ||
             !this.settings.prefetchNext
@@ -609,14 +676,58 @@ class ServerMediaManager {
             return running;
         }
 
+        const generation =
+            this.prefetchGeneration;
+
         const job =
             this.prefetchTail
                 .catch(() => {})
-                .then(() =>
-                    this.prepareInternal(
-                        filePath
-                    )
-                )
+                .then(async () => {
+                    if (
+                        this.prefetchSuspended ||
+                        generation !==
+                            this.prefetchGeneration
+                    ) {
+                        return {
+                            applicable: true,
+                            state: "suspended",
+                            sourcePath: filePath,
+                            playbackPath: filePath,
+                            cached: false,
+                            reason:
+                                this.prefetchSuspendReason ||
+                                "realtime"
+                        };
+                    }
+
+                    try {
+                        return await this.prepareInternal(
+                            filePath,
+                            generation
+                        );
+                    } catch (error) {
+                        if (
+                            error?.name === "AbortError" ||
+                            error?.code === "ABORT_ERR" ||
+                            this.prefetchSuspended ||
+                            generation !==
+                                this.prefetchGeneration
+                        ) {
+                            return {
+                                applicable: true,
+                                state: "suspended",
+                                sourcePath: filePath,
+                                playbackPath: filePath,
+                                cached: false,
+                                reason:
+                                    this.prefetchSuspendReason ||
+                                    "realtime"
+                            };
+                        }
+
+                        throw error;
+                    }
+                })
                 .finally(() => {
                     this.jobs.delete(key);
                 });
@@ -632,7 +743,24 @@ class ServerMediaManager {
         return job;
     }
 
-    async prepareInternal(filePath) {
+    async prepareInternal(
+        filePath,
+        generation = this.prefetchGeneration
+    ) {
+        if (
+            this.prefetchSuspended ||
+            generation !==
+                this.prefetchGeneration
+        ) {
+            const error =
+                new Error(
+                    "Pré-carga suspensa por prioridade de tempo real."
+                );
+            error.code =
+                "ABORT_ERR";
+            throw error;
+        }
+
         const stat =
             await this.statSource(
                 filePath
@@ -711,13 +839,21 @@ class ServerMediaManager {
             { force: true }
         );
 
+        const controller =
+            new AbortController();
+
+        this.activeTransferAbort =
+            controller;
+
         try {
             await pipeline(
                 fs.createReadStream(
                     filePath,
                     {
                         highWaterMark:
-                            4 * 1024 * 1024
+                            1024 * 1024,
+                        signal:
+                            controller.signal
                     }
                 ),
                 fs.createWriteStream(
@@ -725,10 +861,30 @@ class ServerMediaManager {
                     {
                         flags: "wx",
                         highWaterMark:
-                            4 * 1024 * 1024
+                            1024 * 1024,
+                        signal:
+                            controller.signal
                     }
-                )
+                ),
+                {
+                    signal:
+                        controller.signal
+                }
             );
+
+            if (
+                this.prefetchSuspended ||
+                generation !==
+                    this.prefetchGeneration
+            ) {
+                const error =
+                    new Error(
+                        "Pré-carga interrompida por prioridade de tempo real."
+                    );
+                error.code =
+                    "ABORT_ERR";
+                throw error;
+            }
 
             const copied =
                 await fs.promises.stat(
@@ -813,6 +969,14 @@ class ServerMediaManager {
                 { force: true }
             ).catch(() => {});
             throw error;
+        } finally {
+            if (
+                this.activeTransferAbort ===
+                controller
+            ) {
+                this.activeTransferAbort =
+                    null;
+            }
         }
     }
 
@@ -1074,6 +1238,10 @@ class ServerMediaManager {
                 bytes,
             activeJobs:
                 this.jobs.size,
+            prefetchSuspended:
+                this.prefetchSuspended,
+            prefetchSuspendReason:
+                this.prefetchSuspendReason,
             activeServerMedia:
                 Boolean(
                     this.activeSourcePath
