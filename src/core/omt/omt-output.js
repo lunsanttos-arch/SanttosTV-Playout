@@ -437,7 +437,12 @@ class OmtOutput {
         );
     }
 
-    writeVideo(frame) {
+    writeVideo(
+        frame,
+        {
+            allowDrop = true
+        } = {}
+    ) {
         if (
             !Buffer.isBuffer(frame) ||
             !this.canWriteVideo()
@@ -448,28 +453,52 @@ class OmtOutput {
         const target =
             this.process.stdin;
 
-        // OMT é uma saída auxiliar do PROGRAM. Nunca permitimos que
-        // backpressure do encoder/rede OMT segure o decoder principal,
-        // o NDI ou a automação. Se o sender ficar para trás, descartamos
-        // quadros somente no OMT e ele se recupera no próximo frame.
-        const maxQueuedBytes =
-            Math.max(
-                frame.length * 2,
-                8 * 1024 * 1024
-            );
+        if (allowDrop) {
+            // Quando existe outra saída principal (NDI), OMT é totalmente
+            // isolado: nunca deixamos atraso do VMX/rede segurar o PROGRAM.
+            const maxQueuedBytes =
+                Math.max(
+                    frame.length * 2,
+                    8 * 1024 * 1024
+                );
 
-        if (
-            target.writableLength >
-            maxQueuedBytes
-        ) {
-            this.videoFramesDropped += 1;
-            return true;
+            if (
+                target.writableLength >
+                maxQueuedBytes
+            ) {
+                this.videoFramesDropped += 1;
+                return true;
+            }
         }
 
         this.videoFrames += 1;
-        target.write(frame);
 
-        return true;
+        // Em modo OMT-only o retorno de write() vira o relógio de pressão do
+        // pipe. Assim o FFmpeg respeita a cadência que o sender OMT consegue
+        // consumir, em vez de decodificar o arquivo inteiro sem pacing.
+        return target.write(
+            frame
+        );
+    }
+
+    onceVideoDrain(callback) {
+        const target =
+            this.process?.stdin;
+
+        if (
+            !target ||
+            target.destroyed
+        ) {
+            queueMicrotask(
+                callback
+            );
+            return;
+        }
+
+        target.once(
+            "drain",
+            callback
+        );
     }
 
     writeAudio(chunk) {
