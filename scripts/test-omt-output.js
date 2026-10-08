@@ -154,6 +154,35 @@ if (process.platform === "win32") {
             "AUDIO_PIPE_V1"
         )
     );
+    assert(
+        output.includes(
+            "RUNTIME_PROBE_V1"
+        )
+    );
+
+    const runtimeProbe =
+        execFileSync(
+            path.join(
+                omtFolder,
+                "omt_sender.exe"
+            ),
+            ["--runtime-probe"],
+            {
+                cwd:
+                    omtFolder,
+                encoding:
+                    "utf8",
+                windowsHide:
+                    true
+            }
+        );
+
+    assert(
+        runtimeProbe.includes(
+            "OMT RUNTIME READY"
+        ),
+        "Sender OMT deve carregar libomt/libvmx e criar um sender real."
+    );
 }
 
 console.log(
