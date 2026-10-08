@@ -21,3 +21,13 @@ if (!native.ok || !native.modern) {
     process.exit(1);
 }
 console.log("NDI runtime: sender x64 atualizado, perfil PROGRAM dinâmico e áudio PCM configurável.");
+
+
+const omtFolder = path.resolve(__dirname, "../src/core/omt");
+const omtRequired = ["omt_sender.exe", "libomt.dll", "libvmx.dll"];
+const omtMissing = omtRequired.filter((name) => !fs.existsSync(path.join(omtFolder, name)));
+if (omtMissing.length > 0) {
+    console.error("PACOTE BLOQUEADO: runtime OMT incompleto: " + omtMissing.join(", "));
+    process.exit(1);
+}
+console.log("OMT runtime: sender x64 e codecs oficiais presentes.");
