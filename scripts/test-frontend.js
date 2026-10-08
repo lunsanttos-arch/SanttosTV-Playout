@@ -1,6 +1,7 @@
 const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("node:crypto");
 
 const root = path.resolve(__dirname, "..");
 const appPath = path.join(root, "src", "renderer", "src", "App.tsx");
@@ -26,6 +27,11 @@ const rendererIndex = fs.readFileSync(rendererIndexPath, "utf8");
 const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 
 assert(fs.existsSync(appIconPath), "Ícone oficial do Santtos Playout deve existir para o build Windows.");
+assert.equal(
+    crypto.createHash("sha256").update(fs.readFileSync(appIconPath)).digest("hex"),
+    "515c313fefe7ff5413d9287423fe65222ff5e065503e07c61a8f5575277a634b",
+    "Barra do Windows e executável devem usar o favicon.ico oficial do novo Brand Kit."
+);
 assert(fs.existsSync(path.join(brandDir, "santtos-logo-white.svg")),
     "Wordmark oficial da nova identidade SanTTos deve existir no renderer.");
 assert(fs.existsSync(path.join(brandDir, "santtos-symbol-white.svg")),
@@ -40,8 +46,17 @@ assert(main.includes('import "./brand-theme.css";'),
     "Tema oficial SanTTos deve ser carregado por último.");
 assert(packageConfig.build?.directories?.buildResources === "build-resources" &&
     packageConfig.build?.win?.icon === "icon.ico" &&
-    packageConfig.build?.win?.executableName === "SanttosTVAutomation",
-    "Build Windows deve usar o ícone oficial e nome estável do executável.");
+    packageConfig.build?.win?.executableName === "SanttosTVAutomation" &&
+    packageConfig.build?.productName === "SanTTos Playout",
+    "Build Windows deve usar a identidade nova mantendo o nome estável do executável.");
+assert(
+    packageConfig.build?.extraResources?.some(
+        entry =>
+            entry?.from === "src/core/omt" &&
+            entry?.to === "omt"
+    ),
+    "Build Windows deve empacotar o runtime nativo OMT."
+);
 assert(packageConfig.build?.nsis?.oneClick === false &&
     packageConfig.build?.nsis?.createDesktopShortcut === true &&
     packageConfig.build?.nsis?.createStartMenuShortcut === true,
@@ -67,6 +82,19 @@ assert(settings.includes("tabHeading") &&
     "Título de Configurações deve acompanhar a aba ativa.");
 assert(!settings.includes("Resolução, FPS, varredura, aspect ratio e pixel format são aplicados ao PROGRAM NDI"),
     "Aviso redundante sobre aplicação das configurações ao NDI deve ser removido.");
+assert(
+    settings.includes('title="OMT"') &&
+    settings.includes('label="Ativar OMT"') &&
+    settings.includes("output.omt.quality") &&
+    settings.includes("Não abre uma segunda mídia"),
+    "Configurações devem oferecer OMT como segunda saída do mesmo PROGRAM."
+);
+assert(
+    app.includes("omtStatus.online") &&
+    app.includes("● OMT ONLINE — VÍDEO + PCM") &&
+    app.includes("MOTOR SANTTOS · NDI + OMT"),
+    "Operador deve enxergar claramente o estado da saída OMT."
+);
 
 
 assert(!app.includes('{ panel: "library"'), "Biblioteca não deve voltar ao menu lateral.");
@@ -244,7 +272,7 @@ assert(
     app.includes("O motor nativo não depende do DOM/React para trocar de mídia.") &&
     app.includes("await delay(120);") &&
     app.indexOf("await startNativeNdi(") < app.indexOf("await delay(120);", app.indexOf("async function playNextMedia")) &&
-    electronMain.includes('engineAction ===\n        "stop"') &&
+    /engineAction ===\s*"stop"/.test(electronMain) &&
     electronMain.includes("sendProgramPreviewReset()"),
     "CUT nativo não pode esperar relatório/React e deve manter o último frame até o próximo decoder entregar imagem."
 );
