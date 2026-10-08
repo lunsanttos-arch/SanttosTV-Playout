@@ -77,6 +77,15 @@ function outputProfile(output = {}) {
         output.ndi.name.trim()
         ? output.ndi.name.trim().slice(0, 120)
         : "Santtos TV - PROGRAM";
+    const omtName = typeof output.omt?.name === "string" &&
+        output.omt.name.trim()
+        ? output.omt.name.trim().slice(0, 120)
+        : "SanTTos Playout - PROGRAM";
+    const omtQuality = ["default", "low", "medium", "high"].includes(
+        String(output.omt?.quality)
+    )
+        ? String(output.omt.quality)
+        : "low";
 
     // Sample aspect ratio required to produce the configured display aspect
     // ratio with the selected raster.
@@ -102,7 +111,10 @@ function outputProfile(output = {}) {
         channels,
         audioPacketSamples: Math.round(sampleRate / 50),
         ndiEnabled: output.ndi?.enabled !== false,
-        sourceName
+        sourceName,
+        omtEnabled: output.omt?.enabled === true,
+        omtName,
+        omtQuality
     };
 }
 
@@ -116,7 +128,10 @@ function profileSignature(profile) {
         profile.sampleRate,
         profile.channels,
         profile.sourceName,
-        profile.ndiEnabled ? "on" : "off"
+        profile.ndiEnabled ? "ndi-on" : "ndi-off",
+        profile.omtName,
+        profile.omtQuality,
+        profile.omtEnabled ? "omt-on" : "omt-off"
     ].join("|");
 }
 
