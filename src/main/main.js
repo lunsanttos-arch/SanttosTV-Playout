@@ -61,6 +61,14 @@ app.commandLine.appendSwitch(
     "no-user-gesture-required"
 );
 
+if (process.platform === "win32") {
+    // Mantém o agrupamento da janela/atalho no Windows e força a identidade
+    // do executável empacotado a usar o ícone oficial configurado no build.
+    app.setAppUserModelId(
+        "com.santtos.tvautomation"
+    );
+}
+
 const {
     initializeDatabase,
     getSettings,
@@ -1748,12 +1756,25 @@ async function startNativePlayback(
                     );
 
                 if (!ndiCanContinue) {
+                    const target =
+                        ndiProcess.stdin;
+
                     drains.push(
-                        (done) =>
-                            ndiProcess?.stdin?.once(
+                        (done) => {
+                            if (
+                                target.destroyed
+                            ) {
+                                queueMicrotask(
+                                    done
+                                );
+                                return;
+                            }
+
+                            target.once(
                                 "drain",
                                 done
-                            )
+                            );
+                        }
                     );
                 }
             }
