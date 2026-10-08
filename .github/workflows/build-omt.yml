@@ -72,7 +72,12 @@ jobs:
           try {
             .\omt_sender.exe --capabilities
             if ($LASTEXITCODE -ne 0) {
-              throw "Probe do sender OMT falhou com código $LASTEXITCODE"
+              throw "Probe de capacidades OMT falhou com código $LASTEXITCODE"
+            }
+
+            .\omt_sender.exe --runtime-probe
+            if ($LASTEXITCODE -ne 0) {
+              throw "Runtime oficial OMT não inicializou. Código $LASTEXITCODE"
             }
           }
           finally {
