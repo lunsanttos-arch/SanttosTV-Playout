@@ -774,3 +774,9 @@ input[type="range"],
     background: rgba(124, 58, 237, 0.08);
     border-color: rgba(124, 58, 237, 0.24);
 }
+
+.system-status > .status-output-warning {
+    color: #F5D99E;
+    background: rgba(245, 190, 91, 0.07);
+    border-color: rgba(245, 190, 91, 0.25);
+}
