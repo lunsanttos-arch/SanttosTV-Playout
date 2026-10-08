@@ -219,7 +219,7 @@ assert(
 assert(
     electronMain.includes('state.sourceType === "input"') &&
     electronMain.includes("? 512") &&
-    electronMain.includes("data:\n                frame"),
+    /data:\s*frame/.test(electronMain),
     "Input Web deve usar preview mais leve e evitar cópia extra do JPEG no IPC."
 );
 assert(
