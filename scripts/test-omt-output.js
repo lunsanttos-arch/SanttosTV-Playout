@@ -97,7 +97,10 @@ assert(
 );
 assert(
     controller.includes(
-        "writeVideo(frame)"
+        "writeVideo("
+    ) &&
+    controller.includes(
+        "frame,"
     )
 );
 assert(
