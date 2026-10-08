@@ -26,15 +26,18 @@ const rendererIndex = fs.readFileSync(rendererIndexPath, "utf8");
 const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 
 assert(fs.existsSync(appIconPath), "Ícone oficial do Santtos Playout deve existir para o build Windows.");
-assert(fs.existsSync(path.join(brandDir, "logo-horizontal.webp")),
-    "Logo horizontal oficial deve existir no renderer.");
-assert(fs.existsSync(path.join(brandDir, "logo-symbol.webp")),
-    "Símbolo oficial deve permanecer disponível como asset.");
-assert(fs.existsSync(path.join(brandDir, "logo-vertical.webp")),
-    "Logo vertical oficial deve permanecer disponível como asset.");
-assert(app.includes('src="./brand/logo-horizontal.webp"') &&
-    app.includes('alt="Santtos Playout"'),
-    "Cabeçalho deve usar o logo oficial Santtos Playout.");
+assert(fs.existsSync(path.join(brandDir, "santtos-logo-white.svg")),
+    "Wordmark oficial da nova identidade SanTTos deve existir no renderer.");
+assert(fs.existsSync(path.join(brandDir, "santtos-symbol-white.svg")),
+    "Símbolo TT oficial da nova identidade SanTTos deve existir no renderer.");
+assert(fs.existsSync(path.join(brandDir, "favicon.svg")),
+    "Favicon oficial da nova identidade SanTTos deve existir no renderer.");
+assert(app.includes('src="./brand/santtos-logo-white.svg"') &&
+    app.includes('className="brand-product"') &&
+    app.includes("PLAYOUT"),
+    "Cabeçalho deve usar o lockup oficial SanTTos + produto Playout.");
+assert(main.includes('import "./brand-theme.css";'),
+    "Tema oficial SanTTos deve ser carregado por último.");
 assert(packageConfig.build?.directories?.buildResources === "build-resources" &&
     packageConfig.build?.win?.icon === "icon.ico" &&
     packageConfig.build?.win?.executableName === "SanttosTVAutomation",
@@ -123,6 +126,15 @@ assert(!app.includes("DIAGNÓSTICO DO PLAYOUT") &&
     "Painel de diagnóstico deve ser removido conforme solicitação.");
 const appCss = fs.readFileSync(
     path.join(root, "src", "renderer", "src", "styles.css"), "utf8"
+);
+const brandCss = fs.readFileSync(
+    path.join(root, "src", "renderer", "src", "brand-theme.css"), "utf8"
+);
+assert(
+    brandCss.includes("--st-purple: #7C3AED") &&
+    brandCss.includes("--st-bg: #0B0B10") &&
+    brandCss.includes(".sidebar-suite"),
+    "Tema do Playout deve seguir as cores oficiais e o novo shell SanTTos."
 );
 assert(appCss.includes(".program-media-row") &&
     appCss.includes(".program-audio-meters") &&
