@@ -17,6 +17,58 @@ const SUPPORTED_EXTENSIONS = new Set([
 let configFile = "";
 let categories = DEFAULT_CATEGORIES.map((item) => ({ ...item }));
 
+function withTimeout(
+    promise,
+    timeoutMs,
+    message
+) {
+    let timer = null;
+
+    const timeout =
+        new Promise(
+            (_resolve, reject) => {
+                timer =
+                    setTimeout(
+                        () => {
+                            const error =
+                                new Error(
+                                    message
+                                );
+
+                            error.code =
+                                "ETIMEDOUT";
+
+                            reject(error);
+                        },
+                        timeoutMs
+                    );
+            }
+        );
+
+    return Promise.race([
+        promise,
+        timeout
+    ]).finally(() => {
+        if (timer) {
+            clearTimeout(timer);
+        }
+    });
+}
+
+function isUnavailableFolderError(error) {
+    return Boolean(
+        error &&
+        (
+            error.code === "ENOENT" ||
+            error.code === "ENOTDIR" ||
+            error.code === "ENETUNREACH" ||
+            error.code === "EHOSTUNREACH" ||
+            error.code === "ETIMEDOUT" ||
+            error.code === "ECONNREFUSED"
+        )
+    );
+}
+
 function initializeLibraryCategories(userDataPath) {
     configFile = path.join(userDataPath, "library-categories.json");
     loadCategories();
@@ -158,17 +210,19 @@ async function scanLibraryCategory(categoryId) {
 
     try {
         stat =
-            await fs.promises.stat(
-                category.folderPath
+            await withTimeout(
+                fs.promises.stat(
+                    category.folderPath
+                ),
+                networkPath
+                    ? 4000
+                    : 8000,
+                "Tempo limite ao acessar a pasta da Biblioteca."
             );
     } catch (error) {
         if (
-            error &&
-            (
-                error.code === "ENOENT" ||
-                error.code === "ENOTDIR" ||
-                error.code === "ENETUNREACH" ||
-                error.code === "EHOSTUNREACH"
+            isUnavailableFolderError(
+                error
             )
         ) {
             return {
@@ -193,13 +247,41 @@ async function scanLibraryCategory(categoryId) {
 
     // Importante para SMB/NAS: a leitura é assíncrona para não congelar
     // o processo principal do Electron enquanto o servidor responde.
-    const entries =
-        await fs.promises.readdir(
-            category.folderPath,
-            {
-                withFileTypes: true
-            }
-        );
+    let entries;
+
+    try {
+        entries =
+            await withTimeout(
+                fs.promises.readdir(
+                    category.folderPath,
+                    {
+                        withFileTypes: true
+                    }
+                ),
+                networkPath
+                    ? 6000
+                    : 12000,
+                "Tempo limite ao listar a pasta da Biblioteca."
+            );
+    } catch (error) {
+        if (
+            isUnavailableFolderError(
+                error
+            )
+        ) {
+            return {
+                category: {
+                    ...category
+                },
+                filePaths: [],
+                folderMissing: true,
+                unconfigured: false,
+                networkPath
+            };
+        }
+
+        throw error;
+    }
 
     const filePaths =
         entries
