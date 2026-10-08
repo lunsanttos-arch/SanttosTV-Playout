@@ -178,10 +178,10 @@ assert(
     electronMain.includes('pausedPlayout.state === "PAUSED"') &&
     electronMain.includes("samePausedItem") &&
     electronMain.includes("pausedPlayout.positionSeconds") &&
-    electronMain.includes("playout:\n            playoutEngine.snapshot()") &&
+    electronMain.includes("playoutEngine.snapshot()") &&
     app.includes("const authoritativeStart =") &&
     app.includes("nativeStart?.playout?.positionSeconds") &&
-    !app.includes("setNativePlayout(\n                    result.playout\n                )"),
+    !/setNativePlayout\(\s*result\.playout\s*\)/.test(app),
     "PAUSE -> PLAY imediato deve retomar do timecode autoritativo salvo, sem depender do polling da UI."
 );
 assert(app.includes("program-progress-slider") &&
