@@ -21,6 +21,8 @@ on:
       - "scripts/test-ndi-pipe.js"
       - "scripts/test-ndi-frame-aligner.js"
       - "scripts/test-omt-output.js"
+      - "scripts/test-server-media.js"
+      - "scripts/test-server-media.js"
       - "scripts/check-ndi-audio.js"
       - "scripts/start-ndi-testbench.js"
       - "scripts/test-testbench.js"
@@ -94,6 +96,7 @@ jobs:
           node --check src/core/playout/program-preview-tap.js
           node --check src/core/playout/ffmpeg-stream-map.js
           node --check src/core/media/web-input-preview.js
+          node --check src/core/media/server-media.js
 
       - name: Security regression tests
         run: npm run test:security
@@ -136,6 +139,9 @@ jobs:
 
       - name: OMT native sender regression
         run: npm run test:omt
+
+      - name: Server media cache and failover
+        run: npm run test:server-media
 
       - name: Real PROGRAM audio monitor regression
         run: npm run test:program-audio-monitor
