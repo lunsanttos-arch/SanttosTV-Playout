@@ -29,6 +29,7 @@ class OmtOutput {
         this.error = "";
         this.pendingOutput = "";
         this.videoFrames = 0;
+        this.videoFramesDropped = 0;
         this.audioBytes = 0;
     }
 
@@ -102,6 +103,7 @@ class OmtOutput {
         this.audioReady = false;
         this.audioActive = false;
         this.videoFrames = 0;
+        this.videoFramesDropped = 0;
         this.audioBytes = 0;
 
         this.audioPipe =
@@ -443,26 +445,31 @@ class OmtOutput {
             return true;
         }
 
-        this.videoFrames += 1;
+        const target =
+            this.process.stdin;
 
-        return this.process.stdin.write(
-            frame
-        );
-    }
+        // OMT é uma saída auxiliar do PROGRAM. Nunca permitimos que
+        // backpressure do encoder/rede OMT segure o decoder principal,
+        // o NDI ou a automação. Se o sender ficar para trás, descartamos
+        // quadros somente no OMT e ele se recupera no próximo frame.
+        const maxQueuedBytes =
+            Math.max(
+                frame.length * 2,
+                8 * 1024 * 1024
+            );
 
-    onceVideoDrain(callback) {
         if (
-            !this.process?.stdin ||
-            this.process.stdin.destroyed
+            target.writableLength >
+            maxQueuedBytes
         ) {
-            queueMicrotask(callback);
-            return;
+            this.videoFramesDropped += 1;
+            return true;
         }
 
-        this.process.stdin.once(
-            "drain",
-            callback
-        );
+        this.videoFrames += 1;
+        target.write(frame);
+
+        return true;
     }
 
     writeAudio(chunk) {
@@ -573,6 +580,8 @@ class OmtOutput {
                 ),
             videoFrames:
                 this.videoFrames,
+            videoFramesDropped:
+                this.videoFramesDropped,
             audioBytes:
                 this.audioBytes,
             error:
