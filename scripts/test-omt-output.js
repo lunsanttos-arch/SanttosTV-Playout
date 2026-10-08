@@ -81,6 +81,15 @@ const controller =
         "utf8"
     );
 
+const electronMain =
+    fs.readFileSync(
+        path.resolve(
+            __dirname,
+            "../src/main/main.js"
+        ),
+        "utf8"
+    );
+
 assert(
     controller.includes(
         "SanttosOmtAudio-"
@@ -95,6 +104,21 @@ assert(
     controller.includes(
         "writeAudio(chunk)"
     )
+);
+assert(
+    controller.includes(
+        "videoFramesDropped"
+    ) &&
+    controller.includes(
+        "target.writableLength"
+    ),
+    "Saída OMT deve ter buffer limitado e descartar apenas quadros OMT sob backpressure."
+);
+assert(
+    !electronMain.includes(
+        "omtOutput.onceVideoDrain"
+    ),
+    "Backpressure OMT não pode pausar o decoder principal ou o NDI."
 );
 
 if (process.platform === "win32") {
