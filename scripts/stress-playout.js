@@ -1,3 +1,4 @@
+// Stress smoke sempre roda com o package-lock de produção já auditado.
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
