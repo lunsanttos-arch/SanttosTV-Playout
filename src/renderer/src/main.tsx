@@ -8,6 +8,7 @@ import "./timeline-controls.css";
 import "./library-layout.css";
 import "./library-categories.css";
 import "./library-scroll.css";
+import "./brand-theme.css";
 
 /*
     A biblioteca serve apenas como fonte de mídia.
