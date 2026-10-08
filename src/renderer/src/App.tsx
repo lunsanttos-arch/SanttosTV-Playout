@@ -302,6 +302,11 @@ declare global {
                 online: boolean;
                 source: string;
                 nativePlaybackActive?: boolean;
+                programClock?: {
+                    kind: string;
+                    programMs: number;
+                    wallClockMs: number;
+                };
                 playoutError?: string | null;
                 error?: string | null;
                 restarting?: boolean;
@@ -450,6 +455,7 @@ export default function App() {
     const [ndiDevNullSink, setNdiDevNullSink] = useState(false);
     const [audioStatus, setAudioStatus] = useState<NativeAudioStatus>({ state: "IDLE" });
     const [nativePlaybackActive, setNativePlaybackActive] = useState(false);
+    const [programClockKind, setProgramClockKind] = useState("MONOTONIC");
     const [nativePlayout, setNativePlayout] = useState<NativePlayoutStatus>({
         generation: 0,
         state: "IDLE",
@@ -547,6 +553,9 @@ export default function App() {
                 setAudioStatus(status.audio ?? { state: "IDLE" });
                 setNdiError(status.error ?? null);
                 setNativePlaybackActive(Boolean(status.nativePlaybackActive));
+                setProgramClockKind(
+                    status.programClock?.kind ?? "MONOTONIC"
+                );
                 if (status.playout) {
                     setNativePlayout(status.playout);
                 }
@@ -802,6 +811,9 @@ export default function App() {
                 </div>
 
                 <div className="system-status">
+                    <span className="status-clock">
+                        ● CLOCK {programClockKind === "MONOTONIC" ? "MONO" : programClockKind}
+                    </span>
                     <span className="status-online">
                         {ndiTestMode ? "● BANCADA NDI — FONTE QA"
                           : testBench ? "● BANCADA ISOLADA — SEM NDI"
