@@ -1745,24 +1745,27 @@ async function startNativePlayback(
 
             const drains = [];
 
-            if (
-                ndiReady &&
-                ndiProcess?.stdin &&
-                !ndiProcess.stdin.destroyed
-            ) {
+            const ndiFrameReady =
+                Boolean(
+                    ndiReady &&
+                    ndiProcess?.stdin &&
+                    !ndiProcess.stdin.destroyed
+                );
+
+            if (ndiFrameReady) {
+                const ndiTarget =
+                    ndiProcess.stdin;
+
                 const ndiCanContinue =
-                    ndiProcess.stdin.write(
+                    ndiTarget.write(
                         completeFrame
                     );
 
                 if (!ndiCanContinue) {
-                    const target =
-                        ndiProcess.stdin;
-
                     drains.push(
                         (done) => {
                             if (
-                                target.destroyed
+                                ndiTarget.destroyed
                             ) {
                                 queueMicrotask(
                                     done
@@ -1770,7 +1773,7 @@ async function startNativePlayback(
                                 return;
                             }
 
-                            target.once(
+                            ndiTarget.once(
                                 "drain",
                                 done
                             );
@@ -1782,11 +1785,32 @@ async function startNativePlayback(
             if (
                 omtOutput?.canWriteVideo()
             ) {
-                // OMT é independente da saída principal: atraso no sender
-                // OMT nunca deve pausar o decoder nem o NDI.
-                omtOutput.writeVideo(
-                    completeFrame
-                );
+                // Com NDI ativo, OMT é uma saída auxiliar e pode descartar
+                // quadros próprios sob pressão sem tocar no ritmo do PROGRAM.
+                // Em OMT-only, o sender assume o pacing do decoder.
+                const omtCanContinue =
+                    omtOutput.writeVideo(
+                        completeFrame,
+                        {
+                            allowDrop:
+                                ndiFrameReady
+                        }
+                    );
+
+                if (
+                    !ndiFrameReady &&
+                    !omtCanContinue
+                ) {
+                    const omtTarget =
+                        omtOutput;
+
+                    drains.push(
+                        (done) =>
+                            omtTarget.onceVideoDrain(
+                                done
+                            )
+                    );
+                }
             }
 
             if (
