@@ -1,0 +1,49 @@
+name: Sync npm lock after security override
+
+on:
+  push:
+    paths:
+      - ".github/workflows/sync-lock.yml"
+      - "package.json"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-lock:
+    runs-on: windows-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Update package lock only
+        shell: pwsh
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Verify production audit
+        shell: pwsh
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Commit package lock
+        shell: pwsh
+        run: |
+          if (git diff --quiet -- package-lock.json) {
+            Write-Host "package-lock.json já está sincronizado."
+            exit 0
+          }
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "Sincronizar package-lock após correção de segurança"
+          git fetch origin main
+          git rebase origin/main
+          git push origin HEAD:main
