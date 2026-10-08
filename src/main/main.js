@@ -1017,6 +1017,7 @@ function stopNativePlayback({ engineAction = "stop" } = {}) {
         playoutEngine.pause();
     } else if (engineAction === "stop") {
         playoutEngine.stop();
+        serverMedia.clearActive();
     }
 
     if (stopNdiFrameFeed) {
@@ -1475,6 +1476,10 @@ async function startNativePlayback(
             ` | reprodução=${playbackPath}`
         );
     }
+    serverMedia.markActive(
+        filePath
+    );
+
     const normalizedInPoint =
         Number.isFinite(Number(programState.inPointSeconds))
             ? Math.max(0, Number(programState.inPointSeconds))
@@ -2406,11 +2411,14 @@ function registerIpcHandlers() {
                         value
                     );
 
+                const status =
+                    await serverMedia
+                        .probeRoot();
+
                 return {
                     ok: true,
                     settings,
-                    status:
-                        serverMedia.status()
+                    status
                 };
             } catch (error) {
                 return {
@@ -2490,6 +2498,20 @@ function registerIpcHandlers() {
         "server-media:clear-cache",
         async () => {
             try {
+                const engineState =
+                    playoutEngine.snapshot().state;
+
+                if (
+                    engineState === "PLAYING" ||
+                    engineState === "PAUSED"
+                ) {
+                    return {
+                        ok: false,
+                        error:
+                            "Pare o PROGRAM antes de limpar o cache do servidor."
+                    };
+                }
+
                 return {
                     ok: true,
                     status:
