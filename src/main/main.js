@@ -45,6 +45,7 @@ const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
 const { NativePlayoutEngine } = require("../core/playout/native-playout-engine");
+const { ProgramClock } = require("../core/playout/program-clock");
 const { JpegFrameParser } = require("../core/playout/program-preview-tap");
 const { videoFilterInput } = require("../core/playout/ffmpeg-stream-map");
 const {
@@ -274,7 +275,10 @@ let stopProgramPreviewFeed = null;
 let programPreviewSequence = 0;
 let activeOutputProfile = outputProfile({});
 let activeOutputSignature = profileSignature(activeOutputProfile);
-const playoutEngine = new NativePlayoutEngine();
+const programClock = new ProgramClock();
+const playoutEngine = new NativePlayoutEngine({
+    now: () => programClock.nowMs()
+});
 function onPlayoutFault(message) {
     playoutLastError = message;
     nativePlaybackActive = false;
@@ -2079,6 +2083,7 @@ function registerIpcHandlers() {
                     channels: activeOutputProfile.channels,
                     receiverVerified: false, routedToNdi: false, route: ndiSourceName },
             nativePlaybackActive,
+            programClock: programClock.snapshot(),
             playout: playoutEngine.snapshot(),
             playoutError: playoutLastError || null,
             error: ndiLastError || null,
