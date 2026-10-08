@@ -1,0 +1,95 @@
+name: Build OMT Sender
+
+on:
+  push:
+    paths:
+      - ".github/workflows/build-omt.yml"
+      - "src/core/omt/omt_sender.cpp"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows-x64:
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Download official OMT runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $url = "https://github.com/openmediatransport/libomtnet/releases/download/v1.0.0.19/OpenMediaTransport.Binaries.Release.v1.0.0.19.zip"
+          $zip = Join-Path $env:RUNNER_TEMP "omt-runtime.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+
+          $expected = "c62460174499dabe703e3e57372daf5f1dd95f890355d11e30052b9ed35bdac4"
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $expected) {
+            throw "SHA256 do runtime OMT não confere. Esperado=$expected Atual=$actual"
+          }
+
+          $runtime = Join-Path $env:RUNNER_TEMP "omt-runtime"
+          Expand-Archive -Path $zip -DestinationPath $runtime -Force
+
+          Write-Host "DLLs OMT encontradas:"
+          Get-ChildItem $runtime -Recurse -File -Include "libomt.dll","libvmx.dll" | ForEach-Object { Write-Host $_.FullName }
+
+          $omtCandidates = @(Get-ChildItem $runtime -Recurse -File -Filter "libomt.dll" | Where-Object { $_.FullName -match "(?i)(win-x64|win64|windows.*x64|x64)" })
+          $vmxCandidates = @(Get-ChildItem $runtime -Recurse -File -Filter "libvmx.dll" | Where-Object { $_.FullName -match "(?i)(win-x64|win64|windows.*x64|x64)" })
+
+          if ($omtCandidates.Count -eq 0) {
+            $omtCandidates = @(Get-ChildItem $runtime -Recurse -File -Filter "libomt.dll")
+          }
+          if ($vmxCandidates.Count -eq 0) {
+            $vmxCandidates = @(Get-ChildItem $runtime -Recurse -File -Filter "libvmx.dll")
+          }
+
+          if ($omtCandidates.Count -eq 0 -or $vmxCandidates.Count -eq 0) {
+            throw "Runtime oficial não contém libomt.dll/libvmx.dll utilizáveis."
+          }
+
+          New-Item -ItemType Directory -Force "src/core/omt" | Out-Null
+          Copy-Item $omtCandidates[0].FullName "src/core/omt/libomt.dll" -Force
+          Copy-Item $vmxCandidates[0].FullName "src/core/omt/libvmx.dll" -Force
+
+      - name: Compile native OMT sender
+        shell: pwsh
+        run: cl.exe /nologo /std:c++17 /EHsc /O2 /W4 /DUNICODE /D_UNICODE "src/core/omt/omt_sender.cpp" /Fe:"src/core/omt/omt_sender.exe"
+
+      - name: Probe OMT sender
+        shell: pwsh
+        run: |
+          Push-Location "src/core/omt"
+          try {
+            .\omt_sender.exe --capabilities
+            if ($LASTEXITCODE -ne 0) {
+              throw "Probe do sender OMT falhou com código $LASTEXITCODE"
+            }
+          }
+          finally {
+            Pop-Location
+          }
+
+      - name: Commit OMT runtime
+        shell: pwsh
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/core/omt/omt_sender.exe src/core/omt/libomt.dll src/core/omt/libvmx.dll
+
+          if (git diff --cached --quiet) {
+            Write-Host "Runtime OMT já está atualizado."
+            exit 0
+          }
+
+          git commit -m "Build runtime OMT Windows x64"
+          git push
