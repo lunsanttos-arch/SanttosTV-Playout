@@ -73,6 +73,36 @@ const {
             true
         );
 
+        manager.setRealtimePriority(
+            true,
+            "input-web-on-air"
+        );
+
+        const suspended =
+            await manager.prepare(
+                source
+            );
+
+        assert.equal(
+            suspended.state,
+            "suspended"
+        );
+        assert.equal(
+            manager.status()
+                .prefetchSuspended,
+            true
+        );
+
+        manager.setRealtimePriority(
+            false
+        );
+
+        assert.equal(
+            manager.status()
+                .prefetchSuspended,
+            false
+        );
+
         const prepared =
             await manager.prepare(
                 source
@@ -155,7 +185,7 @@ const {
         );
 
         console.log(
-            "SERVER MEDIA QA: APROVADO — cache local, resolução de playback e fallback sem servidor."
+            "SERVER MEDIA QA: APROVADO — cache local, prioridade do Input Web, resolução de playback e fallback sem servidor."
         );
     } finally {
         fs.rmSync(
