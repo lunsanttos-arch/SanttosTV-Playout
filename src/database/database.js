@@ -53,6 +53,12 @@ const DEFAULT_OUTPUT_SETTINGS = {
         name: "Santtos TV - PROGRAM"
     },
 
+    omt: {
+        enabled: false,
+        name: "SanTTos Playout - PROGRAM",
+        quality: "low"
+    },
+
     srt: {
         enabled: false,
         mode: "caller",
@@ -333,6 +339,7 @@ function normalizeOutputSettings(value = {}) {
     value = value && typeof value === "object" && !Array.isArray(value) ? value : {};
     const audio = value.audio && typeof value.audio === "object" ? value.audio : {};
     const ndi = value.ndi && typeof value.ndi === "object" ? value.ndi : {};
+    const omt = value.omt && typeof value.omt === "object" ? value.omt : {};
     const srt = value.srt && typeof value.srt === "object" ? value.srt : {};
 
     return {
@@ -414,6 +421,23 @@ function normalizeOutputSettings(value = {}) {
                 DEFAULT_OUTPUT_SETTINGS.ndi.name,
                 120
             ) || DEFAULT_OUTPUT_SETTINGS.ndi.name
+        },
+
+        omt: {
+            enabled:
+                typeof omt.enabled === "boolean"
+                    ? omt.enabled
+                    : DEFAULT_OUTPUT_SETTINGS.omt.enabled,
+            name: normalizeText(
+                omt.name,
+                DEFAULT_OUTPUT_SETTINGS.omt.name,
+                120
+            ) || DEFAULT_OUTPUT_SETTINGS.omt.name,
+            quality: normalizeChoice(
+                omt.quality,
+                ["default", "low", "medium", "high"],
+                DEFAULT_OUTPUT_SETTINGS.omt.quality
+            )
         },
 
         srt: {
