@@ -1421,7 +1421,9 @@ async function startNativePlayback(
                                         : resolvedRemoteInput.referer,
                                 withAudioCopy:
                                     true,
-                            startTimeSeconds:
+                                networkCachingMs:
+                                    1400,
+                                startTimeSeconds:
                                     samePausedItem
                                         ? normalizedStartSeconds
                                         : 0
