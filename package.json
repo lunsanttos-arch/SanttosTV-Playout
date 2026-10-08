@@ -61,7 +61,7 @@
   },
   "build": {
     "appId": "com.santtos.tvautomation",
-    "productName": "Santtos TV Automation",
+    "productName": "SanTTos Playout",
     "extraResources": [
       {
         "from": "src/core/ndi",
@@ -69,6 +69,15 @@
         "filter": [
           "ndi_test.exe",
           "Processing.NDI.Lib.x64.dll"
+        ]
+      },
+      {
+        "from": "src/core/omt",
+        "to": "omt",
+        "filter": [
+          "omt_sender.exe",
+          "libomt.dll",
+          "libvmx.dll"
         ]
       },
       {
@@ -103,7 +112,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Santtos Playout",
+      "shortcutName": "SanTTos Playout",
       "installerIcon": "icon.ico",
       "uninstallerIcon": "icon.ico",
       "installerHeaderIcon": "icon.ico"
