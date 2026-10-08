@@ -40,6 +40,7 @@ class ServerMediaManager {
         this.settings = { ...DEFAULT_SETTINGS };
         this.index = new Map();
         this.jobs = new Map();
+        this.prefetchTail = Promise.resolve();
         this.lastError = "";
         this.lastServerCheckAt = 0;
         this.serverReachable = null;
@@ -544,11 +545,19 @@ class ServerMediaManager {
         }
 
         const job =
-            this.prepareInternal(
-                filePath
-            ).finally(() => {
-                this.jobs.delete(key);
-            });
+            this.prefetchTail
+                .catch(() => {})
+                .then(() =>
+                    this.prepareInternal(
+                        filePath
+                    )
+                )
+                .finally(() => {
+                    this.jobs.delete(key);
+                });
+
+        this.prefetchTail =
+            job.catch(() => {});
 
         this.jobs.set(
             key,
