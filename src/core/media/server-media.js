@@ -46,14 +46,18 @@ class ServerMediaManager {
         this.activeSourcePath = "";
     }
 
-    initialize(userDataPath) {
+    initialize(
+        userDataPath,
+        cacheBasePath = userDataPath
+    ) {
         this.userDataPath = userDataPath;
         this.settingsFile = path.join(
             userDataPath,
             "server-media.json"
         );
         this.cacheFolder = path.join(
-            userDataPath,
+            cacheBasePath,
+            "SanTTos Playout",
             "server-media-cache"
         );
         this.indexFile = path.join(
