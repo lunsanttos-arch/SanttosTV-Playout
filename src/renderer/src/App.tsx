@@ -307,6 +307,18 @@ declare global {
                     programMs: number;
                     wallClockMs: number;
                 };
+                omt?: {
+                    enabled: boolean;
+                    online: boolean;
+                    source: string;
+                    quality: string;
+                    audioReady: boolean;
+                    audioActive: boolean;
+                    connectedAudio: boolean;
+                    videoFrames: number;
+                    audioBytes: number;
+                    error: string | null;
+                };
                 playoutError?: string | null;
                 error?: string | null;
                 restarting?: boolean;
@@ -456,6 +468,18 @@ export default function App() {
     const [audioStatus, setAudioStatus] = useState<NativeAudioStatus>({ state: "IDLE" });
     const [nativePlaybackActive, setNativePlaybackActive] = useState(false);
     const [programClockKind, setProgramClockKind] = useState("MONOTONIC");
+    const [omtStatus, setOmtStatus] = useState({
+        enabled: false,
+        online: false,
+        source: "SanTTos Playout - PROGRAM",
+        quality: "low",
+        audioReady: false,
+        audioActive: false,
+        connectedAudio: false,
+        videoFrames: 0,
+        audioBytes: 0,
+        error: null as string | null
+    });
     const [nativePlayout, setNativePlayout] = useState<NativePlayoutStatus>({
         generation: 0,
         state: "IDLE",
@@ -556,6 +580,9 @@ export default function App() {
                 setProgramClockKind(
                     status.programClock?.kind ?? "MONOTONIC"
                 );
+                if (status.omt) {
+                    setOmtStatus(status.omt);
+                }
                 if (status.playout) {
                     setNativePlayout(status.playout);
                 }
@@ -835,6 +862,27 @@ export default function App() {
                                 ? `● NDI OFFLINE: ${ndiError}`
                                 : "● NDI OFFLINE"}
                     </span>
+                    {omtStatus.enabled && (
+                        <span
+                            title={
+                                omtStatus.error ??
+                                `${omtStatus.source} · qualidade ${omtStatus.quality}`
+                            }
+                            className={
+                                omtStatus.online
+                                    ? "status-online"
+                                    : "status-output-warning"
+                            }
+                        >
+                            {omtStatus.online
+                                ? omtStatus.audioActive
+                                    ? "● OMT ONLINE — VÍDEO + PCM"
+                                    : "● OMT ONLINE — ÁUDIO INICIANDO"
+                                : omtStatus.error
+                                  ? "● OMT OFFLINE"
+                                  : "● OMT INICIANDO"}
+                        </span>
+                    )}
                 </div>
             </header>
 
@@ -858,6 +906,7 @@ export default function App() {
                             ndiTestMode={ndiTestMode}
                             audioStatus={audioStatus}
                             ndiOnline={ndiOnline}
+                            omtOnline={omtStatus.online}
                             nativePlaybackActive={nativePlaybackActive}
                             nativePlayout={nativePlayout}
                             playoutError={playoutError}
@@ -986,6 +1035,7 @@ interface PlayoutPanelProps {
     ndiTestMode: boolean;
     audioStatus: NativeAudioStatus;
     ndiOnline: boolean;
+    omtOnline: boolean;
     nativePlaybackActive: boolean;
     nativePlayout: NativePlayoutStatus;
     playoutError: string | null;
@@ -1025,6 +1075,7 @@ function PlayoutPanel({
     ndiTestMode,
     audioStatus,
     ndiOnline,
+    omtOnline,
     nativePlaybackActive,
     nativePlayout,
     playoutError,
@@ -3274,9 +3325,13 @@ function PlayoutPanel({
                             {testBench && !ndiTestMode && isPlaying
                                 ? "● PRÉVIA DE TESTE (SEM NDI)"
                                 : nativePlayout.state === "PLAYING" &&
-                                  ndiOnline &&
+                                  (ndiOnline || omtOnline) &&
                                   nativePlaybackActive
-                                  ? "● MOTOR SANTTOS · NDI ATIVO"
+                                  ? ndiOnline && omtOnline
+                                      ? "● MOTOR SANTTOS · NDI + OMT"
+                                      : omtOnline
+                                        ? "● MOTOR SANTTOS · OMT ATIVO"
+                                        : "● MOTOR SANTTOS · NDI ATIVO"
                                 : nativePlayout.state === "PAUSED"
                                   ? "● MOTOR SANTTOS · PAUSADO"
                                 : nativePlayout.state === "FAULT"
