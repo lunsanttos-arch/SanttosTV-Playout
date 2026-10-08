@@ -28,6 +28,11 @@ const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 
 assert(fs.existsSync(appIconPath), "Ícone oficial do Santtos Playout deve existir para o build Windows.");
 assert.equal(
+    fs.statSync(appIconPath).size,
+    6576,
+    "favicon.ico oficial do Brand Kit deve permanecer intacto."
+);
+assert.equal(
     crypto.createHash("sha256").update(fs.readFileSync(appIconPath)).digest("hex"),
     "515c313fefe7ff5413d9287423fe65222ff5e065503e07c61a8f5575277a634b",
     "Barra do Windows e executável devem usar o favicon.ico oficial do novo Brand Kit."
