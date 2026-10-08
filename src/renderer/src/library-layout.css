@@ -347,3 +347,216 @@
         grid-template-columns: 1fr auto;
     }
 }
+
+
+/* ===== SERVER MEDIA ===== */
+.server-media-settings {
+    display: grid;
+    gap: 14px;
+    padding: 16px;
+    background:
+        linear-gradient(
+            180deg,
+            rgba(124, 58, 237, 0.08),
+            rgba(20, 20, 29, 0.96) 34%
+        );
+    border: 1px solid rgba(124, 58, 237, 0.28);
+    border-radius: 11px;
+}
+
+.server-media-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+}
+
+.server-media-heading h2 {
+    margin: 2px 0 5px;
+    font-size: 17px;
+}
+
+.server-media-heading p {
+    max-width: 780px;
+    margin: 0;
+    color: #9292a6;
+    font-size: 11px;
+    line-height: 1.5;
+}
+
+.server-media-eyebrow {
+    color: #bba7ff;
+    font-size: 9px;
+    font-weight: 900;
+    letter-spacing: 1.4px;
+}
+
+.server-media-health {
+    flex: 0 0 auto;
+    padding: 6px 9px;
+    color: #b4b4c5;
+    background: #15151f;
+    border: 1px solid #343447;
+    border-radius: 999px;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .5px;
+}
+
+.server-media-health.online {
+    color: #b9f3d0;
+    background: rgba(74, 217, 137, 0.07);
+    border-color: rgba(74, 217, 137, 0.25);
+}
+
+.server-media-health.offline {
+    color: #ffd3a5;
+    background: rgba(245, 190, 91, 0.07);
+    border-color: rgba(245, 190, 91, 0.28);
+}
+
+.server-media-grid {
+    display: grid;
+    grid-template-columns:
+        minmax(260px, .8fr)
+        minmax(390px, 1.35fr);
+    gap: 11px 16px;
+    align-items: stretch;
+}
+
+.server-media-toggle,
+.server-media-number,
+.server-media-cache-status,
+.server-media-path-field {
+    min-width: 0;
+    padding: 12px;
+    background: #111119;
+    border: 1px solid #29293a;
+    border-radius: 9px;
+}
+
+.server-media-toggle {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    cursor: pointer;
+}
+
+.server-media-toggle input {
+    width: 16px;
+    height: 16px;
+    margin-top: 1px;
+    accent-color: #7c3aed;
+}
+
+.server-media-toggle span {
+    display: grid;
+    gap: 4px;
+}
+
+.server-media-toggle strong,
+.server-media-cache-status strong {
+    color: #efeff6;
+    font-size: 11px;
+}
+
+.server-media-toggle small,
+.server-media-cache-status small,
+.server-media-path-field small {
+    color: #7f7f93;
+    font-size: 9px;
+    line-height: 1.45;
+}
+
+.server-media-path-field {
+    display: grid;
+    gap: 7px;
+}
+
+.server-media-path-field > label,
+.server-media-number > span,
+.server-media-cache-status > span {
+    color: #9e9eb0;
+    font-size: 9px;
+    font-weight: 800;
+    letter-spacing: .55px;
+    text-transform: uppercase;
+}
+
+.server-media-path-field > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px;
+}
+
+.server-media-path-field input,
+.server-media-number input {
+    min-width: 0;
+    height: 34px;
+    padding: 0 9px;
+    color: #f3f3f7;
+    background: #0b0b11;
+    border: 1px solid #343447;
+    border-radius: 7px;
+    outline: none;
+}
+
+.server-media-path-field input:focus,
+.server-media-number input:focus {
+    border-color: #7c3aed;
+    box-shadow: 0 0 0 2px rgba(124, 58, 237, .12);
+}
+
+.server-media-path-field button {
+    min-height: 34px;
+    padding: 0 11px;
+    color: #dedee8;
+    background: #1b1b27;
+    border: 1px solid #39394d;
+    border-radius: 7px;
+    cursor: pointer;
+}
+
+.server-media-number,
+.server-media-cache-status {
+    display: grid;
+    gap: 7px;
+}
+
+.server-media-number > div {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.server-media-number input {
+    width: 110px;
+}
+
+.server-media-number strong {
+    color: #8c8ca0;
+    font-size: 10px;
+}
+
+.server-media-cache-status small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.server-media-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+@media (max-width: 1100px) {
+    .server-media-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .server-media-heading {
+        flex-direction: column;
+    }
+}
