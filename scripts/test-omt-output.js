@@ -115,10 +115,31 @@ assert(
     "Saída OMT deve ter buffer limitado e descartar apenas quadros OMT sob backpressure."
 );
 assert(
-    !electronMain.includes(
-        "omtOutput.onceVideoDrain"
+    controller.includes(
+        "allowDrop = true"
+    ) &&
+    controller.includes(
+        "onceVideoDrain(callback)"
     ),
-    "Backpressure OMT não pode pausar o decoder principal ou o NDI."
+    "Controller OMT deve suportar modo auxiliar com drop e modo OMT-only com backpressure."
+);
+assert(
+    electronMain.includes(
+        "const ndiFrameReady ="
+    ) &&
+    electronMain.includes(
+        "allowDrop:"
+    ) &&
+    electronMain.includes(
+        "ndiFrameReady"
+    ) &&
+    electronMain.includes(
+        "!ndiFrameReady &&"
+    ) &&
+    electronMain.includes(
+        "omtTarget.onceVideoDrain"
+    ),
+    "OMT deve ser não bloqueante ao lado do NDI, mas assumir o pacing quando for a única saída."
 );
 
 if (process.platform === "win32") {
