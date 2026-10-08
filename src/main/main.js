@@ -1019,6 +1019,9 @@ function stopNativePlayback({ engineAction = "stop" } = {}) {
     } else if (engineAction === "stop") {
         playoutEngine.stop();
         serverMedia.clearActive();
+        serverMedia.setRealtimePriority(
+            false
+        );
     }
 
     if (stopNdiFrameFeed) {
@@ -1174,6 +1177,16 @@ async function startNativePlayback(
             "O arquivo cadastrado não está disponível no disco."
         );
     }
+
+    // Prioridade de tempo real: enquanto um Input Web está no ar, o Playout
+    // interrompe cópias/cache SMB e também suspende o health probe do servidor.
+    // O FFmpeg/VLC do Input fica sozinho no caminho de rede crítico.
+    serverMedia.setRealtimePriority(
+        isRemoteInput,
+        isRemoteInput
+            ? "input-web-on-air"
+            : ""
+    );
 
     // UNC/SMB: não fazemos stat/exists síncrono imediatamente antes do PLAY.
     // Se o servidor estiver lento ou reconectando, essas chamadas podem
@@ -2023,6 +2036,12 @@ async function startNativePlayback(
                 }
 
                 onPlayoutFault("Erro no decodificador FFmpeg: " + error.message);
+
+                if (isRemoteInput) {
+                    serverMedia.setRealtimePriority(
+                        false
+                    );
+                }
             }
         }
     );
@@ -2112,6 +2131,12 @@ async function startNativePlayback(
                 if (activeRemoteInputProxy) {
                     activeRemoteInputProxy.close();
                     activeRemoteInputProxy = null;
+                }
+
+                if (isRemoteInput) {
+                    serverMedia.setRealtimePriority(
+                        false
+                    );
                 }
             }
         }
