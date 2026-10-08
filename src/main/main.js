@@ -245,6 +245,7 @@ let omtOutput = null;
 let omtRestartTimer = null;
 let omtRestartFailures = 0;
 let omtStopping = false;
+let omtLastError = "";
 let ffmpegProcess = null;
 let activeRemoteInputProxy = null;
 let activeVlcInputBridge = null;
@@ -2864,6 +2865,195 @@ function configuredOutputProfile() {
     }
 
     return profile;
+}
+
+function resolveOmtRuntimeFolder() {
+    return app.isPackaged
+        ? path.join(
+              process.resourcesPath,
+              "omt"
+          )
+        : path.join(
+              __dirname,
+              "../core/omt"
+          );
+}
+
+function omtStatus() {
+    const profile =
+        configuredOutputProfile();
+
+    const snapshot =
+        omtOutput?.snapshot();
+
+    return snapshot ?? {
+        enabled:
+            Boolean(
+                profile.omtEnabled
+            ),
+        online: false,
+        source:
+            profile.omtName,
+        quality:
+            profile.omtQuality,
+        audioReady: false,
+        audioActive: false,
+        connectedAudio: false,
+        videoFrames: 0,
+        audioBytes: 0,
+        error:
+            omtLastError ||
+            null
+    };
+}
+
+function scheduleOmtRestart() {
+    if (
+        omtStopping ||
+        omtRestartTimer ||
+        !nativeOutputAllowed
+    ) {
+        return;
+    }
+
+    const desired =
+        configuredOutputProfile();
+
+    if (!desired.omtEnabled) {
+        return;
+    }
+
+    const delay =
+        Math.min(
+            30000,
+            1000 *
+                2 **
+                    Math.min(
+                        omtRestartFailures++,
+                        5
+                    )
+        );
+
+    console.warn(
+        `OMT indisponível; nova tentativa em ${delay} ms.`
+    );
+
+    omtRestartTimer =
+        setTimeout(
+            () => {
+                omtRestartTimer =
+                    null;
+
+                startOmtSender();
+            },
+            delay
+        );
+}
+
+function startOmtSender() {
+    if (
+        omtOutput ||
+        omtStopping ||
+        !nativeOutputAllowed
+    ) {
+        return;
+    }
+
+    const desired =
+        configuredOutputProfile();
+
+    if (!desired.omtEnabled) {
+        omtLastError = "";
+        return;
+    }
+
+    let instance = null;
+
+    instance =
+        new OmtOutput({
+            runtimeFolder:
+                resolveOmtRuntimeFolder(),
+            profile:
+                desired,
+            onUnexpectedExit:
+                (reason) => {
+                    if (
+                        omtOutput !==
+                        instance
+                    ) {
+                        return;
+                    }
+
+                    omtLastError =
+                        reason;
+
+                    omtOutput =
+                        null;
+
+                    scheduleOmtRestart();
+                }
+        });
+
+    omtOutput =
+        instance;
+
+    try {
+        instance.start();
+        omtLastError = "";
+        omtRestartFailures = 0;
+    } catch (error) {
+        omtOutput = null;
+
+        omtLastError =
+            error instanceof Error
+                ? error.message
+                : String(error);
+
+        console.error(
+            "Falha ao iniciar sender OMT:",
+            error
+        );
+
+        scheduleOmtRestart();
+    }
+}
+
+function stopOmtSender({
+    permanent = true
+} = {}) {
+    omtStopping =
+        permanent;
+
+    if (omtRestartTimer) {
+        clearTimeout(
+            omtRestartTimer
+        );
+
+        omtRestartTimer =
+            null;
+    }
+
+    const instance =
+        omtOutput;
+
+    omtOutput = null;
+
+    if (instance) {
+        instance.stop();
+    }
+
+    if (permanent) {
+        omtLastError = "";
+    }
+}
+
+function restartOmtSenderForProfile() {
+    stopOmtSender({
+        permanent: false
+    });
+
+    omtStopping = false;
+    startOmtSender();
 }
 
 function scheduleNdiRestart() {
