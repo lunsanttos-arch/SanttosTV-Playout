@@ -45,6 +45,7 @@ const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
 const { OmtOutput } = require("../core/omt/omt-output");
+const { ServerMediaManager } = require("../core/media/server-media");
 const { NativePlayoutEngine } = require("../core/playout/native-playout-engine");
 const { ProgramClock } = require("../core/playout/program-clock");
 const { JpegFrameParser } = require("../core/playout/program-preview-tap");
@@ -293,6 +294,7 @@ const programClock = new ProgramClock();
 const playoutEngine = new NativePlayoutEngine({
     now: () => programClock.nowMs()
 });
+const serverMedia = new ServerMediaManager();
 function onPlayoutFault(message) {
     playoutLastError = message;
     nativePlaybackActive = false;
@@ -1134,7 +1136,10 @@ async function startNativePlayback(
         isRemoteInputUrl(filePath);
     const isNetworkFile =
         !isRemoteInput &&
-        /^\\\\/.test(filePath);
+        (
+            /^\\\\/.test(filePath) ||
+            serverMedia.isServerMediaPath(filePath)
+        );
 
     const imported = isRemoteInput
         ? getWebInputs().some(
@@ -1270,6 +1275,8 @@ async function startNativePlayback(
         filePath;
     let audioPlaybackPath =
         filePath;
+    let serverMediaResolution =
+        null;
     let resolvedRemoteInput =
         null;
     let selectedInputEngine =
@@ -1444,6 +1451,29 @@ async function startNativePlayback(
                 ` | motor=${selectedInputEngine}`
             );
         }
+    } else if (
+        serverMedia.isServerMediaPath(
+            filePath
+        )
+    ) {
+        serverMediaResolution =
+            await serverMedia
+                .resolveForPlayback(
+                    filePath
+                );
+
+        playbackPath =
+            serverMediaResolution
+                .playbackPath;
+        audioPlaybackPath =
+            serverMediaResolution
+                .playbackPath;
+
+        console.log(
+            `Server Media: ${serverMediaResolution.state}` +
+            ` | origem=${filePath}` +
+            ` | reprodução=${playbackPath}`
+        );
     }
     const normalizedInPoint =
         Number.isFinite(Number(programState.inPointSeconds))
@@ -1666,9 +1696,7 @@ async function startNativePlayback(
                 routedPipe,
             ffmpegPath,
             filePath:
-                isRemoteInput
-                    ? audioPlaybackPath
-                    : filePath,
+                audioPlaybackPath,
             // O mesmo PCM alimenta o medidor, o monitor local e, quando
             // disponível, o pipe NDI. Assim o operador ouve e mede exatamente
             // a fonte que o PROGRAM está usando.
@@ -2245,6 +2273,8 @@ function registerIpcHandlers() {
             devNullSink: ndiDevNullSink,
             preparedInput:
                 inputPrebuffer.status(),
+            serverMedia:
+                serverMedia.status(),
             restarting: Boolean(ndiRestartTimer),
             testBench: isTestBench
         })
@@ -2353,6 +2383,128 @@ function registerIpcHandlers() {
                 engineAction: "stop"
             });
             return { ok: true, playout };
+        }
+    );
+
+    registerTrustedHandle(
+        "server-media:get-settings",
+        async () => ({
+            ok: true,
+            settings:
+                serverMedia.getSettings(),
+            status:
+                serverMedia.status()
+        })
+    );
+
+    registerTrustedHandle(
+        "server-media:set-settings",
+        async (_event, value) => {
+            try {
+                const settings =
+                    serverMedia.updateSettings(
+                        value
+                    );
+
+                return {
+                    ok: true,
+                    settings,
+                    status:
+                        serverMedia.status()
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : String(error)
+                };
+            }
+        }
+    );
+
+    registerTrustedHandle(
+        "server-media:select-root",
+        async () => {
+            const result =
+                await dialog.showOpenDialog(
+                    mainWindow ?? undefined,
+                    {
+                        title:
+                            "Selecionar raiz do servidor de mídia",
+                        properties: [
+                            "openDirectory"
+                        ]
+                    }
+                );
+
+            if (
+                result.canceled ||
+                result.filePaths.length === 0
+            ) {
+                return {
+                    ok: false,
+                    canceled: true
+                };
+            }
+
+            return {
+                ok: true,
+                folderPath:
+                    result.filePaths[0]
+            };
+        }
+    );
+
+    registerTrustedHandle(
+        "server-media:prepare",
+        async (_event, filePath) => {
+            try {
+                const result =
+                    await serverMedia.prepare(
+                        filePath
+                    );
+
+                return {
+                    ok: true,
+                    ...result,
+                    status:
+                        serverMedia.status()
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : String(error),
+                    status:
+                        serverMedia.status()
+                };
+            }
+        }
+    );
+
+    registerTrustedHandle(
+        "server-media:clear-cache",
+        async () => {
+            try {
+                return {
+                    ok: true,
+                    status:
+                        await serverMedia
+                            .clearCache()
+                };
+            } catch (error) {
+                return {
+                    ok: false,
+                    error:
+                        error instanceof Error
+                            ? error.message
+                            : String(error)
+                };
+            }
         }
     );
 
@@ -3577,6 +3729,9 @@ function startSystem() {
         userDataPath: app.getPath("userData"),
         migrateLegacy: !isTestBench
     });
+    serverMedia.initialize(
+        app.getPath("userData")
+    );
     initializeLibraryCategories(app.getPath("userData"));
     initializeWebInputs(app.getPath("userData"));
     initializePlayoutReports({
