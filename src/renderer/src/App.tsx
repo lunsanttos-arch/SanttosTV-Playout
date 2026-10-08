@@ -760,11 +760,16 @@ export default function App() {
         <div className="app-shell">
             <header className="topbar">
                 <div className="brand">
-                    <img
-                        className="brand-logo"
-                        src="./brand/logo-horizontal.webp"
-                        alt="Santtos Playout"
-                    />
+                    <div className="brand-lockup">
+                        <img
+                            className="brand-logo"
+                            src="./brand/santtos-logo-white.svg"
+                            alt="SanTTos"
+                        />
+                        <span className="brand-product">
+                            PLAYOUT
+                        </span>
+                    </div>
                 </div>
 
                 <div className="header-time-center">
@@ -894,7 +899,7 @@ export default function App() {
             </div>
 
             <footer className="footer">
-                <span>Santtos TV Automation</span>
+                <span>SanTTos Playout · Broadcast Suite</span>
                 <span>
                     {media.length} mídia(s) cadastrada(s)
                 </span>
@@ -920,13 +925,25 @@ function Sidebar({
         icon: string;
         label: string;
     }> = [
-        { panel: "playout", icon: "📺", label: "Playout" },
-        { panel: "scheduler", icon: "🗓", label: "Programação" },
+        { panel: "playout", icon: "▶", label: "Playout" },
+        { panel: "scheduler", icon: "▦", label: "Programação" },
         { panel: "settings", icon: "⚙", label: "Configurações" }
     ];
 
     return (
         <aside className="sidebar">
+            <div className="sidebar-suite">
+                <img
+                    src="./brand/santtos-symbol-white.svg"
+                    alt=""
+                    aria-hidden="true"
+                />
+                <div>
+                    <strong>SanTTos</strong>
+                    <span>Broadcast Suite</span>
+                </div>
+            </div>
+
             {buttons.map((button) => (
                 <button
                     key={button.panel}
@@ -939,8 +956,13 @@ function Sidebar({
                         setActivePanel(button.panel)
                     }
                 >
-                    {button.icon}{" "}
-                    {button.label}
+                    <span
+                        className="sidebar-nav-icon"
+                        aria-hidden="true"
+                    >
+                        {button.icon}
+                    </span>
+                    <span>{button.label}</span>
                 </button>
             ))}
         </aside>
