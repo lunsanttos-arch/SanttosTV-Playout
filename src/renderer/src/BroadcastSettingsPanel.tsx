@@ -53,6 +53,11 @@ interface OutputSettings {
         enabled: boolean;
         name: string;
     };
+    omt: {
+        enabled: boolean;
+        name: string;
+        quality: "default" | "low" | "medium" | "high";
+    };
     srt: {
         enabled: boolean;
         mode: "caller" | "listener" | "rendezvous";
@@ -95,6 +100,11 @@ const DEFAULT_OUTPUT: OutputSettings = {
     ndi: {
         enabled: true,
         name: "Santtos TV - PROGRAM"
+    },
+    omt: {
+        enabled: false,
+        name: "SanTTos Playout - PROGRAM",
+        quality: "low"
     },
     srt: {
         enabled: false,
@@ -209,6 +219,19 @@ export default function BroadcastSettingsPanel({
             ...current,
             ndi: {
                 ...current.ndi,
+                ...values
+            }
+        }));
+        setStatus("");
+    }
+
+    function patchOmt(
+        values: Partial<OutputSettings["omt"]>
+    ) {
+        setOutput((current) => ({
+            ...current,
+            omt: {
+                ...current.omt,
                 ...values
             }
         }));
@@ -436,6 +459,7 @@ export default function BroadcastSettingsPanel({
                     patchOutput={patchOutput}
                     patchAudio={patchAudio}
                     patchNdi={patchNdi}
+                    patchOmt={patchOmt}
                     patchSrt={patchSrt}
                 />
             ) : tab === "library" ? (
@@ -499,6 +523,7 @@ function OutputTab({
     patchOutput,
     patchAudio,
     patchNdi,
+    patchOmt,
     patchSrt
 }: {
     output: OutputSettings;
@@ -510,6 +535,9 @@ function OutputTab({
     ) => void;
     patchNdi: (
         values: Partial<OutputSettings["ndi"]>
+    ) => void;
+    patchOmt: (
+        values: Partial<OutputSettings["omt"]>
     ) => void;
     patchSrt: (
         values: Partial<OutputSettings["srt"]>
@@ -688,6 +716,49 @@ function OutputTab({
                     }
                 />
 
+            </SettingsCard>
+
+            <SettingsCard
+                title="OMT"
+                description="Saída Open Media Transport do mesmo PROGRAM, usando VMX para reduzir o tráfego de rede."
+                badge="NOVO"
+            >
+                <ToggleField
+                    label="Ativar OMT"
+                    checked={output.omt.enabled}
+                    onChange={(enabled) =>
+                        patchOmt({ enabled })
+                    }
+                />
+
+                <TextField
+                    label="Nome da fonte"
+                    value={output.omt.name}
+                    onChange={(name) =>
+                        patchOmt({ name })
+                    }
+                />
+
+                <SelectField
+                    label="Qualidade / uso de rede"
+                    value={output.omt.quality}
+                    options={[
+                        ["low", "Baixa · mais leve"],
+                        ["medium", "Média"],
+                        ["high", "Alta"],
+                        ["default", "Automática pelo receptor"]
+                    ]}
+                    onChange={(value) =>
+                        patchOmt({
+                            quality:
+                                value as OutputSettings["omt"]["quality"]
+                        })
+                    }
+                />
+
+                <div className="settings-info">
+                    OMT recebe o mesmo vídeo e PCM do PROGRAM. Não abre uma segunda mídia e pode funcionar junto com NDI ou sozinho.
+                </div>
             </SettingsCard>
 
             <SettingsCard
