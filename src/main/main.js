@@ -1782,22 +1782,11 @@ async function startNativePlayback(
             if (
                 omtOutput?.canWriteVideo()
             ) {
-                const omtCanContinue =
-                    omtOutput.writeVideo(
-                        completeFrame
-                    );
-
-                if (!omtCanContinue) {
-                    const target =
-                        omtOutput;
-
-                    drains.push(
-                        (done) =>
-                            target.onceVideoDrain(
-                                done
-                            )
-                    );
-                }
+                // OMT é independente da saída principal: atraso no sender
+                // OMT nunca deve pausar o decoder nem o NDI.
+                omtOutput.writeVideo(
+                    completeFrame
+                );
             }
 
             if (
