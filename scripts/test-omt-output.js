@@ -134,7 +134,10 @@ assert(
         "allowDrop:"
     ) &&
     electronMain.includes(
-        "ndiFrameReady"
+        "ndiFrameReady ||"
+    ) &&
+    electronMain.includes(
+        "isRemoteInput"
     ) &&
     electronMain.includes(
         "!ndiFrameReady &&"
