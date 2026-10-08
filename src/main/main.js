@@ -292,9 +292,18 @@ function onPlayoutFault(message) {
 
     // Em falha inesperada, enviar um frame preto valido ao sender:
     // evita que o ultimo frame do comercial congele sem aviso.
-    if (ndiReady && ndiProcess?.stdin && !ndiProcess.stdin.destroyed) {
+    const blackFrame =
+        Buffer.alloc(
+            activeOutputProfile.frameSize
+        );
+
+    if (
+        ndiReady &&
+        ndiProcess?.stdin &&
+        !ndiProcess.stdin.destroyed
+    ) {
         ndiProcess.stdin.write(
-            Buffer.alloc(activeOutputProfile.frameSize),
+            blackFrame,
             (error) => {
                 if (error) {
                     console.error(
@@ -303,6 +312,14 @@ function onPlayoutFault(message) {
                     );
                 }
             }
+        );
+    }
+
+    if (
+        omtOutput?.canWriteVideo()
+    ) {
+        omtOutput.writeVideo(
+            blackFrame
         );
     }
 }
@@ -941,10 +958,21 @@ function sendProgramAudioPcm(
     channels
 ) {
     if (
-        !mainWindow ||
-        mainWindow.isDestroyed() ||
         !Buffer.isBuffer(chunk) ||
         chunk.length === 0
+    ) {
+        return;
+    }
+
+    // OMT consome exatamente o mesmo PCM que alimenta o medidor e o NDI.
+    // Não existe uma segunda abertura/decodificação da mídia.
+    omtOutput?.writeAudio(
+        chunk
+    );
+
+    if (
+        !mainWindow ||
+        mainWindow.isDestroyed()
     ) {
         return;
     }
@@ -1168,18 +1196,43 @@ async function startNativePlayback(
             ? pausedPlayout.positionSeconds
             : requestedStartSeconds;
 
+    const desiredOutputs =
+        configuredOutputProfile();
+
+    const ndiProgramReady =
+        Boolean(
+            desiredOutputs.ndiEnabled &&
+            ndiReady &&
+            ndiProcess?.stdin &&
+            !ndiProcess.stdin.destroyed
+        );
+
+    const omtProgramReady =
+        Boolean(
+            desiredOutputs.omtEnabled &&
+            omtOutput?.canWriteVideo()
+        );
+
     if (
-        !ndiReady ||
-        !ndiProcess ||
-        !ndiProcess.stdin ||
-        ndiProcess.stdin.destroyed
+        !ndiProgramReady &&
+        !omtProgramReady
     ) {
-        const detail = ndiLastError
-            ? " " + ndiLastError
-            : "";
+        const details = [
+            desiredOutputs.ndiEnabled
+                ? ndiLastError || "NDI ainda não está pronto."
+                : null,
+            desiredOutputs.omtEnabled
+                ? omtStatus().error || "OMT ainda não está pronto."
+                : null
+        ].filter(Boolean);
+
         throw new Error(
-            "Engine NDI ainda não está pronto." +
-            detail
+            "Nenhuma saída do PROGRAM está pronta." +
+            (
+                details.length
+                    ? " " + details.join(" ")
+                    : " Ative NDI ou OMT nas Configurações de Saída."
+            )
         );
     }
 
@@ -1677,18 +1730,70 @@ async function startNativePlayback(
         (completeFrame) => {
             if (
                 !feedActive ||
-                ffmpegProcess !== processRef ||
-                !ndiProcess?.stdin ||
-                ndiProcess.stdin.destroyed
+                ffmpegProcess !== processRef
             ) {
                 return;
             }
 
-            const canContinue = ndiProcess.stdin.write(completeFrame);
-            if (!canContinue && processRef.stdout && !processRef.stdout.destroyed) {
+            const drains = [];
+
+            if (
+                ndiReady &&
+                ndiProcess?.stdin &&
+                !ndiProcess.stdin.destroyed
+            ) {
+                const ndiCanContinue =
+                    ndiProcess.stdin.write(
+                        completeFrame
+                    );
+
+                if (!ndiCanContinue) {
+                    drains.push(
+                        (done) =>
+                            ndiProcess?.stdin?.once(
+                                "drain",
+                                done
+                            )
+                    );
+                }
+            }
+
+            if (
+                omtOutput?.canWriteVideo()
+            ) {
+                const omtCanContinue =
+                    omtOutput.writeVideo(
+                        completeFrame
+                    );
+
+                if (!omtCanContinue) {
+                    const target =
+                        omtOutput;
+
+                    drains.push(
+                        (done) =>
+                            target.onceVideoDrain(
+                                done
+                            )
+                    );
+                }
+            }
+
+            if (
+                drains.length > 0 &&
+                processRef.stdout &&
+                !processRef.stdout.destroyed
+            ) {
                 processRef.stdout.pause();
-                ndiProcess.stdin.once("drain", () => {
+
+                let waiting =
+                    drains.length;
+
+                const onDrain = () => {
+                    waiting -= 1;
+
                     if (
+                        waiting === 0 &&
                         feedActive &&
                         ffmpegProcess === processRef &&
                         processRef.stdout &&
@@ -1696,7 +1801,16 @@ async function startNativePlayback(
                     ) {
                         processRef.stdout.resume();
                     }
-                });
+                };
+
+                for (
+                    const waitForDrain
+                    of drains
+                ) {
+                    waitForDrain(
+                        onDrain
+                    );
+                }
             }
         }
     );
@@ -2090,6 +2204,7 @@ function registerIpcHandlers() {
                     receiverVerified: false, routedToNdi: false, route: ndiSourceName },
             nativePlaybackActive,
             programClock: programClock.snapshot(),
+            omt: omtStatus(),
             playout: playoutEngine.snapshot(),
             playoutError: playoutLastError || null,
             error: ndiLastError || null,
@@ -2340,7 +2455,7 @@ function registerIpcHandlers() {
                     return {
                         ok: false,
                         error:
-                            "Pare o PROGRAM antes de alterar o perfil técnico da saída NDI."
+                            "Pare o PROGRAM antes de alterar o perfil técnico das saídas."
                     };
                 }
 
@@ -2351,6 +2466,7 @@ function registerIpcHandlers() {
                 // na inicialização. Aplicar o perfil salvo imediatamente.
                 if (nativeOutputAllowed) {
                     restartNdiSenderForProfile();
+                    restartOmtSenderForProfile();
                 }
 
                 return {
@@ -3474,6 +3590,7 @@ app.whenReady().then(() => {
         );
         if (nativeOutputAllowed) {
             startNdiSender();
+            startOmtSender();
         } else {
             ndiLastError = "Bancada: NDI propositalmente desativado.";
         }
@@ -3505,6 +3622,7 @@ app.on("before-quit", () => {
     closeOpenEntriesAsSkipped();
     stopNativePlayback();
     stopNdiSender();
+    stopOmtSender();
 });
 
 app.on("window-all-closed", () => {
