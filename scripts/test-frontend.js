@@ -25,6 +25,12 @@ const electronMain = fs.readFileSync(electronMainPath, "utf8");
 const preload = fs.readFileSync(preloadPath, "utf8");
 const rendererIndex = fs.readFileSync(rendererIndexPath, "utf8");
 const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+const packageLock = JSON.parse(
+    fs.readFileSync(
+        path.join(root, "package-lock.json"),
+        "utf8"
+    )
+);
 
 assert(fs.existsSync(appIconPath), "Ícone oficial do Santtos Playout deve existir para o build Windows.");
 assert.equal(
@@ -66,6 +72,16 @@ assert(packageConfig.build?.nsis?.oneClick === false &&
     packageConfig.build?.nsis?.createDesktopShortcut === true &&
     packageConfig.build?.nsis?.createStartMenuShortcut === true,
     "Instalador NSIS deve criar atalhos e permitir instalação assistida.");
+assert.equal(
+    packageLock.packages?.["node_modules/glob/node_modules/brace-expansion"]?.version,
+    "1.1.21",
+    "Glob deve usar brace-expansion corrigido."
+);
+assert.equal(
+    packageLock.packages?.["node_modules/readdir-glob/node_modules/brace-expansion"]?.version,
+    "2.1.7",
+    "readdir-glob deve usar brace-expansion corrigido."
+);
 assert(packageConfig.build?.nsis?.installerIcon === "icon.ico" &&
     packageConfig.build?.nsis?.uninstallerIcon === "icon.ico" &&
     packageConfig.build?.nsis?.installerHeaderIcon === "icon.ico",
