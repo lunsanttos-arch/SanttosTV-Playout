@@ -510,6 +510,71 @@ class ServerMediaManager {
         );
     }
 
+    async ensureFreeSpace(
+        requiredBytes
+    ) {
+        if (
+            typeof fs.promises.statfs !==
+            "function"
+        ) {
+            return;
+        }
+
+        try {
+            const stat =
+                await fs.promises.statfs(
+                    this.cacheFolder
+                );
+
+            const blockSize =
+                Number(
+                    stat.bsize ?? 0
+                );
+            const availableBlocks =
+                Number(
+                    stat.bavail ??
+                    stat.bfree ??
+                    0
+                );
+            const availableBytes =
+                blockSize *
+                availableBlocks;
+            const reserveBytes =
+                2 *
+                1024 *
+                1024 *
+                1024;
+
+            if (
+                Number.isFinite(
+                    availableBytes
+                ) &&
+                availableBytes > 0 &&
+                availableBytes <
+                    requiredBytes +
+                    reserveBytes
+            ) {
+                throw new Error(
+                    "Espaço insuficiente no disco local para preparar o material. " +
+                    "Mantenha pelo menos 2 GB livres além do tamanho do arquivo."
+                );
+            }
+        } catch (error) {
+            if (
+                error instanceof Error &&
+                error.message.includes(
+                    "Espaço insuficiente"
+                )
+            ) {
+                throw error;
+            }
+
+            // statfs pode não estar disponível em alguns ambientes.
+            // Nesse caso, a cópia segue e o erro real do filesystem será
+            // reportado sem derrubar o PROGRAM.
+        }
+    }
+
     async prepare(filePath) {
         if (!this.isServerMediaPath(filePath)) {
             return {
@@ -572,6 +637,28 @@ class ServerMediaManager {
             await this.statSource(
                 filePath
             );
+        const maxBytes =
+            this.settings.cacheMaxGb *
+            1024 *
+            1024 *
+            1024;
+
+        if (
+            stat.size >
+            maxBytes
+        ) {
+            return {
+                applicable: true,
+                state: "too-large",
+                sourcePath: filePath,
+                playbackPath: filePath,
+                cached: false,
+                bytes: stat.size,
+                warning:
+                    "Arquivo maior que o limite total configurado para o cache."
+            };
+        }
+
         const existing =
             this.entryFor(filePath);
 
@@ -601,6 +688,13 @@ class ServerMediaManager {
                 bytes: stat.size
             };
         }
+
+        await this.prune(
+            stat.size
+        );
+        await this.ensureFreeSpace(
+            stat.size
+        );
 
         const cachePath =
             this.cachePathFor(
@@ -647,6 +741,28 @@ class ServerMediaManager {
             ) {
                 throw new Error(
                     "Cópia do servidor terminou com tamanho diferente do original."
+                );
+            }
+
+            const sourceAfterCopy =
+                await this.statSource(
+                    filePath
+                );
+
+            if (
+                sourceAfterCopy.size !==
+                    stat.size ||
+                Math.abs(
+                    Number(
+                        sourceAfterCopy.mtimeMs
+                    ) -
+                    Number(
+                        stat.mtimeMs
+                    )
+                ) >= 2
+            ) {
+                throw new Error(
+                    "O material foi alterado no servidor durante a pré-carga. A cópia local foi descartada."
                 );
             }
 
@@ -805,12 +921,25 @@ class ServerMediaManager {
         }
     }
 
-    async prune() {
+    async prune(
+        reserveBytes = 0
+    ) {
         const maxBytes =
             this.settings.cacheMaxGb *
             1024 *
             1024 *
             1024;
+        const targetBytes =
+            Math.max(
+                0,
+                maxBytes -
+                    Math.max(
+                        0,
+                        Number(
+                            reserveBytes
+                        ) || 0
+                    )
+            );
 
         const entries =
             Array.from(
@@ -846,7 +975,7 @@ class ServerMediaManager {
             );
 
         for (const item of entries) {
-            if (total <= maxBytes) {
+            if (total <= targetBytes) {
                 break;
             }
 
