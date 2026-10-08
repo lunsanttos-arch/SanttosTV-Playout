@@ -253,7 +253,7 @@ class InputPrebufferManager {
                             withAudioCopy:
                                 true,
                             networkCachingMs:
-                                900
+                                1400
                         }
                     );
             }
