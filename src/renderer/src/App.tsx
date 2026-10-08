@@ -1013,6 +1013,7 @@ export default function App() {
                             audioStatus={audioStatus}
                             ndiOnline={ndiOnline}
                             omtOnline={omtStatus.online}
+                            serverMediaEnabled={Boolean(serverMediaStatus?.enabled)}
                             nativePlaybackActive={nativePlaybackActive}
                             nativePlayout={nativePlayout}
                             playoutError={playoutError}
@@ -1142,6 +1143,7 @@ interface PlayoutPanelProps {
     audioStatus: NativeAudioStatus;
     ndiOnline: boolean;
     omtOnline: boolean;
+    serverMediaEnabled: boolean;
     nativePlaybackActive: boolean;
     nativePlayout: NativePlayoutStatus;
     playoutError: string | null;
@@ -1182,6 +1184,7 @@ function PlayoutPanel({
     audioStatus,
     ndiOnline,
     omtOnline,
+    serverMediaEnabled,
     nativePlaybackActive,
     nativePlayout,
     playoutError,
@@ -1507,6 +1510,12 @@ function PlayoutPanel({
             : null;
 
     useEffect(() => {
+        if (!serverMediaEnabled) {
+            serverCurrentPreloadIdRef.current =
+                null;
+            return;
+        }
+
         if (
             isPlaying ||
             !selectedMedia ||
@@ -1539,6 +1548,7 @@ function PlayoutPanel({
                 )
             );
     }, [
+        serverMediaEnabled,
         isPlaying,
         selectedMedia?.id,
         selectedMedia?.path,
@@ -1546,6 +1556,15 @@ function PlayoutPanel({
     ]);
 
     useEffect(() => {
+        if (!serverMediaEnabled) {
+            serverPreloadIdRef.current =
+                null;
+            setServerPreloadState(
+                "idle"
+            );
+            return;
+        }
+
         if (
             !nextMedia ||
             nextMedia.sourceType === "input"
@@ -1624,6 +1643,7 @@ function PlayoutPanel({
                 );
             });
     }, [
+        serverMediaEnabled,
         nextMedia?.id,
         nextMedia?.path,
         nextMedia?.sourceType
