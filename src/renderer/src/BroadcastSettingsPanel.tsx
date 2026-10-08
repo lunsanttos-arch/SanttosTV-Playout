@@ -746,7 +746,7 @@ function OutputTab({
                         ["low", "Baixa · mais leve"],
                         ["medium", "Média"],
                         ["high", "Alta"],
-                        ["default", "Automática pelo receptor"]
+                        ["default", "Padrão OMT"]
                     ]}
                     onChange={(value) =>
                         patchOmt({
