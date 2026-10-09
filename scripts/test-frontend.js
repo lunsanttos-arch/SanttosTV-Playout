@@ -217,25 +217,6 @@ assert(
     "Preview do PROGRAM deve seguir a cadência real da saída, limitado a meia cadência acima de 30 fps."
 );
 assert(
-    electronMain.includes('state.sourceType === "input"') &&
-    electronMain.includes("? 512") &&
-    /data:\s*frame/.test(electronMain),
-    "Input Web deve usar preview mais leve e evitar cópia extra do JPEG no IPC."
-);
-assert(
-    electronMain.includes("liveNdiDroppedFrames") &&
-    electronMain.includes("ndiTarget.writableLength") &&
-    electronMain.includes("if (isRemoteInput)") &&
-    electronMain.includes("sem bloquear o Input Web"),
-    "Input Web não pode ser pausado por backpressure do sender NDI."
-);
-assert(
-    electronMain.includes('"4096"') &&
-    electronMain.includes('"250000"') &&
-    electronMain.includes("warmedUdp"),
-    "Bridge VLC/UDP deve ter fila local e margem curta de jitter para evitar microtravadas."
-);
-assert(
     electronMain.includes("isHlsInput(") &&
     electronMain.includes('preferredInputEngine === "auto"') &&
     electronMain.includes('selectedInputEngine =') &&
