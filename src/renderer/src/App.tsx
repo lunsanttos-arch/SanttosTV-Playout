@@ -2144,7 +2144,7 @@ function PlayoutPanel({
     useEffect(() => {
         const video = videoRef.current;
 
-        if (!video || !selectedMediaUrl) {
+        if (!video || !(selectedMediaUrl || selectedInputPreviewUrl)) {
             return;
         }
 
@@ -2160,7 +2160,7 @@ function PlayoutPanel({
         lastProgressRef.current = { position: inPoint, atMs: Date.now() };
         clipAdvanceGuardRef.current = false;
         setIsPlaying(false);
-    }, [selectedMediaUrl]);
+    }, [selectedMediaUrl, selectedInputPreviewUrl, selectedMedia?.id]);
 
     function buildOverlayState(
         mediaItem: MediaItem,
@@ -3728,17 +3728,32 @@ function PlayoutPanel({
                         ) : selectedInputPreviewUrl ? (
                             <>
                                 <video
+                                    id="program-video"
+                                    ref={videoRef}
                                     className="program-video program-input-preview-video"
+                                    key={selectedMedia?.id}
                                     src={selectedInputPreviewUrl}
-                                    autoPlay
-                                    muted
+                                    preload="auto"
                                     playsInline
+                                    onTimeUpdate={(event) =>
+                                        handleProgramTimeUpdate(event.currentTarget)
+                                    }
+                                    onLoadedMetadata={() => {
+                                        setDuration(getClipDuration(selectedMedia));
+                                        setPreviewError("");
+                                    }}
+                                    onEnded={() => {
+                                        if (selectedMedia && !clipAdvanceGuardRef.current) {
+                                            clipAdvanceGuardRef.current = true;
+                                            void playNextMedia("completed");
+                                        }
+                                    }}
                                     onPlaying={() =>
                                         setPreviewError("")
                                     }
                                     onError={() =>
                                         setPreviewError(
-                                            "A prévia do Input não abriu. O PROGRAM usa uma conexão FFmpeg separada e mostrará o erro real ao pressionar PLAY."
+                                            "Não foi possível abrir o Input. Verifique a URL, a conexão e os registros do FFmpeg."
                                         )
                                     }
                                 />
