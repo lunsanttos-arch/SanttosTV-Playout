@@ -272,7 +272,6 @@ const inputPrebuffer =
 let ndiReady = false;
 let ndiDevNullSink = false;
 let ndiFrameBusy = false;
-let liveNdiDroppedFrames = 0;
 let ndiLastError = "";
 let ndiRestartTimer = null;
 let ndiRestartFailures = 0;
@@ -895,13 +894,9 @@ function buildProgramFilterGraph(
         profile.fpsN / profile.fpsD > 30
             ? `${profile.fpsN}/${profile.fpsD * 2}`
             : profile.fpsExpression;
-    const previewWidth =
-        state.sourceType === "input"
-            ? 512
-            : 640;
 
     chains.push(
-        `[previewSource]scale=${previewWidth}:-2:flags=fast_bilinear,fps=${previewFpsExpression},format=yuvj420p[preview]`
+        `[previewSource]scale=640:-2:flags=fast_bilinear,fps=${previewFpsExpression},format=yuvj420p[preview]`
     );
 
     return chains.join(";");
@@ -943,10 +938,10 @@ function sendProgramPreviewFrame(
                 programPreviewSequence,
             mime:
                 "image/jpeg",
-            // Buffer já é serializável pelo IPC do Electron. Evita uma
-            // cópia completa do JPEG em cada frame do preview.
             data:
-                frame
+                Uint8Array.from(
+                    frame
+                )
         }
     );
 }
@@ -1421,9 +1416,7 @@ async function startNativePlayback(
                                         : resolvedRemoteInput.referer,
                                 withAudioCopy:
                                     true,
-                                networkCachingMs:
-                                    1400,
-                                startTimeSeconds:
+                            startTimeSeconds:
                                     samePausedItem
                                         ? normalizedStartSeconds
                                         : 0
@@ -1568,15 +1561,6 @@ async function startNativePlayback(
             : "10000000"
     ];
 
-    if (warmedUdp) {
-        args.push(
-            "-thread_queue_size",
-            "4096",
-            "-max_delay",
-            "250000"
-        );
-    }
-
     if (
         normalizedStartSeconds > 0 &&
         (
@@ -1676,9 +1660,7 @@ async function startNativePlayback(
         "-c:v",
         "mjpeg",
         "-q:v",
-        isRemoteInput
-            ? "7"
-            : "5",
+        "5",
         "-f",
         "image2pipe",
         "pipe:3"
@@ -1707,7 +1689,6 @@ async function startNativePlayback(
     ffmpegProcess = processRef;
     nativePlaybackActive = true;
     ndiFrameBusy = false;
-    liveNdiDroppedFrames = 0;
     playoutEngine.start({
         filePath,
         itemId:
@@ -1822,60 +1803,29 @@ async function startNativePlayback(
                 const ndiTarget =
                     ndiProcess.stdin;
 
-                if (isRemoteInput) {
-                    // Input Web é realtime: o sender NDI nunca pode pausar o
-                    // decoder. Se o pipe acumular mais de ~1 frame, descartamos
-                    // somente este frame NDI e seguimos consumindo a fonte.
-                    const maxLiveQueueBytes =
-                        Math.max(
-                            profile.frameSize,
-                            1024 * 1024
-                        );
+                const ndiCanContinue =
+                    ndiTarget.write(
+                        completeFrame
+                    );
 
-                    if (
-                        ndiTarget.writableLength >=
-                        maxLiveQueueBytes
-                    ) {
-                        liveNdiDroppedFrames += 1;
-
-                        if (
-                            liveNdiDroppedFrames === 1 ||
-                            liveNdiDroppedFrames % 120 === 0
-                        ) {
-                            console.warn(
-                                `NDI realtime atrasou; ${liveNdiDroppedFrames} frame(s) descartado(s) sem bloquear o Input Web.`
-                            );
-                        }
-                    } else {
-                        ndiTarget.write(
-                            completeFrame
-                        );
-                    }
-                } else {
-                    const ndiCanContinue =
-                        ndiTarget.write(
-                            completeFrame
-                        );
-
-                    if (!ndiCanContinue) {
-                        drains.push(
-                            (done) => {
-                                if (
-                                    ndiTarget.destroyed
-                                ) {
-                                    queueMicrotask(
-                                        done
-                                    );
-                                    return;
-                                }
-
-                                ndiTarget.once(
-                                    "drain",
+                if (!ndiCanContinue) {
+                    drains.push(
+                        (done) => {
+                            if (
+                                ndiTarget.destroyed
+                            ) {
+                                queueMicrotask(
                                     done
                                 );
+                                return;
                             }
-                        );
-                    }
+
+                            ndiTarget.once(
+                                "drain",
+                                done
+                            );
+                        }
+                    );
                 }
             }
 
@@ -2348,17 +2298,6 @@ function registerIpcHandlers() {
                     channels: activeOutputProfile.channels,
                     receiverVerified: false, routedToNdi: false, route: ndiSourceName },
             nativePlaybackActive,
-            realtime: {
-                inputWeb:
-                    playoutEngine.snapshot().active &&
-                    getWebInputs().some(
-                        (item) =>
-                            item.url ===
-                            playoutEngine.snapshot().filePath
-                    ),
-                ndiDroppedFrames:
-                    liveNdiDroppedFrames
-            },
             programClock: programClock.snapshot(),
             omt: omtStatus(),
             playout: playoutEngine.snapshot(),
