@@ -2171,6 +2171,74 @@ async function startNativePlayback(
                 })
             ]);
         } catch (error) {
+            const canFallbackToDirectFfmpeg =
+                selectedInputEngine === "vlc" &&
+                String(
+                    programState.inputEngine ??
+                    "auto"
+                ).toLowerCase() === "auto" &&
+                programState.__inputFallbackAttempted !== true;
+
+            if (canFallbackToDirectFfmpeg) {
+                console.warn(
+                    "Ponte VLC não entregou o primeiro quadro; tentando FFmpeg direto automaticamente."
+                );
+
+                if (
+                    ffmpegProcess ===
+                    processRef
+                ) {
+                    ffmpegProcess =
+                        null;
+                }
+
+                nativePlaybackActive =
+                    false;
+
+                if (audioSource) {
+                    audioSource.stop();
+                    audioSource =
+                        null;
+                }
+
+                if (
+                    activeVlcInputBridge
+                ) {
+                    activeVlcInputBridge.stop();
+                    activeVlcInputBridge =
+                        null;
+                }
+
+                if (
+                    activeRemoteInputProxy
+                ) {
+                    activeRemoteInputProxy.close();
+                    activeRemoteInputProxy =
+                        null;
+                }
+
+                try {
+                    if (!processRef.killed) {
+                        processRef.kill();
+                    }
+                } catch {
+                    // Processo já encerrado.
+                }
+
+                return startNativePlayback(
+                    filePath,
+                    normalizedStartSeconds,
+                    hashtag,
+                    {
+                        ...programState,
+                        inputEngine:
+                            "ffmpeg",
+                        __inputFallbackAttempted:
+                            true
+                    }
+                );
+            }
+
             try {
                 if (!processRef.killed) {
                     processRef.kill();
