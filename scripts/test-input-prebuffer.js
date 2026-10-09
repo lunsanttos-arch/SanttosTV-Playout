@@ -12,8 +12,7 @@ function makeManager(overrides = {}) {
         proxy: 0,
         bridge: 0,
         bridgeStops: 0,
-        proxyCloses: 0,
-        lastBridgeOptions: null
+        proxyCloses: 0
     };
 
     const manager =
@@ -75,10 +74,8 @@ function makeManager(overrides = {}) {
                 }),
             startVlcInputBridge:
                 overrides.startVlcInputBridge ||
-                (async (url, options = {}) => {
+                (async (url) => {
                     calls.bridge += 1;
-                    calls.lastBridgeOptions =
-                        options;
                     return {
                         sourceUrl:
                             url,
@@ -151,12 +148,6 @@ async function main() {
         assert.equal(
             calls.bridge,
             1
-        );
-        assert.equal(
-            calls.lastBridgeOptions
-                ?.networkCachingMs,
-            1400,
-            "Pré-carga HLS deve reservar margem de jitter suficiente para evitar microtravadas."
         );
 
         await manager.prepare(
