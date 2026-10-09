@@ -224,6 +224,13 @@ assert(
     "Input HLS em AUTO deve usar o mesmo motor VLC com ou sem prebuffer para preservar sincronismo A/V."
 );
 assert(
+    electronMain.includes("canFallbackToDirectFfmpeg") &&
+    electronMain.includes("__inputFallbackAttempted") &&
+    electronMain.includes('"ffmpeg"') &&
+    electronMain.includes("Ponte VLC não entregou o primeiro quadro"),
+    "Input Web em AUTO deve tentar FFmpeg direto se a ponte VLC não entregar vídeo."
+);
+assert(
     electronMain.includes('pausedPlayout.state === "PAUSED"') &&
     electronMain.includes("samePausedItem") &&
     electronMain.includes("pausedPlayout.positionSeconds") &&
