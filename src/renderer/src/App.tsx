@@ -3867,7 +3867,7 @@ function PlayoutPanel({
                         >■</button>
                         <button title="Congelar ao final" className={selectedMedia?.freezeEnd ? "transport-active" : ""}
                             aria-pressed={Boolean(selectedMedia?.freezeEnd)} disabled={applyingRundown || !selectedMedia}
-                            onClick={() => selectedMedia && toggleTimelineFreeze(selectedMedia.id)}>FREEZE</button>
+                            onClick={() => selectedMedia && toggleTimelineFreeze(selectedMedia.id)}>FRZ</button>
                         <button
                             title="Próximo vídeo"
                             onClick={() =>
