@@ -87,7 +87,10 @@ assert(packageConfig.build?.nsis?.installerIcon === "icon.ico" &&
     packageConfig.build?.nsis?.installerHeaderIcon === "icon.ico",
     "Instalador, desinstalador e cabeçalho NSIS devem usar o ícone oficial.");
 assert(electronMain.includes("resolveAppIcon") &&
-    electronMain.includes('"../../build-resources/icon.ico"') &&
+    electronMain.includes('"../../build-resources"') &&
+    electronMain.includes('resolveAppIconPath("icon.png")') &&
+    electronMain.includes('appIconPath: resolveAppIconPath("icon.ico")') &&
+    fs.existsSync(path.join(__dirname, "..", "build-resources", "icon.png")) &&
     electronMain.includes("process.resourcesPath"),
     "Janela Electron deve usar o ícone oficial em desenvolvimento e empacotado.");
 

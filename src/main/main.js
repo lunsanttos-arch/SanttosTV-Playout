@@ -357,17 +357,19 @@ function onPlayoutFault(message) {
 const analysesInProgress = new Map();
 const approvedPreviewPaths = new Set();
 
-function resolveAppIcon() {
-    const candidate = app.isPackaged
-        ? path.join(process.resourcesPath, "icon.ico")
-        : path.join(
-              __dirname,
-              "../../build-resources/icon.ico"
-          );
+function resolveAppIconPath(fileName) {
+    return app.isPackaged
+        ? path.join(process.resourcesPath, fileName)
+        : path.join(__dirname, "../../build-resources", fileName);
+}
 
-    return fs.existsSync(candidate)
-        ? candidate
-        : undefined;
+function resolveAppIcon() {
+    // Electron can load PNG consistently for the window; the installer and
+    // Windows shell keep the multi-resolution ICO from the same official asset.
+    const candidate = resolveAppIconPath("icon.png");
+    if (!fs.existsSync(candidate)) return resolveAppIconPath("icon.ico");
+    const icon = nativeImage.createFromPath(candidate);
+    return icon.isEmpty() ? resolveAppIconPath("icon.ico") : icon;
 }
 
 function createWindow() {
@@ -392,6 +394,14 @@ function createWindow() {
             )
         }
     });
+
+    if (process.platform === "win32") {
+        mainWindow.setIcon(resolveAppIcon());
+        mainWindow.setAppDetails({
+            appId: "com.santtos.tvautomation",
+            appIconPath: resolveAppIconPath("icon.ico")
+        });
+    }
 
     mainWindow.webContents.on("will-navigate", (event, targetUrl) => {
         if (!isTrustedRendererUrl(targetUrl)) event.preventDefault();

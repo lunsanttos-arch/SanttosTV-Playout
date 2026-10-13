@@ -94,6 +94,10 @@
       {
         "from": "build-resources/icon.ico",
         "to": "icon.ico"
+      },
+      {
+        "from": "build-resources/icon.png",
+        "to": "icon.png"
       }
     ],
     "asarUnpack": [
