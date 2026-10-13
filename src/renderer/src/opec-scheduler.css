@@ -337,3 +337,40 @@
 @media (max-width: 680px) {
   .opec-item-fields { grid-template-columns: 1fr; }
 }
+
+/* Rows must retain their content height inside the scrolling flex list. */
+.opec-rundown-panel > button, .opec-section-title, .opec-folder-tabs { flex-shrink: 0; }
+.opec-rundown-list, .opec-library-list { flex: 1; }
+.opec-rundown-item { flex: 0 0 auto; min-height: 0; grid-template-columns: 30px 70px minmax(0, 1fr) 110px 28px; padding: 12px 8px; }
+.opec-item-main { gap: 6px; }
+.opec-item-main > * { flex-shrink: 0; }
+.opec-item-main > label { display: flex; align-items: center; gap: 8px; }
+.opec-item-main > label input { width: 100px; min-width: 0; }
+.opec-item-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.opec-item-fields > input:last-child { grid-column: 1 / -1; }
+.opec-drag-handle { display: block; font-size: 18px; cursor: grab; }
+.opec-rundown-item, .opec-library-item { cursor: grab; }
+.opec-rundown-item input, .opec-rundown-item select { cursor: auto; }
+.opec-rundown-item.drop-active { border-color: #8b5cf6; box-shadow: inset 0 3px #8b5cf6; }
+.opec-library-item, .opec-drop-end { flex-shrink: 0; }
+.opec-drop-end { min-height: 48px; display: grid; place-items: center; border: 1px dashed #55436f; border-radius: 8px; color: #aaa; font-size: 12px; }
+.opec-rundown-list.drop-active .opec-drop-end { background: #6d28d933; border-color: #8b5cf6; }
+.opec-folder-tabs { flex-wrap: wrap; overflow: visible; }
+.opec-folder-tabs button.active { background: #6d28d9; border-color: #8b5cf6; }
+.opec-library-hint { flex-shrink: 0; font-size: 11px; color: #999; margin: 0 0 10px; }
+.opec-layout { grid-template-columns: minmax(0, 1.65fr) minmax(280px, 1fr); }
+@media (max-width: 950px) {
+    .opec-layout { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(240px, 1fr) minmax(180px, .65fr); }
+    .opec-header { flex-wrap: wrap; gap: 10px; }
+    .opec-meta-row { grid-template-columns: 140px minmax(0, 1fr) 140px; }
+}
+@media (max-width: 680px) {
+    .opec-rundown-item { grid-template-columns: 26px 68px minmax(0, 1fr) 28px; }
+    .opec-item-main { grid-column: 3; }
+    .opec-item-gc { grid-column: 3; flex-direction: row; align-items: center; }
+    .opec-remove { grid-column: 4; grid-row: 1; }
+    .opec-item-fields { grid-template-columns: minmax(0, 1fr); }
+    .opec-meta-row { grid-template-columns: 1fr 1fr; }
+    .opec-title-field { grid-column: 1 / -1; }
+}
+.opec-item-fields input, .opec-item-fields select { height: 32px; font-size: 12px; }
