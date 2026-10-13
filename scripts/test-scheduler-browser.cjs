@@ -33,6 +33,8 @@ async function exercise(client, name) {
     await delay(60);
     const geometry = await client.evaluate(`(()=>{const rows=[...document.querySelectorAll('.opec-rundown-item')];return {count:rows.length,valid:rows.every((row,index)=>{const box=row.getBoundingClientRect();return [...row.querySelectorAll('input,select,strong')].every(field=>{const rect=field.getBoundingClientRect();return rect.top>=box.top && rect.bottom<=box.bottom+1 && rect.right<=box.right+1;}) && (!index || rows[index-1].getBoundingClientRect().bottom<=box.top);})}})()`);
     assert(geometry.count === 5 && geometry.valid, `${name}: rows overlap or fields escape: ${JSON.stringify(geometry)}`);
+    assert.equal(await client.evaluate(`document.querySelectorAll('.opec-rundown-item select,.opec-rundown-item input[type=checkbox]').length`), 0, "OPEC must not expose material selectors or logo controls");
+    assert(await client.evaluate(`Array.from(document.querySelectorAll('.opec-rundown-item')).every(row=>row.getBoundingClientRect().height<=90)`), "OPEC rows must stay compact");
     await client.evaluate(`window.testDrop(document.querySelectorAll('.opec-library-item')[1],document.querySelectorAll('.opec-rundown-item')[4])`);
     await delay(40);
     assert.equal(await client.evaluate(`document.querySelectorAll('.opec-rundown-item')[4].querySelector('strong').textContent`), media[1].name);

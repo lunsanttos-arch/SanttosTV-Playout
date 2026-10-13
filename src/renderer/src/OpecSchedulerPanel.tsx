@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState, type DragEvent } from "react";
 import type { MediaItem, RundownItem } from "./App";
-import { EXHIBITION_OPTIONS, exhibitionLabel, normalizeExhibitionType } from "./exhibition";
-import type { ExhibitionType } from "./exhibition";
-import { buildPlannedSchedule, knownClipRange } from "./timeline-forecast";
+import { normalizeExhibitionType } from "./exhibition";
+import { buildPlannedSchedule } from "./timeline-forecast";
 import "./opec-scheduler.css";
 import "./library-categories.css";
 import StyledDatePicker from "./StyledDatePicker";
@@ -289,49 +288,22 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                 <div className="opec-order" title="Arrastar para reordenar"><span className="opec-drag-handle">⠿</span>{index + 1}</div>
                                 <div className="opec-entry-time">{scheduleTimes.times.get(item.rundownItemId)}</div>
                                 <div className="opec-item-main">
-                                    <strong>{item.name}</strong>
-                                    {item.placeholder && <input aria-label="Nome do espaço" value={item.name} onChange={event => patchItem(item.rundownItemId, { name: event.currentTarget.value })} />}
-                                    {item.placeholder && <label>Minutos<input type="number" min={1} value={(item.duration ?? 1800) / 60}
-                                        onChange={event => { const duration = Math.max(60, Number(event.currentTarget.value) * 60); patchItem(item.rundownItemId, { duration, outPoint: duration }); }} /></label>}
-                                    <select aria-label={`Substituir ${item.name}`} value={item.placeholder ? "" : item.sourceMediaId} onChange={event => {
-                                        const source = media.find(mediaItem => mediaItem.id === event.currentTarget.value);
-                                        if (source) patchItem(item.rundownItemId, { ...source, sourceMediaId: source.id, placeholder: false, inPoint: 0, outPoint: source.duration ?? 0 });
-                                    }}><option value="">Conteúdo a definir / substituir</option>{media.map(source => <option key={source.id} value={source.id}>{source.name}</option>)}</select>
-                                    <span>{knownClipRange(item) ? formatDuration(clipDuration(item)) : "DURAÇÃO NÃO ANALISADA"} · {exhibitionLabel(item.exhibitionType)}</span>
+                                    {item.placeholder ? <input className="opec-placeholder-name" aria-label="Nome do espaço" value={item.name}
+                                        onChange={event => patchItem(item.rundownItemId, { name: event.currentTarget.value })} /> : <strong title={item.name}>{item.name}</strong>}
                                     <div className="opec-item-fields">
                                         <input
-                                            placeholder="Bloco / identificação"
+                                            placeholder="Identificação"
+                                            aria-label={`Identificação de ${item.name}`}
                                             value={item.blockLabel ?? ""}
                                             onChange={(e) => patchItem(item.rundownItemId, { blockLabel: e.currentTarget.value })}
                                         />
-                                        <select
-                                            aria-label={`Exibição de ${item.name}`}
-                                            value={normalizeExhibitionType(item.exhibitionType)}
-                                            onChange={(e) => patchItem(item.rundownItemId, {
-                                                exhibitionType: e.currentTarget.value as ExhibitionType
-                                            })}
-                                        >
-                                            {EXHIBITION_OPTIONS.map((option) => (
-                                                <option key={option.value} value={option.value}>
-                                                    {option.label}
-                                                </option>
-                                            ))}
-                                        </select>
                                         <input
-                                            placeholder="Observação da OPEC"
+                                            placeholder="Observação"
+                                            aria-label={`Observação de ${item.name}`}
                                             value={item.notes}
                                             onChange={(e) => patchItem(item.rundownItemId, { notes: e.currentTarget.value })}
                                         />
                                     </div>
-                                </div>
-                                <div className="opec-item-gc">
-                                    <label><input type="checkbox" checked={Boolean(item.watermark)} onChange={(e) => patchItem(item.rundownItemId, { watermark: e.currentTarget.checked })} /> Logo</label>
-                                    <input
-                                        className="opec-hashtag"
-                                        placeholder="#"
-                                        value={item.hashtag ?? ""}
-                                        onChange={(e) => patchItem(item.rundownItemId, { hashtag: e.currentTarget.value })}
-                                    />
                                 </div>
                                 <button className="opec-remove" title="Remover da programação" onClick={() => removeItem(item.rundownItemId)}>×</button>
                             </article>

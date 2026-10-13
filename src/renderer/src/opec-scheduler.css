@@ -374,3 +374,17 @@
     .opec-title-field { grid-column: 1 / -1; }
 }
 .opec-item-fields input, .opec-item-fields select { height: 32px; font-size: 12px; }
+
+/* Compact OPEC rows: name, identification and observation only. */
+.opec-rundown-item { grid-template-columns: 26px 70px minmax(0, 1fr) 28px; padding: 7px 8px; gap: 8px; }
+.opec-order { display: flex; align-items: center; justify-content: center; gap: 3px; font-size: 12px; }
+.opec-drag-handle { font-size: 15px; }
+.opec-item-main { gap: 4px; }
+.opec-item-main > strong { line-height: 18px; }
+.opec-item-fields { grid-template-columns: minmax(0, .65fr) minmax(0, 1fr); gap: 6px; }
+.opec-item-fields > input:last-child { grid-column: auto; }
+.opec-item-main .opec-item-fields input { height: 26px; padding: 3px 7px; font-size: 11px; }
+.opec-item-main > .opec-placeholder-name { height: 26px; padding: 3px 7px; font-size: 12px; }
+@media (max-width: 680px) {
+    .opec-item-fields { grid-template-columns: minmax(0, 1fr); }
+}
