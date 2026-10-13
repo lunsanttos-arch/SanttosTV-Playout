@@ -50,6 +50,7 @@ const { TransportOutput, transportUrl } = require("../core/playout/transport-out
 const transportOutputs = new Map();
 const { VideoClockedPcm } = require("../core/audio/video-clocked-pcm");
 const { startWarmInputTuner } = require("../core/playout/warm-input-tuner");
+const { InputDeadline } = require("../core/playout/input-deadline");
 const { FramePacer } = require("../core/playout/frame-pacer");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
 const { OmtOutput } = require("../core/omt/omt-output");
@@ -1852,6 +1853,8 @@ async function startNativePlayback(
     // producing a picture made from two different frames.
     let feedActive = true;
     let firstProgramFrame = true;
+    let inputDeadline = null;
+    let clipFinished = false;
     let pacer = null;
     let deliveredFrames = 0;
     let decodedPreviewFrames = 0;
@@ -1876,6 +1879,7 @@ async function startNativePlayback(
             if (firstProgramFrame) {
                 firstProgramFrame = false;
                 playoutEngine.markReady();
+                inputDeadline?.start();
                 settleStartupSuccess();
             }
 
@@ -2074,6 +2078,7 @@ async function startNativePlayback(
 
         previewParser.reset();
         pendingPreviewFrames.length = 0;
+        previewPipe?.resume();
     };
 
     stopProgramPreviewFeed =
@@ -2082,9 +2087,11 @@ async function startNativePlayback(
     const stopThisFeed = () => {
         if (!feedActive) return;
         feedActive = false;
+        inputDeadline?.stop();
         pacer?.stop();
         sharedAudioClock?.stop();
         processRef.stdout.off("data", onVideoBytes);
+        processRef.stdout.resume();
         const result = assembler.stop();
         if (result.droppedBytes > 0) {
             console.log(
@@ -2152,104 +2159,126 @@ async function startNativePlayback(
         }
     );
 
-    processRef.on(
-        "close",
-        async (code, signal) => {
-            if (code === 0 && !signal && ffmpegProcess === processRef) await pacer?.end();
-            stopThisFeed();
+    const finishClip = (code, signal, atScheduledOut = false) => {
+        if (clipFinished) return;
+        clipFinished = true;
+        stopThisFeed();
 
-            if (
-                stopProgramPreviewFeed ===
-                stopThisPreviewFeed
-            ) {
-                stopThisPreviewFeed();
-                stopProgramPreviewFeed = null;
-            }
+        if (
+            stopProgramPreviewFeed ===
+            stopThisPreviewFeed
+        ) {
+            stopThisPreviewFeed();
+            stopProgramPreviewFeed = null;
+        }
 
-            if (stopNdiFrameFeed === stopThisFeed) {
-                stopNdiFrameFeed = null;
-            }
+        if (stopNdiFrameFeed === stopThisFeed) {
+            stopNdiFrameFeed = null;
+        }
 
-            console.log(
-                `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`
+        console.log(atScheduledOut
+            ? "Input concluído no OUT; liberando decoder."
+            : `Playout FFmpeg encerrado. Código: ${code}, sinal: ${signal}`);
+
+
+        if (!startupSettled) {
+            const friendlyError =
+                describeRemoteInputError(
+                    startupStderr
+                );
+
+            settleStartupFailure(
+                [
+                    code === 0 && !signal
+                        ? "O Input terminou antes de entregar o primeiro quadro."
+                        : "O FFmpeg não conseguiu abrir o Input.",
+                    friendlyError ||
+                        startupStderr
+                ]
+                    .filter(Boolean)
+                    .join("\n")
+                    .slice(-1200)
             );
+        }
 
-            if (!startupSettled) {
-                const friendlyError =
+        if (ffmpegProcess === processRef) {
+            activeWarmInputTuner?.stop();
+            activeWarmInputTuner = null;
+            ffmpegProcess = null;
+            if (code === 0 && !signal) {
+                nativePlaybackActive = false;
+                if (audioSource) {
+                    audioSource.stop();
+                    audioSource = null;
+                }
+                audioOutputStatus = "IDLE";
+                const ended = playoutEngine.complete();
+
+                // O motor nativo, e não o elemento <video> do Chromium,
+                // determina o fim real do bloco.
+                if (mainWindow && !mainWindow.isDestroyed()) {
+                    mainWindow.webContents.send(
+                        "playout:native-ended",
+                        ended
+                    );
+                }
+            } else {
+                const detail =
                     describeRemoteInputError(
                         startupStderr
                     );
 
-                settleStartupFailure(
+                onPlayoutFault(
                     [
-                        code === 0 && !signal
-                            ? "O Input terminou antes de entregar o primeiro quadro."
-                            : "O FFmpeg não conseguiu abrir o Input.",
-                        friendlyError ||
-                            startupStderr
+                        `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`,
+                        detail
                     ]
                         .filter(Boolean)
                         .join("\n")
-                        .slice(-1200)
+                        .slice(-1400)
                 );
             }
 
-            if (ffmpegProcess === processRef) {
-                activeWarmInputTuner?.stop();
-                activeWarmInputTuner = null;
-                ffmpegProcess = null;
-                if (code === 0 && !signal) {
-                    nativePlaybackActive = false;
-                    if (audioSource) {
-                        audioSource.stop();
-                        audioSource = null;
-                    }
-                    audioOutputStatus = "IDLE";
-                    const ended = playoutEngine.complete();
+            if (activeVlcInputBridge) {
+                activeVlcInputBridge.stop();
+                activeVlcInputBridge = null;
+            }
 
-                    // O motor nativo, e não o elemento <video> do Chromium,
-                    // determina o fim real do bloco.
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                        mainWindow.webContents.send(
-                            "playout:native-ended",
-                            ended
-                        );
-                    }
-                } else {
-                    const detail =
-                        describeRemoteInputError(
-                            startupStderr
-                        );
+            if (activeRemoteInputProxy) {
+                activeRemoteInputProxy.close();
+                activeRemoteInputProxy = null;
+            }
 
-                    onPlayoutFault(
-                        [
-                            `O FFmpeg parou durante o programa (codigo ${code}; sinal ${signal || "-"}).`,
-                            detail
-                        ]
-                            .filter(Boolean)
-                            .join("\n")
-                            .slice(-1400)
-                    );
-                }
-
-                if (activeVlcInputBridge) {
-                    activeVlcInputBridge.stop();
-                    activeVlcInputBridge = null;
-                }
-
-                if (activeRemoteInputProxy) {
-                    activeRemoteInputProxy.close();
-                    activeRemoteInputProxy = null;
-                }
-
-                if (isRemoteInput) {
-                    serverMedia.setRealtimePriority(
-                        false
-                    );
-                }
+            if (isRemoteInput) {
+                serverMedia.setRealtimePriority(
+                    false
+                );
             }
         }
-    );
+    };
+
+    if (isRemoteInput && clipRemainingSeconds !== null) {
+        inputDeadline = new InputDeadline(clipRemainingSeconds, () => {
+            if (ffmpegProcess !== processRef || !feedActive) return;
+            console.log(`Input atingiu OUT programado: ${programState.itemId || "input"}`);
+            // Detach this occurrence before notifying the renderer. Its late
+            // close/drain callbacks must never stop the next decoder/audio feed.
+            finishClip(0, null, true);
+            processRef.stdout.resume();
+            processRef.stdio[4]?.resume();
+            processRef.kill();
+            const killTimer = setTimeout(() => {
+                if (processRef.exitCode === null && processRef.signalCode === null) processRef.kill("SIGKILL");
+            }, 1000);
+            killTimer.unref();
+            processRef.once("close", () => clearTimeout(killTimer));
+        });
+    }
+    processRef.on("close", async (code, signal) => {
+        if (clipFinished) return;
+        if (code === 0 && !signal && ffmpegProcess === processRef) await pacer?.end();
+        finishClip(code, signal);
+    });
 
     if (isRemoteInput) {
         let timeout;

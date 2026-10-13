@@ -31,3 +31,13 @@ FREEZE na barra do player ativa o congelamento ao final do item selecionado, usa
 A suíte automatizada cobre programação remota/autenticação/conflitos, placeholders, relatórios legíveis, cache/evicção, buffer de quadros e recepção SRT/RTMP com áudio e vídeo. O teste ao vivo de 20 segundos entregou 500 quadros, com intervalo máximo de 46 ms após o buffer a 25 FPS. No Electron, um Input ao vivo de 15 segundos em 1080p29.97 entregou 450 quadros de monitor, encerrou corretamente e não registrou erro no motor.
 
 Os testes de desenvolvimento foram feitos em Linux. Recepção NDI/OMT e firewall devem ser conferidos no Windows com os receptores usados na operação; a bancada Linux não valida esses emissores nativos.
+
+## Término de Input Web e passagem para a OPEC
+
+O OUT de um Input ao vivo é controlado pelo relógio monotônico do PROGRAM, iniciado no primeiro quadro entregue. Ao chegar ao tempo programado, o motor encerra a ocorrência e libera a próxima mídia mesmo se o FFmpeg estiver esperando um segmento HTTP ou o encerramento de um pipe. A conclusão ocorre uma única vez; callbacks tardios do decoder antigo não podem encerrar a ocorrência seguinte. Pausa, parada e substituição cancelam o limite antigo. Os canais de PCM, vídeo e prévia são drenados ao desmontar o decoder, evitando que um pipe pausado impeça seu encerramento.
+
+Validação adicional com `https://encode.ontvbrasil.com.br/PortoAlegre24hs/video.m3u8`: Input no ar, aplicação da OPEC e execução automática dos três blocos seguintes. O teste também bloqueia pedidos reais de segmentos. A versão anterior não avançou nesse cenário; a nova cumpriu o OUT e executou toda a programação. O endereço é uma transmissão HLS válida; o teste demonstra a fragilidade de depender do encerramento da fonte.
+
+O teste funcional `scripts/test-input-web-handoff.cjs` exige o perfil isolado DEV NULL em Linux, uma mídia de pelo menos seis segundos cadastrada, Vite e Electron com depuração na porta 9333. Execute `SANTTOS_QA_STALL=1 node scripts/test-input-web-handoff.cjs` para simular a interrupção; omita a variável para testar a transmissão diretamente. `SANTTOS_QA_HLS_URL` permite escolher outra fonte. A suíte padrão cobre o limite de término e a liberação de áudio pendente sem depender da transmissão externa.
+
+A aplicação da OPEC aguarda uma troca de decoder que já esteja em andamento. Enquanto a aplicação é confirmada, os controles de transporte aguardam; um término recebido nesse intervalo é processado uma única vez depois que a nova lista estiver pronta.

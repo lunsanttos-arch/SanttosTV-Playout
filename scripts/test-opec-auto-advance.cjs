@@ -5,7 +5,7 @@ const pages=await(await fetch('http://127.0.0.1:9333/json')).json();const ws=new
 const send=(method,params={})=>new Promise(r=>{const key=++id;pending.set(key,r);ws.send(JSON.stringify({id:key,method,params}))});
 const evaluate=async expression=>{const result=(await send('Runtime.evaluate',{expression,awaitPromise:true,returnByValue:true})).result;if(result.exceptionDetails)throw Error(result.exceptionDetails.exception?.description);return result.result.value};
 const wait=ms=>new Promise(r=>setTimeout(r,ms));
-async function apply(){await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Programação')).click()`);await wait(150);await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Aplicar no Playout')).click()`);await wait(200)}
+async function apply(){await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Programação')).click()`);await wait(150);await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Aplicar no Playout')).click()`);await wait(50);for(let i=0;i<100;i++){if(await evaluate(`!document.querySelector('.opec-shell')&&Boolean(document.querySelector('button[title="Reproduzir"]'))&&!document.querySelector('button[title="Reproduzir"]').disabled`)){await wait(180);return;}await wait(50)}throw Error('Rundown did not finish applying')}
 async function monitor(expected){const generations=new Set();let idle=false;for(let i=0;i<140;i++){const s=await evaluate('window.santtosAPI.getNdiStatus()');assert.equal(s.playoutError,null);if(s.playout.state==='PLAYING')generations.add(s.playout.generation);if(s.playout.state==='IDLE'&&generations.size){idle=true;break}await wait(100)}assert.equal(generations.size,expected,'Every scheduled occurrence must play once');assert(idle,'Rundown must finish');return generations.size}
 const initialStatus=await evaluate('window.santtosAPI.getNdiStatus()');
 if (!initialStatus.devNullSink || initialStatus.testBench) { ws.close(); throw Error('Use an isolated DEV NULL profile without native broadcast outputs'); }
@@ -28,6 +28,8 @@ console.log('Explicit master FREEZE remains respected after OPEC application');
 await evaluate('window.santtosAPI.stopNdiFile()');
 await evaluate(`window.santtosAPI.saveDailyRundown(${JSON.stringify(backupRundown)})`);
 await evaluate(`window.santtosAPI.saveTimeline(${JSON.stringify(backupTimeline)})`);
+await wait(700);
+if(backupTimeline.length)await evaluate(`window.santtosAPI.savePlayoutCheckpoint(${JSON.stringify({itemId:backupTimeline[0]?.id,positionSeconds:backupTimeline[0]?.inPoint||0,playing:false})})`);
 ws.close();
 }
 })().catch(e=>{console.error(e.message);process.exitCode=1});

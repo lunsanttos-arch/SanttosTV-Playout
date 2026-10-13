@@ -1193,6 +1193,10 @@ function PlayoutPanel({
     const [previewPreparing, setPreviewPreparing] = useState(false);
     const [editingFilm, setEditingFilm] =
         useState<MediaItem | null>(null);
+    const [applyingRundown, setApplyingRundown] = useState(false);
+    const applyingRundownRef = useRef(false);
+    const nativeStartRef = useRef<Promise<unknown> | null>(null);
+    const pendingNativeEndRef = useRef<NativePlayoutStatus | null>(null);
     const clipAdvanceGuardRef = useRef(false);
     const handledNativeEndRef = useRef<{ generation: number; itemId: string | null } | null>(null);
     const [freezeHoldItemId, setFreezeHoldItemId] =
@@ -1337,13 +1341,20 @@ function PlayoutPanel({
         }
 
         let cancelled = false;
+        applyingRundownRef.current = true;
+        setApplyingRundown(true);
         void (async () => {
             // Read the engine at application time: renderer polling can still
             // describe the previous occurrence during a cut or just after EOF.
+            // A preceding cut may already be opening its decoder. Let that
+            // transaction finish before selecting the occurrence to preserve.
+            await nativeStartRef.current?.catch(() => undefined);
+            if (cancelled) return;
             const status = nativeOutputEnabled ? await window.santtosAPI.getNdiStatus() : null;
             if (cancelled) return;
             const engine = status?.playout;
-            const nativeRunning = engine?.state === "PLAYING" || engine?.state === "STARTING";
+            const nativeRunning = engine?.state === "PLAYING" || engine?.state === "STARTING" ||
+                (engine?.state === "ENDED" && isPlaying);
             const current = nativeOutputEnabled
                 ? nativeRunning ? timelineQueueRef.current.find(item => item.id === engine?.itemId) ??
                     (selectedMedia?.id === engine?.itemId ? selectedMedia : null) : null
@@ -1365,7 +1376,7 @@ function PlayoutPanel({
         })().catch(error => {
             console.error("Não foi possível aplicar a programação ao motor:", error);
             setPreviewError("Não foi possível consultar o motor ao aplicar a programação.");
-        });
+        }).finally(() => { if (!cancelled) setApplyingRundown(false); });
         return () => { cancelled = true; };
     }, [rundownApplyRequest]);
 
@@ -2305,8 +2316,8 @@ function PlayoutPanel({
         continuousSelf = false
     ) {
         if (!nativeOutputEnabled) return;
-        const result =
-            await window.santtosAPI
+        const start =
+            window.santtosAPI
                 .playNdiFile(
                     mediaItem.path,
                     startSeconds,
@@ -2317,6 +2328,11 @@ function PlayoutPanel({
                         continuousSelf
                     )
                 );
+
+        nativeStartRef.current = start;
+        let result: Awaited<typeof start>;
+        try { result = await start; }
+        finally { if (nativeStartRef.current === start) nativeStartRef.current = null; }
 
         if (!result.ok) {
             throw new Error(
@@ -2952,6 +2968,11 @@ function PlayoutPanel({
     }
 
     function handleNativeEnded(status: NativePlayoutStatus) {
+        if (applyingRundownRef.current) {
+            if (!pendingNativeEndRef.current || status.generation >= pendingNativeEndRef.current.generation)
+                pendingNativeEndRef.current = status;
+            return;
+        }
         const handled = handledNativeEndRef.current;
         if (!selectedMedia || status.itemId !== selectedMedia.id || clipAdvanceGuardRef.current ||
             (handled && status.generation <= handled.generation)) return;
@@ -2974,12 +2995,20 @@ function PlayoutPanel({
         return window.santtosAPI.onNativePlayoutEnded(handleNativeEnded);
     }, [nativeOutputEnabled, selectedMedia?.id, nextMedia?.id, selectedMedia?.loop, selectedMedia?.freezeEnd]);
 
+    useEffect(() => {
+        if (applyingRundown) return;
+        applyingRundownRef.current = false;
+        const pending = pendingNativeEndRef.current;
+        pendingNativeEndRef.current = null;
+        if (pending) handleNativeEnded(pending);
+    }, [applyingRundown]);
+
     // The authoritative snapshot also catches a completion delivered while the
     // renderer was updating its subscriptions after applying a rundown.
     useEffect(() => {
         if (nativeOutputEnabled && nativePlayout.state === "ENDED") handleNativeEnded(nativePlayout);
     }, [nativeOutputEnabled, nativePlayout.state, nativePlayout.generation,
-        nativePlayout.itemId, selectedMedia?.id, nextMedia?.id]);
+        nativePlayout.itemId, selectedMedia?.id, nextMedia?.id, applyingRundown]);
 
     async function handleProgramTimeUpdate(
         video: HTMLVideoElement
@@ -3821,12 +3850,14 @@ function PlayoutPanel({
                     <div className="program-controls">
                         <button
                             title="Reproduzir"
+                            disabled={applyingRundown}
                             className={isPlaying ? "transport-active" : ""}
                             aria-pressed={isPlaying}
                             onClick={playVideo}
                         >▶</button>
                         <button
                             title="Pausar"
+                            disabled={applyingRundown}
                             className={!isPlaying && (nativePlayout.state === "PAUSED" || pausedItemId === selectedMedia?.id)
                                 ? "transport-active" : ""}
                             aria-pressed={!isPlaying && (nativePlayout.state === "PAUSED" || pausedItemId === selectedMedia?.id)}
@@ -3834,10 +3865,11 @@ function PlayoutPanel({
                         >⏸</button>
                         <button
                             title="Parar"
+                            disabled={applyingRundown}
                             onClick={stopVideo}
                         >■</button>
                         <button title="Congelar ao final" className={selectedMedia?.freezeEnd ? "transport-active" : ""}
-                            aria-pressed={Boolean(selectedMedia?.freezeEnd)} disabled={!selectedMedia}
+                            aria-pressed={Boolean(selectedMedia?.freezeEnd)} disabled={applyingRundown || !selectedMedia}
                             onClick={() => selectedMedia && toggleTimelineFreeze(selectedMedia.id)}>FREEZE</button>
                         <button
                             title="Próximo vídeo"
@@ -3849,7 +3881,7 @@ function PlayoutPanel({
                                         : "skipped"
                                 )
                             }
-                            disabled={!nextMedia}
+                            disabled={applyingRundown || !nextMedia}
                         >⏭</button>
 
                         {selectedMedia &&

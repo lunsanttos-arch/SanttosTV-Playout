@@ -58,6 +58,8 @@ class VideoClockedPcm {
         this.source.off("error", this.onError);
         this.output.off("drain", this.onDrain);
         this.queue = [];
+        this.buffered = 0;
+        this.source.resume();
         this.output.destroy();
     }
 }

@@ -29,5 +29,14 @@ const { NdiAudioSource } = require('../src/core/audio/ndi-audio-source');
         audio.stop(); clock.stop();
         assert.equal(source.listenerCount('data'), 0, 'Stopped feeds must release decoder listeners');
     }
+    const tail = new PassThrough();
+    const tailClock = new VideoClockedPcm(tail, { sampleRate: 48000, channels: 2, fpsN: 30, fpsD: 1 });
+    tail.write(Buffer.alloc(48000 * 8 * 2));
+    assert(tail.isPaused(), 'Ahead-of-video audio must apply bounded backpressure');
+    tailClock.stop();
+    const ended = new Promise(resolve => tail.once('end', resolve));
+    tail.end(Buffer.alloc(128 * 1024));
+    await Promise.race([ended, new Promise((_, reject) => setTimeout(() => reject(Error('Paused PCM tail prevents decoder close')), 500))]);
+    assert.equal(tailClock.buffered, 0);
     console.log('VIDEO CLOCKED PCM QA: passed startup gate, fractional frame rates, arbitrary chunks and cleanup');
 })().catch(error => { console.error(error); process.exitCode = 1; });
