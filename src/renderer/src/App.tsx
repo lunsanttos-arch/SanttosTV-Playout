@@ -1177,6 +1177,8 @@ function PlayoutPanel({
     const resumeAfterNdiLossRef = useRef(false);
     const [timelineQueue, setTimelineQueue] =
         useState<MediaItem[]>([]);
+    const timelineQueueRef = useRef(timelineQueue);
+    timelineQueueRef.current = timelineQueue;
     const [draggedMediaId, setDraggedMediaId] =
         useState<string | null>(null);
     const [watermarkStyle, setWatermarkStyle] =
@@ -1192,6 +1194,7 @@ function PlayoutPanel({
     const [editingFilm, setEditingFilm] =
         useState<MediaItem | null>(null);
     const clipAdvanceGuardRef = useRef(false);
+    const handledNativeEndRef = useRef<{ generation: number; itemId: string | null } | null>(null);
     const [freezeHoldItemId, setFreezeHoldItemId] =
         useState<string | null>(null);
     const activeReportIdRef = useRef<string | null>(null);
@@ -1319,7 +1322,9 @@ function PlayoutPanel({
                     rundownApplyRequest.startTime ||
                     "00:00",
                 loop: false,
-                freezeEnd: Boolean(item.freezeEnd),
+                // OPEC is a continuous rundown. FREEZE is an explicit master
+                // action in the player, never a hidden inherited schedule flag.
+                freezeEnd: false,
                 watermark: Boolean(item.watermark),
                 hashtag: item.hashtag ?? "",
                 inPoint: getClipIn(item),
@@ -1331,18 +1336,37 @@ function PlayoutPanel({
             return;
         }
 
-        if (isPlaying && selectedMedia) {
-            // Aplicar uma Programação substitui tudo que ainda não foi ao ar.
-            // Somente o item que está efetivamente NO AR é preservado.
-            setTimelineQueue([
-                selectedMedia,
-                ...prepared
-            ]);
-        } else {
-            setTimelineQueue(prepared);
-            onSelectMedia(prepared[0]);
-            setCurrentTime(getClipIn(prepared[0]));
-        }
+        let cancelled = false;
+        void (async () => {
+            // Read the engine at application time: renderer polling can still
+            // describe the previous occurrence during a cut or just after EOF.
+            const status = nativeOutputEnabled ? await window.santtosAPI.getNdiStatus() : null;
+            if (cancelled) return;
+            const engine = status?.playout;
+            const nativeRunning = engine?.state === "PLAYING" || engine?.state === "STARTING";
+            const current = nativeOutputEnabled
+                ? nativeRunning ? timelineQueueRef.current.find(item => item.id === engine?.itemId) ??
+                    (selectedMedia?.id === engine?.itemId ? selectedMedia : null) : null
+                : isPlaying ? selectedMedia : null;
+            pendingRecoveryRef.current = null;
+            restoredPositionRef.current = null;
+            if (current) {
+                setTimelineQueue([current, ...prepared]);
+                onSelectMedia(current);
+            } else {
+                clipAdvanceGuardRef.current = false;
+                setFreezeHoldItemId(null);
+                setPausedItemId(null);
+                setIsPlaying(false);
+                setTimelineQueue(prepared);
+                onSelectMedia(prepared[0]);
+                setCurrentTime(getClipIn(prepared[0]));
+            }
+        })().catch(error => {
+            console.error("Não foi possível aplicar a programação ao motor:", error);
+            setPreviewError("Não foi possível consultar o motor ao aplicar a programação.");
+        });
+        return () => { cancelled = true; };
     }, [rundownApplyRequest]);
 
     useEffect(() => {
@@ -2592,6 +2616,7 @@ function PlayoutPanel({
                         authoritativeStart,
                     atMs: Date.now()
                 };
+                clipAdvanceGuardRef.current = false;
                 setIsPlaying(true);
                 setPreviewError("");
                 await startExecutionReport(mediaToPlay);
@@ -2623,6 +2648,7 @@ function PlayoutPanel({
             restoredPositionRef.current = null;
             setPreviewError("");
             markPlaybackSample(video);
+            clipAdvanceGuardRef.current = false;
             setIsPlaying(true);
             await startExecutionReport(mediaToPlay);
         } catch (error) {
@@ -2925,47 +2951,35 @@ function PlayoutPanel({
         await startExecutionReport(nextToPlay);
     }
 
+    function handleNativeEnded(status: NativePlayoutStatus) {
+        const handled = handledNativeEndRef.current;
+        if (!selectedMedia || status.itemId !== selectedMedia.id || clipAdvanceGuardRef.current ||
+            (handled && status.generation <= handled.generation)) return;
+
+        handledNativeEndRef.current = { generation: status.generation, itemId: status.itemId };
+        clipAdvanceGuardRef.current = true;
+        if (selectedMedia.freezeEnd) {
+            holdLastFrame(selectedMedia);
+            return;
+        }
+        void playNextMedia("completed").catch(error => {
+            console.error("Falha ao avançar o motor nativo:", error);
+            setIsPlaying(false);
+            setPreviewError(error instanceof Error ? error.message : "Não foi possível abrir o próximo item.");
+        });
+    }
+
     useEffect(() => {
         if (!nativeOutputEnabled) return;
+        return window.santtosAPI.onNativePlayoutEnded(handleNativeEnded);
+    }, [nativeOutputEnabled, selectedMedia?.id, nextMedia?.id, selectedMedia?.loop, selectedMedia?.freezeEnd]);
 
-        const unsubscribe =
-            window.santtosAPI.onNativePlayoutEnded(
-                (status) => {
-                    if (
-                        !selectedMedia ||
-                        status.itemId !== selectedMedia.id ||
-                        clipAdvanceGuardRef.current
-                    ) {
-                        return;
-                    }
-
-                    clipAdvanceGuardRef.current = true;
-
-                    if (selectedMedia.freezeEnd) {
-                        holdLastFrame(selectedMedia);
-                        return;
-                    }
-
-                    void playNextMedia("completed").catch(
-                        (error) => {
-                            console.error(
-                                "Falha ao avançar o motor nativo:",
-                                error
-                            );
-                            setIsPlaying(false);
-                        }
-                    );
-                }
-            );
-
-        return unsubscribe;
-    }, [
-        nativeOutputEnabled,
-        selectedMedia?.id,
-        nextMedia?.id,
-        selectedMedia?.loop,
-        selectedMedia?.freezeEnd
-    ]);
+    // The authoritative snapshot also catches a completion delivered while the
+    // renderer was updating its subscriptions after applying a rundown.
+    useEffect(() => {
+        if (nativeOutputEnabled && nativePlayout.state === "ENDED") handleNativeEnded(nativePlayout);
+    }, [nativeOutputEnabled, nativePlayout.state, nativePlayout.generation,
+        nativePlayout.itemId, selectedMedia?.id, nextMedia?.id]);
 
     async function handleProgramTimeUpdate(
         video: HTMLVideoElement

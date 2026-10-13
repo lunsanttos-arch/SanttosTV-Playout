@@ -131,10 +131,10 @@ assert(app.includes('placeholder="Pesquisar em toda a Biblioteca..."') &&
     app.includes("const source = normalized") &&
     app.includes("? libraryMedia"),
     "Pesquisa da Biblioteca deve ser global e incluir todas as pastas.");
-assert(app.includes("Somente o item que está efetivamente NO AR é preservado.") &&
-    app.includes("setTimelineQueue([") &&
-    app.includes("selectedMedia,") &&
-    app.includes("...prepared"),
+assert(app.includes("const nativeRunning =") &&
+    app.includes("await window.santtosAPI.getNdiStatus()") &&
+    app.includes("timelineQueueRef.current.find(item => item.id === engine?.itemId)") &&
+    app.includes("setTimelineQueue([current, ...prepared])"),
     "Aplicar Programação deve substituir a Timeline preservando somente o item NO AR.");
 
 assert(app.includes("OpecSchedulerPanel") && app.includes('label: "Programação"'),
