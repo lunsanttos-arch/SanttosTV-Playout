@@ -4,6 +4,9 @@ import { EXHIBITION_OPTIONS, exhibitionLabel, normalizeExhibitionType } from "./
 import type { ExhibitionType } from "./exhibition";
 import { buildPlannedSchedule, knownClipRange } from "./timeline-forecast";
 import "./opec-scheduler.css";
+import StyledDatePicker from "./StyledDatePicker";
+import type { LibraryCategory } from "./LibraryFolderSettingsTab";
+import RemoteControllerAccess from "./RemoteControllerAccess";
 
 interface DailyRundown {
     date: string;
@@ -15,6 +18,7 @@ interface DailyRundown {
 
 interface Props {
     media: MediaItem[];
+    remote?: boolean;
     onApply: (
         items: MediaItem[],
         startTime: string
@@ -54,11 +58,15 @@ function formatDuration(seconds: number) {
 }
 
 
-export default function OpecSchedulerPanel({ media, onApply }: Props) {
+export default function OpecSchedulerPanel({ media, onApply, remote = false }: Props) {
     const [date, setDate] = useState(todayKey());
+    const [version, setVersion] = useState<string | null>(null);
     const [title, setTitle] = useState("Programação diária");
     const [startTime, setStartTime] = useState("00:00");
     const [items, setItems] = useState<RundownItem[]>([]);
+    const [categories, setCategories] = useState<LibraryCategory[]>([]);
+    useEffect(() => { void window.santtosAPI.getLibraryCategories().then(setCategories).catch(() => {}); }, []);
+    const [libraryFolder, setLibraryFolder] = useState("");
     const [search, setSearch] = useState("");
     const [status, setStatus] = useState("");
     const [loading, setLoading] = useState(false);
@@ -72,6 +80,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
         window.santtosAPI.getDailyRundown(date)
             .then((rundown: DailyRundown) => {
                 if (cancelled) return;
+                setVersion(rundown.updatedAt ?? null);
                 setTitle(rundown.title || "Programação diária");
                 setStartTime(rundown.startTime || "00:00");
                 setItems(Array.isArray(rundown.items) ? rundown.items : []);
@@ -91,9 +100,12 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
 
     const filteredMedia = useMemo(() => {
         const q = search.trim().toLowerCase();
-        if (!q) return media;
-        return media.filter((item) => item.name.toLowerCase().includes(q));
-    }, [media, search]);
+        const category = categories.find(item => item.id === libraryFolder);
+        const folder = category?.folderPath?.replace(/\\/g, "/").replace(/\/+$|$/, "/");
+        const scoped = libraryFolder ? (folder ? media.filter(item => item.path.replace(/\\/g, "/").toLowerCase().startsWith(folder.toLowerCase())) : []) : media;
+        if (!q) return scoped;
+        return scoped.filter((item) => item.name.toLowerCase().includes(q));
+    }, [media, search, libraryFolder, categories]);
 
     // Roteiro = hora PROGRAMADA. A timeline calcula a entrada ESTIMADA
     // de acordo com a reprodução real, pausa e sinal NDI.
@@ -155,6 +167,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
         try {
             const result = await window.santtosAPI.saveDailyRundown({
                 date,
+                expectedUpdatedAt: version,
                 title,
                 startTime,
                 items
@@ -163,9 +176,13 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                 throw new Error(result?.error || "Falha ao salvar roteiro.");
             }
             const saved: DailyRundown = result.rundown;
+            setVersion(saved.updatedAt ?? null);
             setItems(saved.items ?? []);
             if (showMessage) setStatus("Programação salva.");
             return saved;
+        } catch (error) {
+            setStatus(error instanceof Error ? error.message : "Não foi possível salvar.");
+            throw error;
         } finally {
             setLoading(false);
         }
@@ -173,6 +190,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
 
     async function applyRundown() {
         try {
+            if (items.some(item => item.placeholder)) { setStatus("Substitua os conteúdos a definir antes de aplicar a programação."); return; }
             const saved = await saveRundown(false);
             onApply(
                 saved.items,
@@ -194,15 +212,19 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                     <p>Monte a programação do dia e envie para o Playout sem alterar as mídias originais. Os horários aqui são programados; a previsão ao vivo aparece na Timeline.</p>
                 </div>
                 <div className="opec-header-actions">
-                    <button onClick={() => void saveRundown()} disabled={loading}>Salvar programação</button>
-                    <button className="primary-button" onClick={applyRundown} disabled={loading || items.length === 0}>
+                    <button disabled={loading} onClick={() => void window.santtosAPI.getDailyRundown(date).then(rundown => {
+                        setItems(rundown.items ?? []); setTitle(rundown.title); setStartTime(rundown.startTime); setVersion(rundown.updatedAt ?? null); setStatus("Programação atualizada.");
+                    }).catch(() => setStatus("Não foi possível atualizar."))}>Atualizar programação</button>
+                    <button onClick={() => void saveRundown().catch(() => {})} disabled={loading}>Salvar programação</button>
+                    <button hidden={remote} className="primary-button" onClick={applyRundown} disabled={loading || items.length === 0}>
                         Aplicar no Playout
                     </button>
                 </div>
             </header>
 
+            {!remote && <RemoteControllerAccess />}
             <div className="opec-meta-row">
-                <label><span>Data</span><input type="date" value={date} onChange={(e) => setDate(e.currentTarget.value)} /></label>
+                <label><span>Data</span><StyledDatePicker value={date} onChange={setDate} /></label>
                 <label className="opec-title-field"><span>Nome da programação</span><input value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={120} /></label>
                 <label><span>Início programado</span><input type="time" value={startTime} onChange={(e) => setStartTime(e.currentTarget.value)} /></label>
                 <div className="opec-summary"><span>PROGRAMADO</span><strong>{totalDuration === null ? "--:--:--" : formatDuration(totalDuration)}</strong><small>até {scheduleTimes.end}</small></div>
@@ -217,6 +239,10 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                         <span>{items.length} item(ns)</span>
                     </div>
 
+                    <button onClick={() => setItems(current => [...current, { id: "placeholder", sourceMediaId: "", rundownItemId: `slot-${Date.now()}-${Math.random()}`,
+                        placeholder: true, name: "Conteúdo a definir", path: "", extension: "VAZIO", fileSize: 0, duration: 1800, outPoint: 1800,
+                        notes: "", width: null, height: null, fps: null, videoCodec: null, audioCodec: null, thumbnail: null,
+                        status: "placeholder", createdAt: new Date().toISOString() }])}>+ Conteúdo a definir</button>
                     <div className="opec-rundown-list">
                         {items.length === 0 && <div className="opec-empty">Adicione mídias da biblioteca ao roteiro.</div>}
                         {items.map((item, index) => (
@@ -224,7 +250,7 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                                 key={item.rundownItemId}
                                 className={`opec-rundown-item ${draggedId === item.rundownItemId ? "dragging" : ""}`}
                                 draggable
-                                onDragStart={() => setDraggedId(item.rundownItemId)}
+                                onDragStart={event => { if ((event.target as HTMLElement).closest("input, select, button")) { event.preventDefault(); return; } setDraggedId(item.rundownItemId); }}
                                 onDragOver={(e) => e.preventDefault()}
                                 onDrop={(e) => {
                                     e.preventDefault();
@@ -237,6 +263,13 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
                                 <div className="opec-entry-time">{scheduleTimes.times.get(item.rundownItemId)}</div>
                                 <div className="opec-item-main">
                                     <strong>{item.name}</strong>
+                                    {item.placeholder && <input aria-label="Nome do espaço" value={item.name} onChange={event => patchItem(item.rundownItemId, { name: event.currentTarget.value })} />}
+                                    {item.placeholder && <label>Minutos<input type="number" min={1} value={(item.duration ?? 1800) / 60}
+                                        onChange={event => { const duration = Math.max(60, Number(event.currentTarget.value) * 60); patchItem(item.rundownItemId, { duration, outPoint: duration }); }} /></label>}
+                                    <select aria-label={`Substituir ${item.name}`} value={item.placeholder ? "" : item.sourceMediaId} onChange={event => {
+                                        const source = media.find(mediaItem => mediaItem.id === event.currentTarget.value);
+                                        if (source) patchItem(item.rundownItemId, { ...source, sourceMediaId: source.id, placeholder: false, inPoint: 0, outPoint: source.duration ?? 0 });
+                                    }}><option value="">Conteúdo a definir / substituir</option>{media.map(source => <option key={source.id} value={source.id}>{source.name}</option>)}</select>
                                     <span>{knownClipRange(item) ? formatDuration(clipDuration(item)) : "DURAÇÃO NÃO ANALISADA"} · {exhibitionLabel(item.exhibitionType)}</span>
                                     <div className="opec-item-fields">
                                         <input
@@ -281,6 +314,9 @@ export default function OpecSchedulerPanel({ media, onApply }: Props) {
 
                 <aside className="opec-library-panel">
                     <div className="opec-section-title"><strong>BIBLIOTECA</strong><span>{media.length} mídia(s)</span></div>
+                    <select aria-label="Biblioteca da programação" value={libraryFolder} onChange={event => setLibraryFolder(event.currentTarget.value)}>
+                        <option value="">Todas as bibliotecas</option>{categories.map(category =>
+                            <option key={category.id} value={category.id}>{category.name}</option>)}</select>
                     <input className="opec-search" placeholder="Pesquisar mídia..." value={search} onChange={(e) => setSearch(e.currentTarget.value)} />
                     <div className="opec-library-list">
                         {filteredMedia.map((item) => (

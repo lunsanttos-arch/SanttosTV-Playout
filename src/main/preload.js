@@ -13,6 +13,10 @@ const buildMediaUrl = (filePath) =>
 contextBridge.exposeInMainWorld(
     "santtosAPI",
     {
+        getControllerStatus: () => ipcRenderer.invoke("controller:status"),
+        setControllerEnabled: (enabled) => ipcRenderer.invoke("controller:set-enabled", enabled),
+        getReportFiles: () => ipcRenderer.invoke("report:list"),
+        openReport: (date) => ipcRenderer.invoke("report:open", date),
         getPlayoutRecovery: () => ipcRenderer.invoke("playout:recovery"),
         savePlayoutCheckpoint: (checkpoint) => ipcRenderer.invoke("playout:checkpoint", checkpoint),
         selectVideos: () =>

@@ -56,9 +56,10 @@ const DEFAULT_OUTPUT_SETTINGS = {
     omt: {
         enabled: false,
         name: "SanTTos Playout - PROGRAM",
-        quality: "low"
+        quality: "high"
     },
 
+    rtmp: { enabled: false, url: "" },
     srt: {
         enabled: false,
         mode: "caller",
@@ -440,6 +441,7 @@ function normalizeOutputSettings(value = {}) {
             )
         },
 
+        rtmp: { enabled: value.rtmp?.enabled === true, url: normalizeText(value.rtmp?.url, "", 2048) },
         srt: {
             enabled:
                 typeof srt.enabled === "boolean"
@@ -845,7 +847,7 @@ function saveTimeline(timelineItems) {
                 if (
                     typeof item?.id !== "string" ||
                     typeof item?.path !== "string" ||
-                    !/^(https?:\/\/|srt:\/\/)/i.test(item.path)
+                    !/^(https?:\/\/|srt:\/\/|rtmps?:\/\/)/i.test(item.path)
                 ) {
                     return null;
                 }
@@ -970,6 +972,15 @@ function getDailyRundown(dateValue) {
 
     const items = Array.isArray(stored.items)
         ? stored.items.map((entry) => {
+              if (entry.placeholder) return {
+                  id: `placeholder:${entry.rundownItemId}`, rundownItemId: entry.rundownItemId, sourceMediaId: "",
+                  placeholder: true, name: entry.name || "Conteúdo a definir", path: "", extension: "VAZIO",
+                  sourceType: "file", fileSize: 0, duration: entry.duration || 1800, inPoint: 0, outPoint: entry.duration || 1800,
+                  width: null, height: null, fps: null, videoCodec: null, audioCodec: null, thumbnail: null,
+                  status: "placeholder", createdAt: stored.updatedAt || new Date().toISOString(),
+                  blockLabel: entry.blockLabel || "", notes: entry.notes || "", exhibitionType: "NORMAL", watermark: false,
+                  hashtag: "", freezeEnd: false
+              };
               const source = mediaById.get(entry.sourceMediaId);
               if (!source) return null;
               return {
@@ -1006,10 +1017,20 @@ function saveDailyRundown(rundown) {
     }
 
     const date = normalizeRundownDate(rundown.date);
+    if (Object.prototype.hasOwnProperty.call(rundown, "expectedUpdatedAt") &&
+        rundown.expectedUpdatedAt !== (data.dailyRundowns?.[date]?.updatedAt ?? null)) {
+        throw new Error("A programação foi alterada por outro operador. Atualize antes de salvar.");
+    }
     const mediaIds = new Set(data.media.map((item) => item.id));
     const sourceItems = Array.isArray(rundown.items) ? rundown.items : [];
 
     const items = sourceItems.map((item) => {
+        if (item?.placeholder === true) return {
+            rundownItemId: typeof item.rundownItemId === "string" && item.rundownItemId ? item.rundownItemId : crypto.randomUUID(),
+            placeholder: true, name: normalizeText(item.name, "Conteúdo a definir", 120),
+            duration: Math.min(86400, Math.max(1, Number(item.duration) || 1800)),
+            blockLabel: normalizeText(item.blockLabel, "", 80), notes: normalizeText(item.notes, "", 500)
+        };
         const sourceMediaId = item?.sourceMediaId ?? item?.id;
         if (typeof sourceMediaId !== "string" || !mediaIds.has(sourceMediaId)) {
             return null;
@@ -1037,7 +1058,7 @@ function saveDailyRundown(rundown) {
         title: normalizeText(rundown.title, "Programação diária", 120) || "Programação diária",
         startTime: normalizeRundownTime(rundown.startTime),
         items,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date(Math.max(Date.now(), Date.parse(data.dailyRundowns[date]?.updatedAt || "") + 1 || 0)).toISOString()
     };
 
     saveDatabase();

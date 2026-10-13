@@ -77,15 +77,8 @@ function outputProfile(output = {}) {
         output.ndi.name.trim()
         ? output.ndi.name.trim().slice(0, 120)
         : "Santtos TV - PROGRAM";
-    const omtName = typeof output.omt?.name === "string" &&
-        output.omt.name.trim()
-        ? output.omt.name.trim().slice(0, 120)
-        : "SanTTos Playout - PROGRAM";
-    const omtQuality = ["default", "low", "medium", "high"].includes(
-        String(output.omt?.quality)
-    )
-        ? String(output.omt.quality)
-        : "low";
+    const omtName = sourceName;
+    const omtQuality = "high";
 
     // Sample aspect ratio required to produce the configured display aspect
     // ratio with the selected raster.

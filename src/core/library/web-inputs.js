@@ -21,7 +21,7 @@ function normalizeProtocol(value, url) {
     ).toLowerCase();
 
     if (
-        ["http", "https", "hls", "m3u8", "srt"].includes(
+        ["http", "https", "hls", "m3u8", "srt", "rtmp", "rtmps"].includes(
             explicit
         )
     ) {
@@ -32,6 +32,8 @@ function normalizeProtocol(value, url) {
         String(url ?? "")
             .trim()
             .toLowerCase();
+
+    if (/^rtmps?:\/\//.test(source)) return source.startsWith("rtmps:") ? "rtmps" : "rtmp";
 
     if (source.startsWith("srt://")) {
         return "srt";
@@ -171,12 +173,12 @@ function validateInput(input) {
     }
 
     if (
-        !/^(https?:\/\/|srt:\/\/)/i.test(
+        !/^(https?:\/\/|srt:\/\/|rtmps?:\/\/)/i.test(
             input.url
         )
     ) {
         throw new Error(
-            "O input deve usar HTTP, HTTPS, HLS/M3U8 ou SRT."
+            "O input deve usar HTTP, HTTPS, HLS/M3U8, RTMP ou SRT."
         );
     }
 

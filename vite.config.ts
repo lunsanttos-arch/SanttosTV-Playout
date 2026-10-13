@@ -11,7 +11,8 @@ export default defineConfig({
 
   build: {
     outDir: path.resolve(__dirname, "dist"),
-    emptyOutDir: true
+    emptyOutDir: true,
+    rollupOptions: { input: { main: path.resolve(__dirname, "src/renderer/index.html"), controller: path.resolve(__dirname, "src/renderer/controller.html") } }
   },
 
   server: {

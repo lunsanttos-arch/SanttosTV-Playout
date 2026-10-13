@@ -6,7 +6,7 @@ const crypto = require("node:crypto");
 const { pipeline } = require("node:stream/promises");
 
 const DEFAULT_SETTINGS = Object.freeze({
-    enabled: false,
+    enabled: true,
     rootPath: "",
     cacheEnabled: true,
     cacheMaxGb: 80,
@@ -106,13 +106,13 @@ class ServerMediaManager {
 
     normalizeSettings(value = {}) {
         return {
-            enabled: value.enabled === true,
+            enabled: true,
             rootPath:
                 typeof value.rootPath === "string"
                     ? value.rootPath.trim().slice(0, 4096)
                     : "",
             cacheEnabled:
-                value.cacheEnabled !== false,
+                true,
             cacheMaxGb:
                 Math.round(
                     clampNumber(
@@ -123,7 +123,7 @@ class ServerMediaManager {
                     )
                 ),
             prefetchNext:
-                value.prefetchNext !== false
+                true
         };
     }
 
@@ -280,6 +280,8 @@ class ServerMediaManager {
             return false;
         }
 
+        if (/^c:[\\/]/i.test(filePath.trim())) return false;
+        if (/^[a-z]:[\\/]/i.test(filePath.trim()) || /^\\\\/.test(filePath.trim())) return true;
         const source =
             normalizedPath(filePath);
         const root =
@@ -1121,10 +1123,10 @@ class ServerMediaManager {
                 .sort(
                     (a, b) =>
                         Number(
-                            a.entry.lastUsedAt ?? 0
+                            a.entry.cachedAt ?? a.entry.lastUsedAt ?? 0
                         ) -
                         Number(
-                            b.entry.lastUsedAt ?? 0
+                            b.entry.cachedAt ?? b.entry.lastUsedAt ?? 0
                         )
                 );
 

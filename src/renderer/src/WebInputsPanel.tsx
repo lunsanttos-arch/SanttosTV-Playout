@@ -6,7 +6,7 @@ export interface WebInput {
     id: string;
     name: string;
     url: string;
-    protocol: "http" | "https" | "hls" | "m3u8" | "srt";
+    protocol: "http" | "https" | "hls" | "m3u8" | "srt" | "rtmp" | "rtmps";
     timingMode: "duration" | "clock";
     durationSeconds: number;
     endTime: string;
@@ -113,6 +113,8 @@ function protocolFromUrl(
         sanitizePastedUrl(value)
             .toLowerCase();
 
+    if (/^rtmps?:\/\//.test(url)) return url.startsWith("rtmps:") ? "rtmps" : "rtmp";
+
     if (url.startsWith("srt://")) {
         return "srt";
     }
@@ -143,12 +145,12 @@ function validateDraftUrl(value: string) {
             ok: false,
             url,
             error:
-                "Cole um endereço HTTP/HTTPS, M3U8 ou SRT."
+                "Cole um endereço HTTP/HTTPS, M3U8, RTMP ou SRT."
         };
     }
 
     if (
-        !/^(https?:\/\/|srt:\/\/)/i.test(
+        !/^(https?:\/\/|srt:\/\/|rtmps?:\/\/)/i.test(
             url
         )
     ) {
@@ -156,7 +158,7 @@ function validateDraftUrl(value: string) {
             ok: false,
             url,
             error:
-                "Formato não suportado. Use http://, https:// ou srt://."
+                "Formato não suportado. Use http://, https://, rtmp:// ou srt://."
         };
     }
 
@@ -761,7 +763,8 @@ function WebInputsContent({
                             <option value="hls">
                                 HLS / M3U8
                             </option>
-                            <option value="srt">
+                            <option value="rtmp">RTMP</option><option value="rtmps">RTMPS</option>
+                        <option value="srt">
                                 SRT
                             </option>
                         </select>

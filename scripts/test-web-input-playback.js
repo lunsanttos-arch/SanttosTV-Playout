@@ -107,6 +107,10 @@ function contentType(filePath) {
 }
 
 async function main() {
+    assert.equal(isRemoteInputUrl("rtmp://example.com/live/channel"), true);
+    assert.equal(isRemoteInputUrl("rtmps://example.com/live/channel"), true);
+    const rtmpPolicy = remoteInputArgs("rtmp://example.com/live/channel", { protocolHint: "rtmp" });
+    assert(!rtmpPolicy.includes("-user_agent"), "RTMP must not receive HTTP-only options");
     assert.equal(
         isRemoteInputUrl(
             "https://example.com/live.m3u8"

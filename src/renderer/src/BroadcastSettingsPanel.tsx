@@ -7,6 +7,7 @@ import "./broadcast-settings.css";
 import WatermarkSettingsTab from "./WatermarkSettingsTab";
 import LibraryFolderSettingsTab from "./LibraryFolderSettingsTab";
 import ExhibitionSettingsTab from "./ExhibitionSettingsTab";
+import CacheSettingsTab from "./CacheSettingsTab";
 import ReportingSettingsTab from "./ReportingSettingsTab";
 import { DEFAULT_EXHIBITION_STYLE } from "./exhibition";
 import type { ExhibitionStyle } from "./exhibition";
@@ -14,6 +15,7 @@ import type { ExhibitionStyle } from "./exhibition";
 type SettingsTab =
     | "output"
     | "library"
+    | "cache"
     | "watermark"
     | "exhibition"
     | "hashtag"
@@ -58,6 +60,7 @@ interface OutputSettings {
         name: string;
         quality: "default" | "low" | "medium" | "high";
     };
+    rtmp: { enabled: boolean; url: string };
     srt: {
         enabled: boolean;
         mode: "caller" | "listener" | "rendezvous";
@@ -104,8 +107,9 @@ const DEFAULT_OUTPUT: OutputSettings = {
     omt: {
         enabled: false,
         name: "SanTTos Playout - PROGRAM",
-        quality: "low"
+        quality: "high"
     },
+    rtmp: { enabled: false, url: "" },
     srt: {
         enabled: false,
         mode: "caller",
@@ -337,6 +341,7 @@ export default function BroadcastSettingsPanel({
             description:
                 "Perfil técnico do PROGRAM, áudio e transportes."
         },
+        cache: { title: "Cache de mídia", description: "Cache automático de discos e pastas de rede." },
         library: {
             title: "Biblioteca",
             description:
@@ -378,6 +383,7 @@ export default function BroadcastSettingsPanel({
                 </div>
 
                 <div className="settings-tabs">
+                    <button type="button" className={tab === "cache" ? "active" : ""} onClick={() => setTab("cache")}>Cache</button>
                     <button
                         type="button"
                         className={
@@ -462,6 +468,8 @@ export default function BroadcastSettingsPanel({
                     patchOmt={patchOmt}
                     patchSrt={patchSrt}
                 />
+            ) : tab === "cache" ? (
+                <CacheSettingsTab />
             ) : tab === "library" ? (
                 <LibraryFolderSettingsTab />
             ) : tab === "watermark" ? (
@@ -691,13 +699,11 @@ function OutputTab({
                     }
                 />
 
-                <div className="settings-info">
-                    Sample rate e canais definem o áudio do PROGRAM. Codec e bitrate AAC são usados apenas nas saídas comprimidas.
-                </div>
+
             </SettingsCard>
 
             <SettingsCard
-                title="NDI"
+                title="NDI / OMT"
                 description="Saída de rede local do PROGRAM."
             >
                 <ToggleField
@@ -716,13 +722,6 @@ function OutputTab({
                     }
                 />
 
-            </SettingsCard>
-
-            <SettingsCard
-                title="OMT"
-                description="Saída Open Media Transport do mesmo PROGRAM, usando VMX para reduzir o tráfego de rede."
-                badge="NOVO"
-            >
                 <ToggleField
                     label="Ativar OMT"
                     checked={output.omt.enabled}
@@ -731,43 +730,18 @@ function OutputTab({
                     }
                 />
 
-                <TextField
-                    label="Nome da fonte"
-                    value={output.omt.name}
-                    onChange={(name) =>
-                        patchOmt({ name })
-                    }
-                />
-
-                <SelectField
-                    label="Qualidade / uso de rede"
-                    value={output.omt.quality}
-                    options={[
-                        ["low", "Baixa · mais leve"],
-                        ["medium", "Média"],
-                        ["high", "Alta"],
-                        ["default", "Padrão OMT"]
-                    ]}
-                    onChange={(value) =>
-                        patchOmt({
-                            quality:
-                                value as OutputSettings["omt"]["quality"]
-                        })
-                    }
-                />
-
-                <div className="settings-info">
-                    OMT recebe o mesmo vídeo e PCM do PROGRAM. Não abre uma segunda mídia e pode funcionar junto com NDI ou sozinho.
-                </div>
             </SettingsCard>
 
+            <SettingsCard title="RTMP" description="Saída do PROGRAM para servidor de streaming.">
+                <ToggleField label="Ativar RTMP" checked={output.rtmp.enabled} onChange={enabled => patchOutput({ rtmp: { ...output.rtmp, enabled } })} />
+                <TextField label="URL do servidor / chave" value={output.rtmp.url} onChange={url => patchOutput({ rtmp: { ...output.rtmp, url } })} />
+            </SettingsCard>
             <SettingsCard
                 title="SRT"
-                description="Preparação da contribuição/saída remota."
-                badge="EM PREPARAÇÃO"
+                description="Saída do PROGRAM com o perfil do sistema."
             >
                 <ToggleField
-                    label="Habilitar configuração SRT"
+                    label="Ativar SRT"
                     checked={output.srt.enabled}
                     onChange={(enabled) =>
                         patchSrt({ enabled })
@@ -839,107 +813,6 @@ function OutputTab({
                     }
                 />
 
-                <div className="settings-divider" />
-
-                <SelectField
-                    label="Codec de vídeo"
-                    value={output.srt.videoCodec}
-                    options={[
-                        ["h264", "H.264 / AVC"],
-                        ["hevc", "H.265 / HEVC"]
-                    ]}
-                    onChange={(value) =>
-                        patchSrt({
-                            videoCodec:
-                                value as OutputSettings["srt"]["videoCodec"]
-                        })
-                    }
-                />
-
-                <div className="settings-two-columns">
-                    <NumberSetting
-                        label="Bitrate vídeo"
-                        value={
-                            output.srt.videoBitrateKbps
-                        }
-                        min={500}
-                        max={100000}
-                        suffix="kbps"
-                        onChange={(videoBitrateKbps) =>
-                            patchSrt({
-                                videoBitrateKbps
-                            })
-                        }
-                    />
-                    <NumberSetting
-                        label="Max bitrate"
-                        value={
-                            output.srt.maxBitrateKbps
-                        }
-                        min={500}
-                        max={120000}
-                        suffix="kbps"
-                        onChange={(maxBitrateKbps) =>
-                            patchSrt({
-                                maxBitrateKbps
-                            })
-                        }
-                    />
-                </div>
-
-                <div className="settings-two-columns">
-                    <NumberSetting
-                        label="GOP"
-                        value={output.srt.gopSeconds}
-                        min={0.5}
-                        max={10}
-                        step={0.5}
-                        suffix="s"
-                        onChange={(gopSeconds) =>
-                            patchSrt({ gopSeconds })
-                        }
-                    />
-                    <SelectField
-                        label="Preset"
-                        value={output.srt.preset}
-                        options={[
-                            ["ultrafast", "ultrafast"],
-                            ["superfast", "superfast"],
-                            ["veryfast", "veryfast"],
-                            ["faster", "faster"],
-                            ["fast", "fast"],
-                            ["medium", "medium"]
-                        ]}
-                        onChange={(preset) =>
-                            patchSrt({ preset })
-                        }
-                    />
-                </div>
-
-                <SelectField
-                    label="Áudio SRT"
-                    value={String(
-                        output.srt.audioBitrateKbps
-                    )}
-                    options={[
-                        ["96", "AAC 96 kbps"],
-                        ["128", "AAC 128 kbps"],
-                        ["160", "AAC 160 kbps"],
-                        ["192", "AAC 192 kbps"],
-                        ["256", "AAC 256 kbps"],
-                        ["320", "AAC 320 kbps"]
-                    ]}
-                    onChange={(value) =>
-                        patchSrt({
-                            audioBitrateKbps:
-                                Number(value)
-                        })
-                    }
-                />
-
-                <div className="settings-info warning">
-                    Nesta versão o SRT ainda não transmite. A configuração já fica persistida para o próximo passo: encoder FFmpeg + MPEG-TS + SRT, com áudio e vídeo do mesmo PROGRAM.
-                </div>
             </SettingsCard>
         </div>
     );

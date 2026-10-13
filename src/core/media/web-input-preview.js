@@ -81,7 +81,7 @@ async function serveWebInputPreview(
     // A prévia HTTP/HLS abre uma segunda conexão de baixa resolução.
     // SRT pode ser ponto-a-ponto e não deve ser consumido duas vezes:
     // ele continua sendo exibido pelo PROGRAM/NDI.
-    if (!isHttpInput(input.url)) {
+    if (!isHttpInput(input.url) && !/^rtmps?:\/\//i.test(input.url)) {
         return new Response(
             "Prévia local disponível para HTTP/HLS. SRT permanece no PROGRAM/NDI.",
             { status: 415 }

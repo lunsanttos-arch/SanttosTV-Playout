@@ -92,11 +92,11 @@ async function startWarmInputTuner(sourceUrl, {
                 const segments = fs.readFileSync(playlist, "utf8").split(/\r?\n/)
                     .filter(line => /^segment-\d+\.ts$/.test(line));
                 const segment = segments[segments.length - 1];
-                if (segment && segment !== lastSegment) {
+                if (segments.length >= 2 && segment && segment !== lastSegment) {
                     lastSegment = segment;
                     try {
                         const { stdout } = await execFileAsync(ffprobePath, [
-                            "-v", "error", "-count_frames", "-show_entries", "stream=codec_type,nb_read_frames",
+                            "-v", "error", "-threads", "2", "-count_frames", "-show_entries", "stream=codec_type,nb_read_frames",
                             "-of", "json", path.join(folder, segment)
                         ], { windowsHide: true, timeout: Math.max(100, Math.min(4000, deadline - Date.now())), maxBuffer: 1024 * 1024, signal });
                         const streams = JSON.parse(stdout).streams ?? [];

@@ -3,6 +3,8 @@ import { useEffect, useState } from "react";
 export default function ReportingSettingsTab() {
     const [folder, setFolder] = useState("");
     const [status, setStatus] = useState("");
+    const [busy, setBusy] = useState(false);
+    const [files, setFiles] = useState<{ date: string; name: string }[]>([]);
 
     async function loadFolder() {
         try {
@@ -22,11 +24,24 @@ export default function ReportingSettingsTab() {
         }
     }
 
+    useEffect(() => { void loadFolder(); }, []);
     useEffect(() => {
-        void loadFolder();
-    }, []);
+        void window.santtosAPI.getReportFiles().then(result => setFiles(result.files ?? []))
+            .catch(() => setStatus("Não foi possível listar os relatórios."));
+    }, [folder]);
+    async function open(date?: string) {
+        if (busy) return;
+        setBusy(true);
+        try {
+            const result = await window.santtosAPI.openReport(date);
+            if (!result.ok) setStatus(result.error ?? "Não foi possível abrir o relatório.");
+        } catch { setStatus("Não foi possível abrir o relatório."); }
+        finally { setBusy(false); }
+    }
 
     async function chooseFolder() {
+        if (busy) return;
+        setBusy(true);
         setStatus("");
         try {
             const result =
@@ -49,17 +64,19 @@ export default function ReportingSettingsTab() {
                 result.folder ?? ""
             );
             setStatus(
-                "Pasta dos relatórios XML atualizada."
+                "Pasta dos relatórios atualizada."
             );
         } catch (error) {
             console.error(error);
             setStatus(
                 "Não foi possível configurar a pasta."
             );
-        }
+        } finally { setBusy(false); }
     }
 
     async function resetFolder() {
+        if (busy) return;
+        setBusy(true);
         setStatus("");
         try {
             const result =
@@ -85,7 +102,7 @@ export default function ReportingSettingsTab() {
             setStatus(
                 "Não foi possível restaurar a pasta padrão."
             );
-        }
+        } finally { setBusy(false); }
     }
 
     return (
@@ -95,7 +112,7 @@ export default function ReportingSettingsTab() {
                     <div>
                         <h2>Relatórios de exibição</h2>
                         <p>
-                            Um arquivo XML é mantido por dia com entradas,
+                            Relatórios em HTML e Excel, por dia, com entradas,
                             saídas, duração exibida, status e caminho da mídia.
                         </p>
                     </div>
@@ -114,6 +131,7 @@ export default function ReportingSettingsTab() {
                 <div className="settings-inline-actions">
                     <button
                         type="button"
+                        disabled={busy}
                         onClick={() =>
                             void chooseFolder()
                         }
@@ -122,6 +140,7 @@ export default function ReportingSettingsTab() {
                     </button>
                     <button
                         type="button"
+                        disabled={busy}
                         onClick={() =>
                             void resetFolder()
                         }
@@ -131,8 +150,12 @@ export default function ReportingSettingsTab() {
                 </div>
 
                 <div className="settings-info">
-                    Formato: Relatorio_Exibicao_AAAA-MM-DD.xml
+                    HTML para leitura e impressão · XLSX para Excel
                 </div>
+                <button disabled={busy} onClick={() => void open()}>Abrir pasta</button>
+                {files.map(file => <button disabled={busy} key={file.date} onClick={() => void open(file.date)}>
+                    Abrir relatório · {file.date}</button>)}
+                {files.length === 0 && <p>Nenhum relatório de exibição nesta pasta.</p>}
 
                 {status && (
                     <div className="settings-info">

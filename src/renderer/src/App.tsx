@@ -27,6 +27,7 @@ type Panel =
 export interface MediaItem {
     id: string;
     sourceMediaId?: string;
+    placeholder?: boolean;
     programmedStartTime?: string;
     sourceType?: "file" | "input";
     inputId?: string;
@@ -233,6 +234,7 @@ declare global {
                 updatedAt?: string | null;
             }>;
             saveDailyRundown: (rundown: {
+                expectedUpdatedAt?: string | null;
                 date: string;
                 title: string;
                 startTime: string;
@@ -347,6 +349,10 @@ declare global {
                 inputs?: any[];
                 error?: string;
             }>;
+            getControllerStatus: () => Promise<{ enabled: boolean; addresses: string[]; pin: string; port: number }>;
+            setControllerEnabled: (enabled: boolean) => Promise<{ enabled: boolean; addresses: string[]; pin: string; port: number }>;
+            getReportFiles: () => Promise<{ ok: boolean; files: { date: string; name: string }[] }>;
+            openReport: (date?: string) => Promise<{ ok: boolean; error?: string | null }>;
             getTimeline: () => Promise<MediaItem[]>;
             getPlayoutRecovery: () => Promise<{ itemId: string; positionSeconds: number; playing: boolean } | null>;
             savePlayoutCheckpoint: (checkpoint: { itemId: string; positionSeconds: number; playing: boolean }) => Promise<{ ok: boolean }>;
@@ -361,6 +367,7 @@ declare global {
                 style: ExhibitionStyle
             ) => Promise<SaveExhibitionStyleResult>;
             getNdiStatus: () => Promise<{
+                transports?: Record<string, { online: boolean; error: string | null }>;
                 online: boolean;
                 source: string;
                 profile?: {
@@ -536,6 +543,7 @@ export default function App() {
     const [ndiDevNullSink, setNdiDevNullSink] = useState(false);
     const [audioStatus, setAudioStatus] = useState<NativeAudioStatus>({ state: "IDLE" });
     const [nativePlaybackActive, setNativePlaybackActive] = useState(false);
+    const [transportOnline, setTransportOnline] = useState(false);
     const [programClockKind, setProgramClockKind] = useState("MONOTONIC");
     const [omtStatus, setOmtStatus] = useState({
         enabled: false,
@@ -642,6 +650,7 @@ export default function App() {
                     await window.santtosAPI
                         .getNdiStatus();
                 setNdiOnline(status.online);
+                setTransportOnline(Object.values(status.transports ?? {}).some(value => value.online));
                 setNdiConfiguredEnabled(
                     status.profile?.ndiEnabled !== false
                 );
@@ -916,82 +925,9 @@ export default function App() {
                     </div>
                 </div>
 
-                <div className="system-status">
-                    <span className="status-clock">
-                        ● CLOCK {programClockKind === "MONOTONIC" ? "MONO" : programClockKind}
-                    </span>
-                    <span className="status-online">
-                        {ndiTestMode ? "● BANCADA NDI — FONTE QA"
-                          : testBench ? "● BANCADA ISOLADA — SEM NDI"
-                          : "● SISTEMA ONLINE"}
-                    </span>
-                    {ndiConfiguredEnabled ||
-                     testBench ? (
-                        <span
-                            title={ndiError ?? undefined}
-                            className={ndiOnline ? "status-online" : ""}
-                        >
-                            {testBench && !ndiTestMode
-                                ? "● PRÉVIA DE TESTE"
-                                : ndiDevNullSink
-                                  ? "● DEV NULL SINK — SEM NDI REAL"
-                                  : ndiOnline
-                                    ? audioStatus.state === "FLOWING"
-                                        ? "● NDI ONLINE — VÍDEO E PCM ESTÉREO"
-                                        : "● NDI ONLINE — ÁUDIO: " + audioStatus.state
-                                  : ndiError
-                                    ? `● NDI OFFLINE: ${ndiError}`
-                                    : "● NDI OFFLINE"}
-                        </span>
-                    ) : (
-                        <span className="status-disabled">
-                            ○ NDI DESATIVADO
-                        </span>
-                    )}
-                    {omtStatus.enabled ? (
-                        <span
-                            title={
-                                omtStatus.error ??
-                                `${omtStatus.source} · qualidade ${omtStatus.quality}`
-                            }
-                            className={
-                                omtStatus.online
-                                    ? "status-online"
-                                    : "status-output-warning"
-                            }
-                        >
-                            {omtStatus.online
-                                ? omtStatus.audioActive
-                                    ? "● OMT ONLINE — VÍDEO + PCM"
-                                    : "● OMT ONLINE — ÁUDIO INICIANDO"
-                                : omtStatus.error
-                                  ? "● OMT OFFLINE"
-                                  : "● OMT INICIANDO"}
-                        </span>
-                    ) : <span className="status-disabled">○ OMT DESATIVADO</span>}
-                    {serverMediaStatus?.enabled && (
-                        <span
-                            title={
-                                serverMediaStatus.error ??
-                                `${serverMediaStatus.rootPath || "Servidor"} · ${serverMediaStatus.cachedFiles} arquivo(s) em cache`
-                            }
-                            className={
-                                serverMediaStatus.serverReachable === false
-                                    ? "status-output-warning"
-                                    : serverMediaStatus.serverReachable === true
-                                      ? "status-online"
-                                      : "status-clock"
-                            }
-                        >
-                            {serverMediaStatus.serverReachable === false
-                                ? "● SERVER OFFLINE — CACHE ATIVO"
-                                : serverMediaStatus.activeJobs > 0
-                                  ? "● SERVER — PRÉ-CARREGANDO"
-                                  : serverMediaStatus.serverReachable === true
-                                    ? "● SERVER ONLINE"
-                                    : "● SERVER PRONTO"}
-                        </span>
-                    )}
+                <div className="system-status" title={testBench ? "PRÉVIA DE TESTE" : undefined}>
+                    <span className={ndiOnline && !ndiDevNullSink ? "status-online" : "status-disabled"}>● NDI {ndiOnline && !ndiDevNullSink ? "Online" : "Offline"}</span>
+                    <span className={omtStatus.online ? "status-online" : "status-disabled"}>● OMT {omtStatus.online ? "Online" : "Offline"}</span>
                 </div>
             </header>
 
@@ -1015,6 +951,7 @@ export default function App() {
                             ndiTestMode={ndiTestMode}
                             audioStatus={audioStatus}
                             ndiOnline={ndiOnline}
+                            transportOnline={transportOnline}
                             omtOnline={omtStatus.online}
                             serverMediaEnabled={Boolean(serverMediaStatus?.enabled)}
                             nativePlaybackActive={nativePlaybackActive}
@@ -1146,6 +1083,7 @@ interface PlayoutPanelProps {
     audioStatus: NativeAudioStatus;
     ndiOnline: boolean;
     omtOnline: boolean;
+    transportOnline: boolean;
     serverMediaEnabled: boolean;
     nativePlaybackActive: boolean;
     nativePlayout: NativePlayoutStatus;
@@ -1187,6 +1125,7 @@ function PlayoutPanel({
     audioStatus,
     ndiOnline,
     omtOnline,
+    transportOnline,
     serverMediaEnabled,
     nativePlaybackActive,
     nativePlayout,
@@ -1870,7 +1809,7 @@ function PlayoutPanel({
     const selectedInputPreviewUrl =
         selectedMedia?.sourceType === "input" &&
         selectedMedia.inputId &&
-        /^https?:\/\//i.test(
+        /^(https?|rtmps?):\/\//i.test(
             selectedMedia.path
         )
             ? `santtos-input://preview/${encodeURIComponent(
@@ -1899,7 +1838,7 @@ function PlayoutPanel({
         ? Boolean(
               nativeEngineOwnsProgram &&
               nativePlayout.state === "PLAYING" &&
-              (ndiOnline || omtOnline) &&
+              (ndiOnline || omtOnline || transportOnline) &&
               nativePlaybackActive
           )
         : Boolean(
@@ -2401,7 +2340,7 @@ function PlayoutPanel({
     useEffect(() => {
         if (!nativeOutputEnabled) return;
         const video = videoRef.current;
-        if (!(ndiOnline || omtOnline)) {
+        if (!(ndiOnline || omtOnline || transportOnline)) {
             if (
                 ndiWasOnlineRef.current &&
                 isPlaying
@@ -2455,7 +2394,7 @@ function PlayoutPanel({
             void finishExecutionReport("PULADO", selectedMedia);
             window.alert("O NDI foi restabelecido, mas nao foi possivel retomar o PROGRAM. Verifique o sinal e reinicie o motor.");
         });
-    }, [ndiOnline, omtOnline, testBench]);
+    }, [ndiOnline, omtOnline, transportOnline, testBench]);
 
     useEffect(() => {
         const signature =
@@ -2707,12 +2646,12 @@ function PlayoutPanel({
     useEffect(() => {
         const pending = pendingRecoveryRef.current;
         if (!pending || selectedMedia?.id !== pending.itemId) return;
-        if (pending.playing && nativeOutputEnabled && !(ndiOnline || omtOnline)) return;
+        if (pending.playing && nativeOutputEnabled && !(ndiOnline || omtOnline || transportOnline)) return;
         if (pending.playing && !nativeOutputEnabled && !recoveryVideoReady) return;
         pendingRecoveryRef.current = null;
         setCurrentTime(pending.positionSeconds);
         if (pending.playing) void playVideo();
-    }, [selectedMedia?.id, ndiOnline, omtOnline, nativeOutputEnabled, recoveryVideoReady]);
+    }, [selectedMedia?.id, ndiOnline, omtOnline, transportOnline, nativeOutputEnabled, recoveryVideoReady]);
 
     useEffect(() => {
         const timer = window.setInterval(() => {
@@ -3086,7 +3025,7 @@ function PlayoutPanel({
                 typeof value.inputId !== "string" ||
                 typeof value.name !== "string" ||
                 typeof value.path !== "string" ||
-                !/^(https?:\/\/|srt:\/\/)/i.test(
+                !/^(https?:\/\/|srt:\/\/|rtmps?:\/\/)/i.test(
                     value.path
                 )
             ) {
@@ -3653,26 +3592,8 @@ function PlayoutPanel({
                             <strong>Saída principal</strong>
                         </div>
 
-                        <span className="program-status">
-                            {testBench && !ndiTestMode && isPlaying
-                                ? "● PRÉVIA DE TESTE (SEM NDI)"
-                                : nativePlayout.state === "PLAYING" &&
-                                  (ndiOnline || omtOnline) &&
-                                  nativePlaybackActive
-                                  ? ndiOnline && omtOnline
-                                      ? "● MOTOR SANTTOS · NDI + OMT"
-                                      : omtOnline
-                                        ? "● MOTOR SANTTOS · OMT ATIVO"
-                                        : "● MOTOR SANTTOS · NDI ATIVO"
-                                : nativePlayout.state === "PAUSED"
-                                  ? "● MOTOR SANTTOS · PAUSADO"
-                                : nativePlayout.state === "FAULT"
-                                  ? "● FALHA NO MOTOR SANTTOS"
-                                : isPlaying
-                                  ? "● SEM SINAL DE PROGRAMA"
-                                  : playoutError
-                                    ? "● FALHA NO PLAYOUT"
-                                    : "● OFF AIR"}
+                        <span className={`program-status ${isPlaying && (nativePlaybackActive || !nativeOutputEnabled) ? "motor-on" : "motor-off"}`}>
+                            Motor Santtos
                         </span>
                     </div>
 
@@ -3901,6 +3822,9 @@ function PlayoutPanel({
                             title="Parar"
                             onClick={stopVideo}
                         >■</button>
+                        <button title="Congelar ao final" className={selectedMedia?.freezeEnd ? "transport-active" : ""}
+                            aria-pressed={Boolean(selectedMedia?.freezeEnd)} disabled={!selectedMedia}
+                            onClick={() => selectedMedia && toggleTimelineFreeze(selectedMedia.id)}>FREEZE</button>
                         <button
                             title="Próximo vídeo"
                             onClick={() =>

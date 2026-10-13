@@ -61,11 +61,11 @@ assert.equal(
 );
 assert.equal(
     profile.omtName,
-    "SanTTos QA OMT"
+    "NDI desligado"
 );
 assert.equal(
     profile.omtQuality,
-    "low"
+    "high"
 );
 assert(
     profileSignature(profile)

@@ -763,37 +763,6 @@ export default function ProgramAudioMeters({
               ? preview
               : SILENT;
 
-    const nativeLabel =
-        audio.state ===
-            "REBUILD_REQUIRED"
-            ? "NDI ANTIGO"
-        : audio.state ===
-            "NO_TRACK"
-            ? "SEM FAIXA"
-        : audio.state ===
-            "PIPE_NOT_READY"
-            ? "PIPE OFF"
-        : audio.state ===
-            "ERROR"
-            ? "ÁUDIO ERRO"
-        : audio.state ===
-            "STARTING"
-            ? "CARREGANDO"
-        : audio.state ===
-            "ENDED"
-            ? "ÁUDIO FIM"
-        : "SEM PCM";
-
-    const label =
-        programPcmAvailable
-            ? audio.nativeActive ===
-              true
-                ? "PROGRAM PCM · NDI"
-                : "PROGRAM PCM"
-            : nativeOutput
-              ? nativeLabel
-              : "PRÉVIA";
-
     return (
         <aside
             className="program-audio-meters"
@@ -869,17 +838,7 @@ export default function ProgramAudioMeters({
                 )}
             </div>
 
-            <div
-                className="audio-meter-source"
-                title={
-                    audio.error ||
-                    monitorError ||
-                    previewError ||
-                    label
-                }
-            >
-                {label}
-            </div>
+
 
             {nativeOutput && (
                 <button
@@ -894,8 +853,8 @@ export default function ProgramAudioMeters({
                     }
                     title={
                         monitorEnabled
-                            ? "Ouvindo o PCM real do PROGRAM neste computador."
-                            : "Ativar monitoração local do PCM real do PROGRAM."
+                            ? "Ouvindo o áudio do PROGRAM neste computador."
+                            : "Ouvir o áudio do PROGRAM neste computador."
                     }
                     onClick={() =>
                         setMonitorEnabled(
@@ -973,23 +932,7 @@ export default function ProgramAudioMeters({
                     </button>
                 )}
 
-            {nativeOutput && (
-                <div
-                    className="audio-meter-limitation"
-                    title={
-                        programPcmAvailable
-                            ? "Os medidores e o monitor local usam o mesmo PCM decodificado para o PROGRAM."
-                            : "Sem PCM real do PROGRAM; a prévia não é usada para fingir nível de saída."
-                    }
-                >
-                    {programPcmAvailable
-                        ? audio.nativeActive ===
-                          true
-                            ? "PCM REAL · NDI"
-                            : "PCM REAL · LOCAL"
-                        : "SEM PCM REAL"}
-                </div>
-            )}
+
         </aside>
     );
 }

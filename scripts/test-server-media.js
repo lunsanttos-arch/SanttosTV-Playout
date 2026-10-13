@@ -57,6 +57,11 @@ const {
             userData
         );
 
+        assert.equal(manager.getSettings().enabled, true);
+        assert.equal(manager.isServerMediaPath("C:\\Videos\\local.mp4"), false);
+        assert.equal(manager.isServerMediaPath("D:\\Videos\\external.mp4"), true);
+        assert.equal(manager.isServerMediaPath("\\\\nas\\videos\\network.mp4"), true);
+
         manager.updateSettings({
             enabled: true,
             rootPath:
@@ -183,6 +188,16 @@ const {
                 .cachedFiles,
             0
         );
+
+        for (const [key, cachedAt, lastUsedAt] of [["old", 1, 100], ["new", 2, 1], ["active", 0, 0]]) {
+            const cachePath = path.join(manager.cacheFolder, key + ".mp4");
+            fs.writeFileSync(cachePath, "test");
+            manager.index.set(key, { cachePath, size: 2 * 1024 ** 3, cachedAt, lastUsedAt });
+        }
+        manager.activeSourcePath = "active";
+        await manager.prune();
+        assert(!manager.index.has("old"), "Eviction uses creation age even when recently played");
+        assert(manager.index.has("new") && manager.index.has("active"), "Newest and on-air copies must survive eviction");
 
         console.log(
             "SERVER MEDIA QA: APROVADO — cache local, prioridade do Input Web, resolução de playback e fallback sem servidor."

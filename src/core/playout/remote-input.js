@@ -7,14 +7,14 @@ const DEFAULT_BROWSER_USER_AGENT =
 
 function normalizeProtocolHint(value) {
     const normalized = String(value ?? "").trim().toLowerCase();
-    return ["http", "https", "hls", "m3u8", "srt"].includes(normalized)
+    return ["http", "https", "hls", "m3u8", "srt", "rtmp", "rtmps"].includes(normalized)
         ? normalized
         : "";
 }
 
 function isRemoteInputUrl(value) {
     return typeof value === "string" &&
-        /^(https?:\/\/|srt:\/\/)/i.test(value.trim());
+        /^(https?:\/\/|srt:\/\/|rtmps?:\/\/)/i.test(value.trim());
 }
 
 function isHttpInput(value) {

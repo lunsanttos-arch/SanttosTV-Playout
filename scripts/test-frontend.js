@@ -104,16 +104,16 @@ assert(settings.includes("tabHeading") &&
 assert(!settings.includes("Resolução, FPS, varredura, aspect ratio e pixel format são aplicados ao PROGRAM NDI"),
     "Aviso redundante sobre aplicação das configurações ao NDI deve ser removido.");
 assert(
-    settings.includes('title="OMT"') &&
+    settings.includes('title="NDI / OMT"') &&
     settings.includes('label="Ativar OMT"') &&
-    settings.includes("output.omt.quality") &&
-    settings.includes("Não abre uma segunda mídia"),
+    !settings.includes("output.omt.quality") &&
+    settings.includes('label="Ativar NDI"'),
     "Configurações devem oferecer OMT como segunda saída do mesmo PROGRAM."
 );
 assert(
     app.includes("omtStatus.online") &&
-    app.includes("● OMT ONLINE — VÍDEO + PCM") &&
-    app.includes("MOTOR SANTTOS · NDI + OMT"),
+    app.includes('omtStatus.online ? "Online" : "Offline"') &&
+    app.includes("Motor Santtos"),
     "Operador deve enxergar claramente o estado da saída OMT."
 );
 
@@ -158,17 +158,11 @@ assert(meter.includes("nativeOutput ||") &&
     "Em operação nativa, o medidor deve abandonar a prévia Chromium e usar somente o PCM real do PROGRAM.");
 assert(meter.includes("const programPcmAvailable") &&
     meter.includes("audio.active === true") &&
-    meter.includes("PROGRAM PCM") &&
-    meter.includes("PCM REAL"),
+    meter.includes("onProgramAudioPcm") &&
+    !meter.includes("SEM PCM"),
     "Com PCM real ativo, barras e monitor devem representar a fonte real do PROGRAM.");
-assert(meter.includes("audio.nativeActive ===") &&
-    meter.includes("PROGRAM PCM · NDI"),
-    "A confirmação NDI deve ser indicada separadamente da existência do PCM real do PROGRAM.");
-assert(meter.includes('"NO_TRACK"') &&
-    meter.includes('"ERROR"') &&
-    meter.includes("SEM FAIXA") &&
-    meter.includes("ÁUDIO ERRO"),
-    "Falta de faixa e falha no encoder devem ser visíveis junto dos medidores.");
+assert(!meter.includes("audio-meter-source") && !meter.includes("audio-meter-limitation"),
+    "Medidores preservam barras e monitor sem avisos técnicos redundantes.");
 
 assert(!app.includes("DIAGNÓSTICO DO PLAYOUT") &&
     !app.includes("Exportar diagnóstico"),
@@ -244,8 +238,8 @@ assert(app.includes("program-progress-slider") &&
     app.includes("seekProgram") &&
     app.includes("seekNdiFile"),
     "Player próprio deve oferecer seek ligado ao motor Santtos.");
-assert(app.includes("MOTOR SANTTOS · NDI ATIVO") &&
-    app.includes("MOTOR SANTTOS · PAUSADO"),
+assert(app.includes("motor-on") &&
+    app.includes("motor-off"),
     "Operador deve enxergar claramente o estado do motor nativo.");
 assert(app.includes("PROGRAM nasce no motor nativo") &&
     !app.includes("Verificar primeiro se o Chromium consegue reproduzir a fonte."),
@@ -478,7 +472,7 @@ assert(
 );
 assert(
     app.includes("devNullSink") &&
-    app.includes("DEV NULL SINK — SEM NDI REAL") &&
+    app.includes("ndiDevNullSink") &&
     electronMain.includes("NDI nativo indisponivel; DEV NULL SINK ativo"),
     "Desenvolvimento sem sender NDI deve manter PROGRAM/Inputs testáveis com status explícito."
 );
@@ -488,9 +482,9 @@ const programAudioMeters = fs.readFileSync(
 );
 assert(
     programAudioMeters.includes("onProgramAudioPcm") &&
-    programAudioMeters.includes("PROGRAM PCM") &&
+    programAudioMeters.includes("programPcmAvailable") &&
     programAudioMeters.includes("MONITOR ON") &&
-    programAudioMeters.includes("PCM REAL") &&
+    !programAudioMeters.includes("SEM PCM") &&
     app.includes("muted={nativeOutputEnabled}") &&
     preload.includes("playout:audio-pcm") &&
     electronMain.includes("sendProgramAudioPcm"),
@@ -526,7 +520,7 @@ const reportingSettings = fs.readFileSync(
 assert(settings.includes('tab === "reporting"') &&
     settings.includes("ReportingSettingsTab") &&
     reportingSettings.includes("Escolher pasta") &&
-    reportingSettings.includes("Relatorio_Exibicao_AAAA-MM-DD.xml"),
+    reportingSettings.includes("HTML e Excel"),
     "Configurações devem permitir escolher a pasta dos relatórios XML.");
 
 assert(app.includes("operation-status-card") &&

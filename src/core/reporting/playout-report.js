@@ -205,7 +205,7 @@ function initializePlayoutReports({
 
         try {
             needsExport =
-                !fs.existsSync(outputFile) ||
+                !fs.existsSync(outputFile) || !fs.existsSync(outputFile.replace(/\.xml$/, ".html")) ||
                 fs.statSync(outputFile)
                     .mtimeMs +
                     1000 <
@@ -383,6 +383,7 @@ function xmlEscape(value) {
     return String(
         value ?? ""
     )
+        .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
         .replaceAll("&", "&amp;")
         .replaceAll("<", "&lt;")
         .replaceAll(">", "&gt;")
@@ -404,7 +405,8 @@ function xmlTag(name, value, indent = "    ") {
 }
 
 async function exportDate(dateKey) {
-    if (!reportFolder) {
+    const destination = reportFolder;
+    if (!destination) {
         return;
     }
 
@@ -435,7 +437,40 @@ async function exportDate(dateKey) {
         return;
     }
 
-    ensureFolder(reportFolder);
+    ensureFolder(destination);
+
+    const headers = ["Data", "Arquivo", "Bloco", "Entrada", "Saída", "Previsto", "Exibido", "Status", "Caminho"];
+    const values = rows.map(entry => [localDateLabel(entry.startedAt), entry.fileName, entry.blockLabel || "",
+        localTimeLabel(entry.startedAt), entry.endedAt ? localTimeLabel(entry.endedAt) : "",
+        formatDuration(entry.plannedDurationSeconds), formatDuration(entry.playedSeconds), entry.status, entry.filePath || ""]);
+    const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Relatório ${xmlEscape(dateKey)}</title>
+        <style>body{font:14px Arial;background:#14141e;color:#eee;padding:24px}h1{color:#a78bfa}
+        table{width:100%;border-collapse:collapse}th,td{padding:10px;text-align:left;border-bottom:1px solid #353544}th{background:#292339}
+        @media print{body{background:white;color:black}h1{color:black}}</style>
+        <h1>SanTTos · Relatório de exibição</h1><p>${xmlEscape(dateKey)}</p><table><thead><tr>
+        ${headers.map(value => `<th>${xmlEscape(value)}</th>`).join("")}</tr></thead><tbody>
+        ${values.map(row => `<tr>${row.map(value => `<td>${xmlEscape(value)}</td>`).join("")}</tr>`).join("")}</tbody></table></html>`;
+    const humanFile = path.join(destination, `Relatorio_Exibicao_${dateKey}.html`);
+    const humanTemp = humanFile + ".tmp";
+    fs.writeFileSync(humanTemp, html, "utf8");
+    fs.renameSync(humanTemp, humanFile);
+    const ExcelJS = require("exceljs");
+    const workbook = new ExcelJS.Workbook();
+    const sheet = workbook.addWorksheet("Exibição");
+    sheet.addRow(headers); sheet.addRows(values);
+    sheet.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    sheet.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF6D28D9" } };
+    sheet.columns.forEach(column => { column.width = 24; });
+    sheet.views = [{ state: "frozen", ySplit: 1 }];
+    const excelFile = humanFile.replace(/\.html$/, ".xlsx");
+    const excelTemp = excelFile + ".tmp";
+    await workbook.xlsx.writeFile(excelTemp);
+    try { fs.renameSync(excelTemp, excelFile); }
+    catch (error) {
+        // Excel locks an open workbook on Windows; preserve the fresh export.
+        if (["EBUSY", "EPERM", "EACCES"].includes(error.code)) fs.renameSync(excelTemp, excelFile.replace(/\.xlsx$/, "_Atualizado.xlsx"));
+        else throw error;
+    }
 
     const body =
         rows.map((entry) => [
@@ -502,7 +537,7 @@ async function exportDate(dateKey) {
 
     const filePath =
         path.join(
-            reportFolder,
+            destination,
             `Relatorio_Exibicao_${dateKey}.xml`
         );
 
@@ -807,6 +842,12 @@ function getReportFolder() {
     return reportFolder;
 }
 
+async function listReportFiles() {
+    await writeQueue;
+    return fs.readdirSync(reportFolder).filter(name => /^Relatorio_Exibicao_\d{4}-\d{2}-\d{2}\.html$/.test(name))
+        .sort().reverse().map(name => ({ date: name.slice(19, 29), name }));
+}
+
 module.exports = {
     initializePlayoutReports,
     startPlayoutEntry,
@@ -815,5 +856,6 @@ module.exports = {
     getReportFolder,
     setReportFolder,
     resetReportFolder,
-    exportDate
+    exportDate,
+    listReportFiles
 };
