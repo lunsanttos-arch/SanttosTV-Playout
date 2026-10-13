@@ -61,6 +61,6 @@ async function test(kind, folder) {
     assert.throws(() => transportUrl({ host: "localhost", port: 0 }, "srt"));
     assert.throws(() => transportUrl({ host: "localhost", port: 9000, passphrase: "short" }, "srt"));
     const folder = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-transport-"));
-    try { await test("srt", folder); await test("rtmp", folder); }
+    try { await Promise.all([test("srt", folder), test("rtmp", folder)]); }
     finally { fs.rmSync(folder, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

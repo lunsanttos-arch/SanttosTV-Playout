@@ -41,6 +41,11 @@ await evaluate(`(async()=>{await window.santtosAPI.stopNdiFile();const source=(a
 await send('Page.reload');await wait(500);
 await evaluate(`document.querySelector('button[title="Reproduzir"]').click()`);
 let playing=false;for(let i=0;i<150;i++){const state=await evaluate('window.santtosAPI.getNdiStatus()');if(state.playout.state==='PLAYING'&&state.playout.itemId==='take-web-qa-occurrence'){playing=true;break}if(state.playoutError)throw Error(state.playoutError);await wait(100)}assert(playing,'HLS input must be on air before applying OPEC');
+if (process.env.SANTTOS_QA_GRAPHICS === "1") {
+ const state=await evaluate('window.santtosAPI.getNdiStatus()');
+ await evaluate(`(async()=>{for(let i=0;i<80;i++)await window.santtosAPI.updateProgramGraphics({itemId:'take-web-qa-occurrence',watermark:Boolean(i%2),hashtag:'#Live '+i,exhibitionType:i%2?'AO_VIVO':'NORMAL'});})()`);
+ const after=await evaluate('window.santtosAPI.getNdiStatus()');assert.equal(after.playout.generation,state.playout.generation,'Live graphics must preserve HLS decoder and scheduled OUT');
+}
 await apply();
 const applied=await evaluate('window.santtosAPI.getTimeline()');assert.equal(applied.length,4);assert.equal(applied[0].id,'take-web-qa-occurrence');
 frozen=injectStall;await monitor(4);if(injectStall)assert(held>0,'Must stall an actual HLS segment request');console.log('LIVE INPUT WEB -> OPEC: live HLS preserved on air, then all three scheduled video blocks played automatically');

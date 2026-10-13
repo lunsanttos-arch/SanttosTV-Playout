@@ -243,6 +243,7 @@ contextBridge.exposeInMainWorld(
                 style
             ),
 
+        updateProgramGraphics: update => ipcRenderer.invoke("playout:graphics", update),
         getNdiStatus: () =>
             ipcRenderer.invoke(
                 "ndi:status"

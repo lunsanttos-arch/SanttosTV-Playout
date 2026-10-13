@@ -366,6 +366,7 @@ declare global {
             saveExhibitionStyle: (
                 style: ExhibitionStyle
             ) => Promise<SaveExhibitionStyleResult>;
+            updateProgramGraphics: (update: { itemId: string; watermark?: boolean; hashtag?: string; exhibitionType?: string; refreshStyle?: boolean }) => Promise<{ ok: boolean; stale?: boolean; error?: string; generation?: number }>;
             getNdiStatus: () => Promise<{
                 transports?: Record<string, { online: boolean; error: string | null }>;
                 online: boolean;
@@ -1196,6 +1197,9 @@ function PlayoutPanel({
     const [applyingRundown, setApplyingRundown] = useState(false);
     const applyingRundownRef = useRef(false);
     const nativeStartRef = useRef<Promise<unknown> | null>(null);
+    const selectedMediaRef = useRef(selectedMedia);
+    selectedMediaRef.current = selectedMedia;
+    const nativeEndedHandlerRef = useRef<(status: NativePlayoutStatus) => void>(() => {});
     const pendingNativeEndRef = useRef<NativePlayoutStatus | null>(null);
     const clipAdvanceGuardRef = useRef(false);
     const handledNativeEndRef = useRef<{ generation: number; itemId: string | null } | null>(null);
@@ -1363,6 +1367,7 @@ function PlayoutPanel({
             restoredPositionRef.current = null;
             if (current) {
                 setTimelineQueue([current, ...prepared]);
+                selectedMediaRef.current = current;
                 onSelectMedia(current);
             } else {
                 clipAdvanceGuardRef.current = false;
@@ -1370,6 +1375,7 @@ function PlayoutPanel({
                 setPausedItemId(null);
                 setIsPlaying(false);
                 setTimelineQueue(prepared);
+                selectedMediaRef.current = prepared[0];
                 onSelectMedia(prepared[0]);
                 setCurrentTime(getClipIn(prepared[0]));
             }
@@ -2452,13 +2458,7 @@ function PlayoutPanel({
             isPlaying &&
             selectedMedia?.hashtag
         ) {
-            startNativeNdi(
-                selectedMedia,
-                nativeOutputEnabled &&
-                nativePlayout.itemId === selectedMedia.id
-                    ? nativePlayout.positionSeconds
-                    : currentTime
-            ).catch((error) =>
+            window.santtosAPI.updateProgramGraphics({ itemId: selectedMedia.id, refreshStyle: true }).catch((error) =>
                 console.error(
                     "Erro ao aplicar estilo do GC no NDI:",
                     error
@@ -2913,6 +2913,7 @@ function PlayoutPanel({
                 0
             );
 
+        selectedMediaRef.current = nextToPlay;
         onSelectMedia(
             nextToPlay
         );
@@ -2990,10 +2991,11 @@ function PlayoutPanel({
         });
     }
 
+    nativeEndedHandlerRef.current = handleNativeEnded;
     useEffect(() => {
         if (!nativeOutputEnabled) return;
-        return window.santtosAPI.onNativePlayoutEnded(handleNativeEnded);
-    }, [nativeOutputEnabled, selectedMedia?.id, nextMedia?.id, selectedMedia?.loop, selectedMedia?.freezeEnd]);
+        return window.santtosAPI.onNativePlayoutEnded(status => nativeEndedHandlerRef.current(status));
+    }, [nativeOutputEnabled]);
 
     useEffect(() => {
         if (applyingRundown) return;
@@ -3282,25 +3284,18 @@ function PlayoutPanel({
             )
         );
 
-        if (
-            selectedMedia?.id === mediaId
-        ) {
+        const selected = selectedMediaRef.current;
+        if (selected?.id === mediaId) {
             const updatedSelected = {
-                ...selectedMedia,
-                watermark:
-                    !selectedMedia.watermark
+                ...selected,
+                watermark: !selected.watermark
             };
 
+            selectedMediaRef.current = updatedSelected;
             onSelectMedia(updatedSelected);
 
             if (isPlaying) {
-                startNativeNdi(
-                    updatedSelected,
-                    videoRef.current
-                        ?.currentTime ??
-                        currentTime,
-                    true
-                ).catch((error) =>
+                window.santtosAPI.updateProgramGraphics({ itemId: updatedSelected.id, watermark: updatedSelected.watermark }).catch((error) =>
                     console.error(
                         "Erro ao atualizar marca d'água no NDI:",
                         error
@@ -3324,21 +3319,19 @@ function PlayoutPanel({
             )
         );
 
-        if (selectedMedia?.id === mediaId) {
+        const selected = selectedMediaRef.current;
+        if (selected?.id === mediaId) {
             const updatedSelected = {
-                ...selectedMedia,
+                ...selected,
                 hashtag
             };
 
+            selectedMediaRef.current = updatedSelected;
             onSelectMedia(updatedSelected);
 
             if (isPlaying) {
                 try {
-                    await startNativeNdi(
-                        updatedSelected,
-                        videoRef.current?.currentTime ??
-                            currentTime
-                    );
+                    await window.santtosAPI.updateProgramGraphics({ itemId: updatedSelected.id, hashtag });
                 } catch (error) {
                     console.error(
                         "Erro ao atualizar hashtag no NDI:",
@@ -3355,8 +3348,12 @@ function PlayoutPanel({
                 entry.id === mediaId ? { ...entry, exhibitionType: value } : entry
             )
         );
-        if (selectedMedia?.id === mediaId) {
-            onSelectMedia({ ...selectedMedia, exhibitionType: value });
+        const selected = selectedMediaRef.current;
+        if (selected?.id === mediaId) {
+            const updated = { ...selected, exhibitionType: value };
+            selectedMediaRef.current = updated;
+            onSelectMedia(updated);
+            if (isPlaying) void window.santtosAPI.updateProgramGraphics({ itemId: selected.id, exhibitionType: value });
         }
     }
 

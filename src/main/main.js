@@ -38,7 +38,7 @@ const {
 const {
     InputPrebufferManager
 } = require("../core/playout/input-prebuffer");
-const { buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
+const { LABELS, getExhibitionOverlay, buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
 const { Writable } = require("node:stream");
 const crypto = require("node:crypto");
@@ -50,6 +50,8 @@ const { TransportOutput, transportUrl } = require("../core/playout/transport-out
 const transportOutputs = new Map();
 const { VideoClockedPcm } = require("../core/audio/video-clocked-pcm");
 const { startWarmInputTuner } = require("../core/playout/warm-input-tuner");
+const { LiveGraphics } = require("../core/playout/live-graphics");
+let activeGraphics = null;
 const { InputDeadline } = require("../core/playout/input-deadline");
 const { FramePacer } = require("../core/playout/frame-pacer");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
@@ -699,6 +701,25 @@ function buildFadeAlphaExpression(
     return `min(${parts[0]}\\,${parts[1]})`;
 }
 
+const logoAssetCache = new Map();
+function logoAsset(style, profile) {
+    const blank = () => ({ width: Math.max(1, Math.round(style.widthPx * profile.width / 1920)),
+        png: nativeImage.createFromBitmap(Buffer.alloc(16), { width: 2, height: 2 }).toPNG() });
+    if (!style.filePath || !fs.existsSync(style.filePath)) return blank();
+    const stat = fs.statSync(style.filePath);
+    const key = `${style.filePath}:${stat.mtimeMs}:${stat.size}:${style.widthPx}:${profile.width}:${profile.height}`;
+    if (logoAssetCache.has(key)) return logoAssetCache.get(key);
+    const image = nativeImage.createFromPath(style.filePath);
+    if (image.isEmpty()) return blank();
+    const size = image.getSize();
+    const width = Math.max(1, Math.min(Math.round(style.widthPx * profile.width / 1920),
+        profile.width, Math.floor(Math.max(profile.height, 2048) * size.width / size.height)));
+    const asset = { width, png: image.resize({ width, quality: "best" }).toPNG() };
+    if (logoAssetCache.size >= 8) logoAssetCache.delete(logoAssetCache.keys().next().value);
+    logoAssetCache.set(key, asset);
+    return asset;
+}
+
 function buildProgramFilterGraph(
     hashtag,
     overlayState,
@@ -767,10 +788,10 @@ function buildProgramFilterGraph(
 
     const geometryFilter =
         fitMode === "stretch"
-            ? `scale=${targetWidth}:${targetHeight},pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black`
+            ? `scale=${targetWidth}:${targetHeight},pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black:eval=frame`
             : fitMode === "cover"
-              ? `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black`
-              : `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black,pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black`;
+              ? `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=increase,crop=${targetWidth}:${targetHeight},pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black:eval=frame`
+              : `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black:eval=frame,pad=${profile.width}:${profile.height}:(ow-iw)/2:(oh-ih)/2:black:eval=frame`;
 
     const chains = [
         `${sourceVideo}${geometryFilter},` +
@@ -786,9 +807,9 @@ function buildProgramFilterGraph(
             Number(wm.fadeMs) / 1000
         );
         const filters = [
-            `scale=${Math.max(1, Math.round(wm.widthPx * scaleX))}:-1`,
+            `scale@program_logo_scale=${state.logoRenderWidth || Math.max(1, Math.round(wm.widthPx * scaleX))}:-1`,
             "format=rgba",
-            `colorchannelmixer=aa=${Math.max(
+            `colorchannelmixer@program_logo_alpha=aa=${Math.max(
                 0,
                 Math.min(
                     1,
@@ -823,7 +844,7 @@ function buildProgramFilterGraph(
             `[1:v]${filters.join(",")}[wm]`
         );
         chains.push(
-            `[${current}][wm]overlay=x=${Math.round(
+            `[${current}][wm]overlay@program_logo=enable=${state.watermarkEnabled ? 1 : 0}:x=${Math.round(
                 wm.x * scaleX
             )}:y=${Math.round(
                 wm.y * scaleY
@@ -837,7 +858,7 @@ function buildProgramFilterGraph(
             ? hashtag.trim()
             : "";
 
-    if (text) {
+    if (text || state.liveGraphicsEnabled) {
         const style =
             getSettings().hashtagStyle;
         const alpha =
@@ -849,7 +870,7 @@ function buildProgramFilterGraph(
             );
         const options = [
             `fontfile='${resolveHashtagFont(style)}'`,
-            `text='${escapeDrawtextText(text)}'`,
+            state.liveGraphicsEnabled ? "text=' ':expansion=none" : `text='${escapeDrawtextText(text)}'`,
             `x=${Math.round(style.x * scaleX)}`,
             `y=${Math.round(style.y * scaleY)}`,
             `fontsize=${Math.max(1, Math.round(style.fontSize * fontScale))}`,
@@ -868,27 +889,28 @@ function buildProgramFilterGraph(
         }
 
         chains.push(
-            `[${current}]drawtext=${options.join(":")}[withHashtag]`
+            `[${current}]drawtext@program_hashtag=${options.join(":")}[withHashtag]`
         );
         current = "withHashtag";
     }
 
-    if (state.exhibitionType && state.exhibitionType !== "NORMAL") {
+    if (state.liveGraphicsEnabled || (state.exhibitionType && state.exhibitionType !== "NORMAL")) {
         const graphics = getSettings();
         const identification = buildExhibitionDrawtext(
             current,
-            state.exhibitionType,
+            state.exhibitionType && state.exhibitionType !== "NORMAL" ? state.exhibitionType : "ESTREIA",
             graphics.watermarkStyle,
             resolveHashtagFont(graphics.exhibitionStyle)
                 .replaceAll("\\\\", "/"),
-            graphics.exhibitionStyle,
+            { ...graphics.exhibitionStyle, enabled: true },
             {
                 width: profile.width,
                 height: profile.height
             }
         );
         if (identification) {
-            chains.push(identification);
+            chains.push(state.liveGraphicsEnabled ? identification.replace("drawtext=", "drawtext@program_identification=")
+                .replace("[exhibition]", `:enable=${state.exhibitionType && state.exhibitionType !== "NORMAL" && graphics.exhibitionStyle.enabled !== false ? 1 : 0}[exhibition]`) : identification);
             current = "exhibition";
         }
     }
@@ -1022,6 +1044,7 @@ function sendProgramAudioPcm(
 }
 
 function stopNativePlayback({ engineAction = "stop" } = {}) {
+    activeGraphics?.stop(); activeGraphics = null;
     if (engineAction !== "preserve") {
         for (const output of transportOutputs.values()) output.stop();
         transportOutputs.clear();
@@ -1300,17 +1323,23 @@ async function startNativePlayback(
     const profile = activeOutputProfile;
     const watermarkStyle =
         getSettings().watermarkStyle;
-    const watermarkEnabled = Boolean(
-        overlayState?.watermarkEnabled &&
+    const watermarkConfigured = Boolean(
         watermarkStyle?.filePath &&
         fs.existsSync(
             watermarkStyle.filePath
         )
     );
+    const watermarkEnabled = Boolean(overlayState?.watermarkEnabled && watermarkConfigured);
+    const preparedLogo = logoAsset(watermarkStyle, profile);
+    const graphics = new LiveGraphics({ hashtag, logoPng: preparedLogo.png });
+    graphics.identificationType = overlayState?.exhibitionType || "NORMAL";
+    activeGraphics = graphics;
     const programState = {
         ...(overlayState && typeof overlayState === "object"
             ? overlayState
             : {}),
+        liveGraphicsEnabled: true,
+        logoRenderWidth: preparedLogo.width,
         startSeconds:
             normalizedStartSeconds
     };
@@ -1576,7 +1605,7 @@ async function startNativePlayback(
         "-hide_banner",
         "-loglevel",
         "warning",
-        "-nostdin",
+        "-stdin",
         "-fflags",
         "+genpts+discardcorrupt",
         "-err_detect",
@@ -1631,6 +1660,7 @@ async function startNativePlayback(
     if (activeWarmInputTuner) args.push("-live_start_index", "-2");
 
     args.push(
+        "-reinit_filter:v", "0",
         "-i",
         playbackPath
     );
@@ -1642,16 +1672,17 @@ async function startNativePlayback(
         );
     }
 
-    if (watermarkEnabled) {
+    {
         args.push(
             "-loop",
             "1",
+            "-reinit_filter:v", "0",
             "-framerate",
             profile.scanMode === "interlaced"
                 ? `${profile.fpsN * 2}/${profile.fpsD}`
                 : profile.fpsExpression,
             "-i",
-            watermarkStyle.filePath
+            graphics.logoFile
         );
     }
 
@@ -1660,7 +1691,7 @@ async function startNativePlayback(
         buildProgramFilterGraph(
             hashtag,
             programState,
-            watermarkEnabled,
+            true,
             programState.videoStreamIndex,
             profile
         ),
@@ -1726,7 +1757,7 @@ async function startNativePlayback(
         {
             windowsHide: true,
             stdio: [
-                "ignore",
+                "pipe",
                 "pipe",
                 "pipe",
                 "pipe",
@@ -1735,6 +1766,7 @@ async function startNativePlayback(
         }
     );
 
+    graphics.attach(processRef);
     ffmpegProcess = processRef;
     nativePlaybackActive = true;
     ndiFrameBusy = false;
@@ -2162,6 +2194,8 @@ async function startNativePlayback(
     const finishClip = (code, signal, atScheduledOut = false) => {
         if (clipFinished) return;
         clipFinished = true;
+        graphics.stop();
+        if (activeGraphics === graphics) activeGraphics = null;
         stopThisFeed();
 
         if (
@@ -2486,7 +2520,55 @@ function createWatermarkPreviewDataUrl(filePath) {
     };
 }
 
+function refreshHashtagGraphics() {
+    if (!activeGraphics) return;
+    const style = getSettings().hashtagStyle;
+    const sx = activeOutputProfile.width / 1920, sy = activeOutputProfile.height / 1080;
+    activeGraphics.style({ fontfile: `'${resolveHashtagFont(style).replace('\\:', ':')}'`, x: Math.round(style.x * sx), y: Math.round(style.y * sy),
+        fontsize: Math.max(1, Math.round(style.fontSize * Math.min(sx, sy))),
+        fontcolor: toFfmpegColor(style.color, style.opacity),
+        borderw: Math.round(style.outlineWidth * Math.min(sx, sy)),
+        bordercolor: toFfmpegColor(style.outlineColor, style.outlineOpacity),
+        shadowcolor: toFfmpegColor(style.shadowColor, style.shadowEnabled ? style.shadowOpacity : 0),
+        shadowx: Math.round(style.shadowX * sx), shadowy: Math.round(style.shadowY * sy) });
+}
+
+function refreshIdentificationGraphics() {
+    if (!activeGraphics) return;
+    const { exhibitionStyle: style, watermarkStyle: wm } = getSettings();
+    const profile = activeOutputProfile;
+    const overlay = getExhibitionOverlay("ESTREIA", wm, { ...style, enabled: true }, { width: profile.width, height: profile.height });
+    if (!overlay) return;
+    const scale = Math.min(profile.width / 1920, profile.height / 1080);
+    activeGraphics.style({ fontfile: `'${resolveHashtagFont(style).replace("\\:", ":")}'`,
+        fontsize: overlay.fontSize, fontcolor: toFfmpegColor(style.color, style.opacity),
+        borderw: Math.round(style.outlineWidth * scale), bordercolor: toFfmpegColor(style.outlineColor, style.outlineOpacity),
+        x: `'max(8,min(w-text_w-8,${overlay.center}-text_w/2))'`, y: overlay.top,
+        box: style.backgroundEnabled ? 1 : 0, boxcolor: toFfmpegColor(style.backgroundColor, style.backgroundOpacity),
+        boxborderw: overlay.padding, shadowcolor: toFfmpegColor(style.shadowColor, style.shadowEnabled ? style.shadowOpacity : 0),
+        shadowx: Math.round(style.shadowX * scale), shadowy: Math.round(style.shadowY * scale) }, "drawtext@program_identification");
+    activeGraphics.command("drawtext@program_identification", "enable", style.enabled !== false && LABELS[activeGraphics.identificationType] ? "1" : "0");
+}
+
 function registerIpcHandlers() {
+    registerTrustedHandle("playout:graphics", async (_event, update) => {
+        const snapshot = playoutEngine.snapshot();
+        if (!activeGraphics || !ffmpegProcess || update?.itemId !== snapshot.itemId)
+            return { ok: false, stale: true };
+        try {
+            if (typeof update.watermark === "boolean") activeGraphics.logo(update.watermark);
+            if (typeof update.hashtag === "string") activeGraphics.text(update.hashtag);
+            if (typeof update.exhibitionType === "string") {
+                activeGraphics.identificationType = LABELS[update.exhibitionType] ? update.exhibitionType : "NORMAL";
+                const text = LABELS[update.exhibitionType] || "";
+                activeGraphics.command("drawtext@program_identification", "text", text || " ");
+                activeGraphics.command("drawtext@program_identification", "enable", text && getSettings().exhibitionStyle.enabled !== false ? "1" : "0");
+            }
+            if (update.refreshStyle === true) refreshHashtagGraphics();
+            return { ok: true, generation: snapshot.generation };
+        } catch (error) { return { ok: false, error: error.message }; }
+    });
+
     registerTrustedHandle("controller:status", async () => schedulingController.status());
     registerTrustedHandle("controller:set-enabled", async (_event, enabled) => {
         if (enabled === true) return schedulingController.start();
@@ -2530,6 +2612,7 @@ function registerIpcHandlers() {
             nativePlaybackActive,
             programClock: programClock.snapshot(),
             omt: omtStatus(),
+            graphics: activeGraphics?.snapshot() ?? null,
             transports: Object.fromEntries([...transportOutputs].map(([kind, output]) => [kind, { online: output.online, error: output.error }])),
             playout: playoutEngine.snapshot(),
             playoutError: playoutLastError || null,
@@ -2965,19 +3048,20 @@ function registerIpcHandlers() {
 
     registerTrustedHandle(
         "settings:set-hashtag-style",
-        async (_event, style) => ({
-            ok: true,
-            hashtagStyle:
-                updateHashtagStyle(style)
-        })
+        async (_event, style) => {
+            const hashtagStyle = updateHashtagStyle(style);
+            refreshHashtagGraphics();
+            return { ok: true, hashtagStyle };
+        }
     );
 
     registerTrustedHandle(
         "settings:set-exhibition-style",
-        async (_event, style) => ({
-            ok: true,
-            exhibitionStyle: updateExhibitionStyle(style)
-        })
+        async (_event, style) => {
+            const exhibitionStyle = updateExhibitionStyle(style);
+            refreshIdentificationGraphics();
+            return { ok: true, exhibitionStyle };
+        }
     );
 
     registerTrustedHandle(
@@ -3091,8 +3175,19 @@ function registerIpcHandlers() {
 
                 return {
                     ok: true,
-                    watermarkStyle:
-                        updateWatermarkStyle(style)
+                    watermarkStyle: (() => {
+                        const saved = updateWatermarkStyle(style);
+                        if (activeGraphics) {
+                            const asset = logoAsset(saved, activeOutputProfile);
+                            activeGraphics.image(asset.png);
+                            activeGraphics.command("overlay@program_logo", "x", String(Math.round(saved.x * activeOutputProfile.width / 1920)));
+                            activeGraphics.command("overlay@program_logo", "y", String(Math.round(saved.y * activeOutputProfile.height / 1080)));
+                            activeGraphics.command("scale@program_logo_scale", "w", String(asset.width));
+                            activeGraphics.command("colorchannelmixer@program_logo_alpha", "aa", String(saved.opacity));
+                        }
+                        refreshIdentificationGraphics();
+                        return saved;
+                    })()
                 };
             } catch (error) {
                 console.error(

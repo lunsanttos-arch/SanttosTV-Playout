@@ -3,7 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const ffmpegStatic = require("ffmpeg-static");
+const ffmpegStatic = process.env.FFMPEG_BIN || require("ffmpeg-static");
 
 const profiles = {
     smoke: {
