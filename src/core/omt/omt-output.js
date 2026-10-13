@@ -267,8 +267,13 @@ class OmtOutput {
                 this.error =
                     "Não foi possível iniciar OMT: " +
                     error.message;
-
+                this.process = null;
+                this.online = false;
+                this.audioReady = false;
+                this.audioActive = false;
+                this.destroyAudioSocket();
                 this.emitState();
+                this.onUnexpectedExit?.(this.error);
             }
         );
 
@@ -289,7 +294,7 @@ class OmtOutput {
                 this.destroyAudioSocket();
 
                 if (!this.stopping) {
-                    this.error =
+                    this.error = this.error ||
                         `Sender OMT encerrou (código ${code}; sinal ${signal}).`;
 
                     this.emitState();

@@ -41,7 +41,8 @@ class NativePlayoutEngine {
         itemId = null,
         inPointSeconds = 0,
         startSeconds = inPointSeconds,
-        outPointSeconds = null
+        outPointSeconds = null,
+        waitForFirstFrame = false
     }) {
         this.generation += 1;
         this.filePath = typeof filePath === "string" ? filePath : null;
@@ -61,8 +62,8 @@ class NativePlayoutEngine {
                   )
                 : null;
         this.anchorPositionSeconds = this.clampPosition(startSeconds);
-        this.anchorAtMs = this.now();
-        this.state = "PLAYING";
+        this.anchorAtMs = waitForFirstFrame ? null : this.now();
+        this.state = waitForFirstFrame ? "STARTING" : "PLAYING";
         this.lastError = null;
         return this.snapshot();
     }
@@ -72,6 +73,14 @@ class NativePlayoutEngine {
             this.anchorPositionSeconds = this.positionSeconds();
             this.anchorAtMs = null;
             this.state = "PAUSED";
+        }
+        return this.snapshot();
+    }
+
+    markReady() {
+        if (this.state === "STARTING") {
+            this.anchorAtMs = this.now();
+            this.state = "PLAYING";
         }
         return this.snapshot();
     }

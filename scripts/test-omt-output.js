@@ -212,6 +212,28 @@ if (process.platform === "win32") {
     );
 }
 
-console.log(
-    "OMT QA: APROVADO — runtime oficial, sender nativo, vídeo do PROGRAM e áudio PCM compartilhado."
-);
+async function testSpawnFailure() {
+    const { OmtOutput } = require("../src/core/omt/omt-output");
+    let timeout;
+    let output;
+    try {
+        await new Promise((resolve, reject) => {
+            timeout = setTimeout(() => reject(new Error("OMT spawn failure did not request a restart")), 3000);
+            output = new OmtOutput({ runtimeFolder: omtFolder, profile,
+                onUnexpectedExit: (reason) => {
+                    try {
+                        assert.equal(output.process, null);
+                        assert.equal(output.online, false);
+                        assert.match(reason, /ENOENT/);
+                        resolve();
+                    } catch (error) { reject(error); }
+                }
+            });
+            // Simulate the executable disappearing after the runtime preflight.
+            output.validateRuntime = () => ({ executable: path.join(omtFolder, "missing-qa-sender.exe") });
+            output.start();
+        });
+    } finally { clearTimeout(timeout); output?.stop(); }
+    console.log("OMT QA: APROVADO — contrato e recuperação de falha; runtime nativo verificado somente no Windows.");
+}
+testSpawnFailure().catch(error => { console.error(error); process.exitCode = 1; });

@@ -142,6 +142,7 @@ class NdiAudioSource {
     }
 
     start() {
+        if (this.options.pcmStream) return this.startSharedPcm();
         const { pipePath = "", ffmpegPath, filePath, streamIndex,
             startSeconds = 0, durationSeconds = null,
             protocolHint = "", userAgent = "", referer = "", cookie = "",
@@ -280,6 +281,46 @@ class NdiAudioSource {
         return this;
     }
 
+    startSharedPcm() {
+        const { pcmStream, pipePath = "", onPcmData } = this.options;
+        if (pipePath && !pipePath.startsWith("\\\\.\\pipe\\SanttosAudio-")) {
+            throw new Error("Canal NDI de áudio não autorizado.");
+        }
+        this.pcmStream = pcmStream;
+        this.onSharedData = (chunk) => {
+            if (this.stopped) return;
+            this.meter.write(chunk);
+            this.audioBytesSent += chunk.length;
+            this.status = "FLOWING";
+            try { onPcmData?.(chunk, this.sampleRate, this.channels); }
+            catch { /* The local monitor must not stop the PROGRAM decoder. */ }
+        };
+        this.onSharedEnd = () => {
+            if (!this.stopped) this.status = "ENDED";
+        };
+        this.onSharedError = (error) => this.fail("PCM do PROGRAM: " + error.message);
+        pcmStream.on("data", this.onSharedData);
+        pcmStream.on("end", this.onSharedEnd);
+        pcmStream.on("error", this.onSharedError);
+        if (pipePath) {
+            const socket = net.createConnection(pipePath);
+            this.socket = socket;
+            socket.on("connect", () => {
+                if (this.stopped) return socket.destroy();
+                this.connected = true;
+                pcmStream.pipe(socket);
+            });
+            socket.on("error", (error) => {
+                // A saída NDI não deve interromper o PCM do monitor/OMT.
+                this.error = "Pipe de áudio NDI: " + error.message;
+                pcmStream.unpipe(socket);
+                pcmStream.resume();
+            });
+            socket.on("close", () => { this.connected = false; });
+        }
+        return this;
+    }
+
     fail(error) {
         if (this.stopped) return;
         this.status = "ERROR";
@@ -290,6 +331,14 @@ class NdiAudioSource {
 
     stop() {
         this.stopped = true;
+        if (this.pcmStream) {
+            this.pcmStream.off("data", this.onSharedData);
+            this.pcmStream.off("end", this.onSharedEnd);
+            this.pcmStream.off("error", this.onSharedError);
+            if (this.socket) this.pcmStream.unpipe(this.socket);
+            this.pcmStream.destroy();
+            this.pcmStream = null;
+        }
         if (this.child) {
             if (this.socket) {
                 this.child.stdout.unpipe(this.socket);

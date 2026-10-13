@@ -43,11 +43,15 @@ const { Writable } = require("node:stream");
 const crypto = require("node:crypto");
 const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
+const { VideoClockedPcm } = require("../core/audio/video-clocked-pcm");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
 const { OmtOutput } = require("../core/omt/omt-output");
 const { ServerMediaManager } = require("../core/media/server-media");
 const { NativePlayoutEngine } = require("../core/playout/native-playout-engine");
 const { ProgramClock } = require("../core/playout/program-clock");
+const { PlayoutRecovery } = require("../core/playout/playout-recovery");
+let playoutRecovery = null;
+let recoveryTimer = null;
 const { JpegFrameParser } = require("../core/playout/program-preview-tap");
 const { videoFilterInput } = require("../core/playout/ffmpeg-stream-map");
 const {
@@ -1552,11 +1556,11 @@ async function startNativePlayback(
         "-err_detect",
         "ignore_err",
         "-probesize",
-        warmedUdp
+        isRemoteInput || warmedUdp
             ? "1000000"
             : "10000000",
         "-analyzeduration",
-        warmedUdp
+        isRemoteInput || warmedUdp
             ? "500000"
             : "10000000"
     ];
@@ -1666,6 +1670,22 @@ async function startNativePlayback(
         "pipe:3"
     );
 
+    // One demuxer/clock for remote PROGRAM audio and video. Separate HTTP
+    // connections can start at different live edges and probe at different speeds.
+    const sharedRemoteAudio = isRemoteInput && programState.__inputVideoOnly !== true;
+    if (sharedRemoteAudio) {
+        args.push(
+            "-map", Number.isSafeInteger(programState.audioStreamIndex) && programState.audioStreamIndex >= 0
+                ? `0:${programState.audioStreamIndex}?` : "0:a:0?",
+            "-vn", "-sn", "-dn",
+            "-af", "aresample=async=1:first_pts=0",
+            "-ac", String(profile.channels), "-ar", String(profile.sampleRate),
+            "-c:a", "pcm_f32le", "-f", "f32le"
+        );
+        if (clipRemainingSeconds !== null) args.push("-t", clipRemainingSeconds.toFixed(3));
+        args.push("pipe:4");
+    }
+
     console.log(
         `Iniciando playout FFmpeg: ${path.basename(filePath)} @ ${normalizedStartSeconds.toFixed(3)}s` +
         ` | ${profile.resolution} ${profile.fpsText} ${profile.scanMode} ${profile.pixelFormat}` +
@@ -1679,6 +1699,7 @@ async function startNativePlayback(
             windowsHide: true,
             stdio: [
                 "ignore",
+                "pipe",
                 "pipe",
                 "pipe",
                 "pipe"
@@ -1697,10 +1718,13 @@ async function startNativePlayback(
                 : null,
         inPointSeconds: normalizedInPoint,
         startSeconds: normalizedStartSeconds,
-        outPointSeconds: normalizedOutPoint
+        outPointSeconds: normalizedOutPoint,
+        waitForFirstFrame: isRemoteInput
     });
 
     const selectedAudioIndex = programState.audioStreamIndex;
+    const sharedAudioClock = sharedRemoteAudio
+        ? new VideoClockedPcm(processRef.stdio[4], profile) : null;
 
     try {
         const routedPipe =
@@ -1711,6 +1735,7 @@ async function startNativePlayback(
                 : "";
 
         audioSource = new NdiAudioSource({
+            pcmStream: sharedAudioClock?.output ?? null,
             pipePath:
                 routedPipe,
             ffmpegPath,
@@ -1780,6 +1805,7 @@ async function startNativePlayback(
     // leave a partial frame in stdin and the next clip would complete it,
     // producing a picture made from two different frames.
     let feedActive = true;
+    let firstProgramFrame = true;
     const assembler = new FixedFrameAssembler(
         profile.frameSize,
         (completeFrame) => {
@@ -1788,6 +1814,12 @@ async function startNativePlayback(
                 ffmpegProcess !== processRef
             ) {
                 return;
+            }
+
+            if (firstProgramFrame) {
+                firstProgramFrame = false;
+                playoutEngine.markReady();
+                settleStartupSuccess();
             }
 
             const drains = [];
@@ -1862,6 +1894,7 @@ async function startNativePlayback(
                 }
             }
 
+            sharedAudioClock?.advance();
             if (
                 drains.length > 0 &&
                 processRef.stdout &&
@@ -1929,7 +1962,6 @@ async function startNativePlayback(
     };
 
     const onVideoBytes = (chunk) => {
-        settleStartupSuccess();
         assembler.push(chunk);
     };
     processRef.stdout.on("data", onVideoBytes);
@@ -1982,6 +2014,7 @@ async function startNativePlayback(
     const stopThisFeed = () => {
         if (!feedActive) return;
         feedActive = false;
+        sharedAudioClock?.stop();
         processRef.stdout.off("data", onVideoBytes);
         const result = assembler.stop();
         if (result.droppedBytes > 0) {
@@ -2171,6 +2204,12 @@ async function startNativePlayback(
                 })
             ]);
         } catch (error) {
+            if (sharedRemoteAudio && /does not contain any stream|matches no streams/i.test(startupStderr)) {
+                stopNativePlayback();
+                return startNativePlayback(filePath, normalizedStartSeconds, hashtag, {
+                    ...programState, __inputVideoOnly: true
+                });
+            }
             const canFallbackToDirectFfmpeg =
                 selectedInputEngine === "vlc" &&
                 String(
@@ -2247,6 +2286,10 @@ async function startNativePlayback(
                 // Processo já encerrado.
             }
 
+            if (ffmpegProcess === processRef) {
+                stopNativePlayback({ engineAction: "preserve" });
+                onPlayoutFault(error.message || "O Input não entregou vídeo.");
+            }
             throw error;
         } finally {
             if (timeout) {
@@ -2341,6 +2384,16 @@ function createWatermarkPreviewDataUrl(filePath) {
 }
 
 function registerIpcHandlers() {
+    registerTrustedHandle("playout:recovery", async () => playoutRecovery?.state ?? null);
+    registerTrustedHandle("playout:checkpoint", async (_event, checkpoint) => {
+        if (!getTimeline().some((item) => item.id === checkpoint?.itemId)) return { ok: false };
+        const native = playoutEngine.snapshot();
+        playoutRecovery.save(nativeOutputAllowed && native.itemId === checkpoint.itemId &&
+            ["PLAYING", "PAUSED", "STARTING"].includes(native.state)
+            ? { itemId: native.itemId, positionSeconds: native.positionSeconds, playing: native.state !== "PAUSED" }
+            : checkpoint);
+        return { ok: true };
+    });
     registerTrustedHandle(
         "ndi:status",
         async () => ({
@@ -2598,7 +2651,7 @@ function registerIpcHandlers() {
                     playoutEngine.snapshot().state;
 
                 if (
-                    engineState === "PLAYING" ||
+                    engineState === "PLAYING" || engineState === "STARTING" ||
                     engineState === "PAUSED"
                 ) {
                     return {
@@ -2753,7 +2806,7 @@ function registerIpcHandlers() {
                 const engineState =
                     playoutEngine.snapshot().state;
                 if (
-                    engineState === "PLAYING" ||
+                    engineState === "PLAYING" || engineState === "STARTING" ||
                     engineState === "PAUSED"
                 ) {
                     return {
@@ -3883,6 +3936,11 @@ function startSystem() {
         userDataPath: app.getPath("userData"),
         migrateLegacy: !isTestBench
     });
+    playoutRecovery = new PlayoutRecovery(app.getPath("userData"));
+    recoveryTimer = setInterval(() => {
+        try { playoutRecovery.captureNative(playoutEngine.snapshot()); }
+        catch (error) { console.error("Falha ao salvar recuperação do PROGRAM:", error); }
+    }, 1000);
     serverMedia.initialize(
         app.getPath("userData"),
         app.getPath("cache")
@@ -3963,6 +4021,9 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
+    clearInterval(recoveryTimer);
+    try { playoutRecovery?.captureNative(playoutEngine.snapshot()); }
+    catch (error) { console.error("Falha ao salvar posição ao fechar:", error); }
     stopServerMediaHealthMonitor();
     cancelActivePreviews();
     closeOpenEntriesAsSkipped();

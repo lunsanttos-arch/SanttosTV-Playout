@@ -13,6 +13,8 @@ const buildMediaUrl = (filePath) =>
 contextBridge.exposeInMainWorld(
     "santtosAPI",
     {
+        getPlayoutRecovery: () => ipcRenderer.invoke("playout:recovery"),
+        savePlayoutCheckpoint: (checkpoint) => ipcRenderer.invoke("playout:checkpoint", checkpoint),
         selectVideos: () =>
             ipcRenderer.invoke(
                 "media:select"

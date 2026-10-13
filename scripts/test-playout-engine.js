@@ -127,4 +127,13 @@ assert.equal(
     null
 );
 
+engine.start({ filePath: "https://example.com/live.m3u8", itemId: "opening-input",
+    startSeconds: 12, outPointSeconds: 60, waitForFirstFrame: true });
+nowMs += 5000;
+assert.equal(engine.snapshot().state, "STARTING");
+assert.equal(engine.snapshot().positionSeconds, 12, "Probe time must not consume the Input duration");
+engine.markReady();
+nowMs += 1000;
+assert.equal(engine.snapshot().positionSeconds, 13);
+
 console.log("PLAYOUT ENGINE QA: APROVADO — ProgramClock monotônico, stream mapping, pausa, seek, fim e falha.");

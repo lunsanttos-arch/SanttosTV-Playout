@@ -6,6 +6,7 @@ import {
 
 type ProgramState =
     | "IDLE"
+    | "STARTING"
     | "PLAYING"
     | "PAUSED"
     | "ENDED"
@@ -305,7 +306,8 @@ export default function NativeProgramPreview({
     }, []);
 
     const statusTitle =
-        state === "PLAYING"
+        state === "STARTING" ? "ABRINDO INPUT"
+        : state === "PLAYING"
             ? "PROGRAM NO AR"
             : state === "PAUSED"
               ? "PROGRAM PAUSADO"

@@ -405,7 +405,7 @@ body,
     border-color: #4B4B65;
 }
 
-.program-controls button:first-child {
+.program-controls button.transport-active {
     color: #FFFFFF;
     background:
         linear-gradient(

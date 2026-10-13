@@ -667,7 +667,7 @@ button {
     background: #363636;
 }
 
-.program-controls button:first-child {
+.program-controls button.transport-active {
     color: #ffffff;
     background: #9e1f36;
     border-color: #bc3048;

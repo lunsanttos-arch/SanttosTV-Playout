@@ -11,6 +11,7 @@ import OpecSchedulerPanel from "./OpecSchedulerPanel";
 import WebInputsPanel from "./WebInputsPanel";
 import ProgramAudioMeters from "./ProgramAudioMeters";
 import NativeProgramPreview from "./NativeProgramPreview";
+import TimelineHashtagInput from "./TimelineHashtagInput";
 import type { NativeAudioStatus } from "./ProgramAudioMeters";
 import { buildTimelineForecast, buildPlannedSchedule, buildFreezeCountdown, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
 import type { PlannedScheduleBlocker } from "./timeline-forecast";
@@ -127,7 +128,7 @@ interface RemoveResult {
 
 interface NativePlayoutStatus {
     generation: number;
-    state: "IDLE" | "PLAYING" | "PAUSED" | "ENDED" | "FAULT";
+    state: "IDLE" | "STARTING" | "PLAYING" | "PAUSED" | "ENDED" | "FAULT";
     filePath: string | null;
     itemId: string | null;
     inPointSeconds: number;
@@ -347,6 +348,8 @@ declare global {
                 error?: string;
             }>;
             getTimeline: () => Promise<MediaItem[]>;
+            getPlayoutRecovery: () => Promise<{ itemId: string; positionSeconds: number; playing: boolean } | null>;
+            savePlayoutCheckpoint: (checkpoint: { itemId: string; positionSeconds: number; playing: boolean }) => Promise<{ ok: boolean }>;
             saveTimeline: (
                 timelineItems: MediaItem[]
             ) => Promise<MediaItem[]>;
@@ -945,7 +948,7 @@ export default function App() {
                             ○ NDI DESATIVADO
                         </span>
                     )}
-                    {omtStatus.enabled && (
+                    {omtStatus.enabled ? (
                         <span
                             title={
                                 omtStatus.error ??
@@ -965,7 +968,7 @@ export default function App() {
                                   ? "● OMT OFFLINE"
                                   : "● OMT INICIANDO"}
                         </span>
-                    )}
+                    ) : <span className="status-disabled">○ OMT DESATIVADO</span>}
                     {serverMediaStatus?.enabled && (
                         <span
                             title={
@@ -1205,6 +1208,8 @@ function PlayoutPanel({
         useRef<HTMLVideoElement | null>(null);
     const nativeOutputEnabled = !testBench || ndiTestMode;
     const timelineLoadedRef = useRef(false);
+    const pendingRecoveryRef = useRef<{ itemId: string; positionSeconds: number; playing: boolean } | null>(null);
+    const restoredPositionRef = useRef<{ itemId: string; positionSeconds: number } | null>(null);
     const previousStyleRef = useRef(
         JSON.stringify(hashtagStyle)
     );
@@ -1222,6 +1227,10 @@ function PlayoutPanel({
         useState(0);
     const [isPlaying, setIsPlaying] =
         useState(false);
+    const [pausedItemId, setPausedItemId] = useState<string | null>(null);
+    useEffect(() => {
+        if (isPlaying) setPausedItemId(null);
+    }, [isPlaying]);
     const [pendingSeek, setPendingSeek] =
         useState<number | null>(null);
     const ndiWasOnlineRef = useRef(false);
@@ -1327,11 +1336,19 @@ function PlayoutPanel({
     useEffect(() => {
         let cancelled = false;
 
-        window.santtosAPI
-            .getTimeline()
-            .then((savedTimeline) => {
+        Promise.all([window.santtosAPI.getTimeline(), window.santtosAPI.getPlayoutRecovery()])
+            .then(([savedTimeline, recovery]) => {
                 if (!cancelled) {
                     setTimelineQueue(savedTimeline);
+                    const index = recovery ? savedTimeline.findIndex(item => item.id === recovery.itemId) : -1;
+                    if (recovery && index >= 0) {
+                        const item = savedTimeline[index];
+                        const positionSeconds = Math.max(getClipIn(item), Math.min(getClipOut(item), recovery.positionSeconds));
+                        pendingRecoveryRef.current = { ...recovery, positionSeconds };
+                        restoredPositionRef.current = { itemId: item.id, positionSeconds };
+                        onSelectMedia(item);
+                        setCurrentTime(positionSeconds);
+                    }
                     timelineLoadedRef.current = true;
                 }
             })
@@ -1875,7 +1892,7 @@ function PlayoutPanel({
         ? Boolean(
               nativeEngineOwnsProgram &&
               nativePlayout.state === "PLAYING" &&
-              ndiOnline &&
+              (ndiOnline || omtOnline) &&
               nativePlaybackActive
           )
         : Boolean(
@@ -2150,7 +2167,9 @@ function PlayoutPanel({
 
         video.pause();
         video.load();
-        const inPoint = getClipIn(selectedMedia);
+        const restored = restoredPositionRef.current;
+        const inPoint = restored && restored.itemId === selectedMedia?.id
+            ? restored.positionSeconds : getClipIn(selectedMedia);
         try {
             video.currentTime = inPoint;
         } catch {
@@ -2160,6 +2179,7 @@ function PlayoutPanel({
         lastProgressRef.current = { position: inPoint, atMs: Date.now() };
         clipAdvanceGuardRef.current = false;
         setIsPlaying(false);
+        setPausedItemId(null);
     }, [selectedMediaUrl, selectedInputPreviewUrl, selectedMedia?.id]);
 
     function buildOverlayState(
@@ -2374,7 +2394,7 @@ function PlayoutPanel({
     useEffect(() => {
         if (!nativeOutputEnabled) return;
         const video = videoRef.current;
-        if (!ndiOnline) {
+        if (!(ndiOnline || omtOnline)) {
             if (
                 ndiWasOnlineRef.current &&
                 isPlaying
@@ -2428,7 +2448,7 @@ function PlayoutPanel({
             void finishExecutionReport("PULADO", selectedMedia);
             window.alert("O NDI foi restabelecido, mas nao foi possivel retomar o PROGRAM. Verifique o sinal e reinicie o motor.");
         });
-    }, [ndiOnline, testBench]);
+    }, [ndiOnline, omtOnline, testBench]);
 
     useEffect(() => {
         const signature =
@@ -2617,6 +2637,7 @@ function PlayoutPanel({
                 const authoritativeStart =
                     nativeStart?.playout?.positionSeconds ??
                     resumeAt;
+                restoredPositionRef.current = null;
                 setCurrentTime(
                     authoritativeStart
                 );
@@ -2653,6 +2674,7 @@ function PlayoutPanel({
                 video.currentTime = clipIn;
             }
             await video.play();
+            restoredPositionRef.current = null;
             setPreviewError("");
             markPlaybackSample(video);
             setIsPlaying(true);
@@ -2671,13 +2693,43 @@ function PlayoutPanel({
         }
     }
 
+    const checkpointStateRef = useRef({ selectedMedia, currentTime, nativeOutputEnabled, nativePlayout, isPlaying });
+    checkpointStateRef.current = { selectedMedia, currentTime, nativeOutputEnabled, nativePlayout, isPlaying };
+    const [recoveryVideoReady, setRecoveryVideoReady] = useState(false);
+
+    useEffect(() => {
+        const pending = pendingRecoveryRef.current;
+        if (!pending || selectedMedia?.id !== pending.itemId) return;
+        if (pending.playing && nativeOutputEnabled && !(ndiOnline || omtOnline)) return;
+        if (pending.playing && !nativeOutputEnabled && !recoveryVideoReady) return;
+        pendingRecoveryRef.current = null;
+        setCurrentTime(pending.positionSeconds);
+        if (pending.playing) void playVideo();
+    }, [selectedMedia?.id, ndiOnline, omtOnline, nativeOutputEnabled, recoveryVideoReady]);
+
+    useEffect(() => {
+        const timer = window.setInterval(() => {
+            const state = checkpointStateRef.current;
+            const item = state.selectedMedia;
+            if (!timelineLoadedRef.current || pendingRecoveryRef.current || !item) return;
+            const native = state.nativeOutputEnabled && state.nativePlayout.itemId === item.id;
+            const positionSeconds = native ? state.nativePlayout.positionSeconds : videoRef.current?.currentTime ?? state.currentTime;
+            if (!Number.isFinite(positionSeconds)) return;
+            void window.santtosAPI.savePlayoutCheckpoint({ itemId: item.id, positionSeconds,
+                playing: native ? state.nativePlayout.state === "PLAYING" : state.isPlaying }).catch(console.error);
+        }, 1000);
+        return () => window.clearInterval(timer);
+    }, []);
+
     async function pauseVideo() {
         const video = videoRef.current;
         video?.pause();
+        let checkpointPosition = video?.currentTime ?? currentTime;
 
         if (nativeOutputEnabled) {
             const result = await window.santtosAPI.pauseNdiFile();
             if (result.playout) {
+                checkpointPosition = result.playout.positionSeconds;
                 setCurrentTime(
                     result.playout.positionSeconds
                 );
@@ -2690,9 +2742,16 @@ function PlayoutPanel({
         }
 
         setIsPlaying(false);
+        setPausedItemId(selectedMedia?.id ?? null);
+        if (selectedMedia) {
+            await window.santtosAPI.savePlayoutCheckpoint({ itemId: selectedMedia.id,
+                positionSeconds: checkpointPosition, playing: false });
+        }
     }
 
     async function stopVideo() {
+        restoredPositionRef.current = null;
+        setPausedItemId(null);
         const wasHolding =
             Boolean(
                 selectedMedia &&
@@ -2735,6 +2794,10 @@ function PlayoutPanel({
             atMs: Date.now()
         };
         setIsPlaying(false);
+        if (selectedMedia) {
+            await window.santtosAPI.savePlayoutCheckpoint({ itemId: selectedMedia.id,
+                positionSeconds: inPoint, playing: false });
+        }
     }
 
     async function seekProgram(relativeSeconds: number) {
@@ -3629,9 +3692,11 @@ function PlayoutPanel({
                                     onLoadedMetadata={(event) => {
                                         const video =
                                             event.currentTarget;
-                                        const inPoint =
-                                            getClipIn(selectedMedia);
+                                        const restored = restoredPositionRef.current;
+                                        const inPoint = restored && restored.itemId === selectedMedia?.id
+                                            ? restored.positionSeconds : getClipIn(selectedMedia);
                                         video.currentTime = inPoint;
+                                        setRecoveryVideoReady(true);
                                         setCurrentTime(inPoint);
                                         setDuration(
                                             getClipDuration(selectedMedia)
@@ -3739,6 +3804,11 @@ function PlayoutPanel({
                                         handleProgramTimeUpdate(event.currentTarget)
                                     }
                                     onLoadedMetadata={() => {
+                                        const restored = restoredPositionRef.current;
+                                        if (restored && restored.itemId === selectedMedia?.id && videoRef.current) {
+                                            videoRef.current.currentTime = restored.positionSeconds;
+                                        }
+                                        setRecoveryVideoReady(true);
                                         setDuration(getClipDuration(selectedMedia));
                                         setPreviewError("");
                                     }}
@@ -3809,10 +3879,15 @@ function PlayoutPanel({
                     <div className="program-controls">
                         <button
                             title="Reproduzir"
+                            className={isPlaying ? "transport-active" : ""}
+                            aria-pressed={isPlaying}
                             onClick={playVideo}
                         >▶</button>
                         <button
                             title="Pausar"
+                            className={!isPlaying && (nativePlayout.state === "PAUSED" || pausedItemId === selectedMedia?.id)
+                                ? "transport-active" : ""}
+                            aria-pressed={!isPlaying && (nativePlayout.state === "PAUSED" || pausedItemId === selectedMedia?.id)}
                             onClick={pauseVideo}
                         >⏸</button>
                         <button
@@ -4114,6 +4189,10 @@ function PlayoutPanel({
                                                 }
                                             }}
                                             onDragStart={(event) => {
+                                                if ((event.target as HTMLElement).closest("input, button, select, textarea")) {
+                                                    event.preventDefault();
+                                                    return;
+                                                }
                                                 if (isCurrent) {
                                                     event.preventDefault();
                                                     return;
@@ -4301,24 +4380,9 @@ function PlayoutPanel({
 
                                                     <div className="timeline-hashtag-editor">
                                                         <span>#</span>
-                                                        <input
-                                                            key={`${item.id}-${item.hashtag ?? ""}`}
-                                                            defaultValue={
-                                                                item.hashtag ?? ""
-                                                            }
-                                                            placeholder="Hashtag"
-                                                            maxLength={80}
-                                                            onBlur={(event) =>
-                                                                updateTimelineHashtag(
-                                                                    item.id,
-                                                                    event.currentTarget.value
-                                                                )
-                                                            }
-                                                            onKeyDown={(event) => {
-                                                                if (event.key === "Enter") {
-                                                                    event.currentTarget.blur();
-                                                                }
-                                                            }}
+                                                        <TimelineHashtagInput
+                                                            value={item.hashtag ?? ""}
+                                                            onCommit={(value) => void updateTimelineHashtag(item.id, value)}
                                                         />
                                                     </div>
                                                 </div>
