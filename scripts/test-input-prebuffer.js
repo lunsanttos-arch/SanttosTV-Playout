@@ -88,6 +88,11 @@ function makeManager(overrides = {}) {
                         }
                     };
                 }),
+            startWarmTuner: overrides.startWarmTuner || (async () => ({
+                url: "http://127.0.0.1:19001/index.m3u8",
+                ready: true, hasVideo: true, hasAudio: true,
+                isAlive: () => true, stop() {}
+            })),
             ttlMs: 10000,
             now:
                 overrides.now ||
@@ -101,6 +106,27 @@ function makeManager(overrides = {}) {
 }
 
 async function main() {
+    {
+        const { manager } = makeManager({ startWarmTuner: async () => ({
+            url: "http://127.0.0.1:19001/index.m3u8", ready: true,
+            hasVideo: false, isAlive: () => true, stop() {}
+        }) });
+        await assert.rejects(manager.prepare("https://example.com/live.m3u8", { inputEngine: "ffmpeg" }), /vídeo decodificado/);
+        assert.equal(manager.status().ready, false, "A started process without decoded video is not ready");
+    }
+    {
+        let running = true;
+        let stopped = false;
+        const { manager } = makeManager({ startWarmTuner: async () => ({
+            url: "http://127.0.0.1:19001/index.m3u8", ready: true,
+            hasVideo: true, hasAudio: true, isAlive: () => running,
+            stop() { stopped = true; }
+        }) });
+        await manager.prepare("https://example.com/live.m3u8", { inputEngine: "ffmpeg" });
+        running = false;
+        assert.equal(manager.take("https://example.com/live.m3u8", { inputEngine: "ffmpeg" }), null);
+        assert(stopped, "A dead tuner must not be transferred to PROGRAM");
+    }
     assert.match(
         prebufferKey(
             "https://example.com/live.m3u8",
@@ -187,7 +213,7 @@ async function main() {
         );
         assert.equal(
             taken.playbackPath,
-            "udp://127.0.0.1:30001"
+            "http://127.0.0.1:19001/index.m3u8"
         );
         assert.equal(
             manager.status().ready,
@@ -368,7 +394,7 @@ async function main() {
     }
 
     console.log(
-        "INPUT PREBUFFER QA: APROVADO — aquecimento 5s, idempotência, take e cancelamento seguro."
+        "INPUT PREBUFFER QA: APROVADO — vídeo confirmado, idempotência, take e cancelamento seguro."
     );
 }
 

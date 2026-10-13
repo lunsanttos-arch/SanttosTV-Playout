@@ -44,6 +44,7 @@ const crypto = require("node:crypto");
 const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
 const { VideoClockedPcm } = require("../core/audio/video-clocked-pcm");
+const { startWarmInputTuner } = require("../core/playout/warm-input-tuner");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
 const { OmtOutput } = require("../core/omt/omt-output");
 const { ServerMediaManager } = require("../core/media/server-media");
@@ -263,6 +264,7 @@ let serverMediaHealthTimer = null;
 let ffmpegProcess = null;
 let activeRemoteInputProxy = null;
 let activeVlcInputBridge = null;
+let activeWarmInputTuner = null;
 const inputPrebuffer =
     new InputPrebufferManager({
         resolveRemoteInput,
@@ -270,6 +272,7 @@ const inputPrebuffer =
         findVlcPath,
         selectInputEngine,
         startVlcInputBridge,
+        startWarmTuner: (url, options) => startWarmInputTuner(url, { ...options, ffmpegPath: resolveFfmpegPath() }),
         ttlMs: 20000
     });
 
@@ -1008,6 +1011,8 @@ function sendProgramAudioPcm(
 }
 
 function stopNativePlayback({ engineAction = "stop" } = {}) {
+    activeWarmInputTuner?.stop();
+    activeWarmInputTuner = null;
     if (activeVlcInputBridge) {
         activeVlcInputBridge.stop();
         activeVlcInputBridge = null;
@@ -1319,6 +1324,7 @@ async function startNativePlayback(
                 warmed.proxy || null;
             activeVlcInputBridge =
                 warmed.vlcBridge || null;
+            activeWarmInputTuner = warmed.tuner;
             playbackPath =
                 warmed.playbackPath;
             audioPlaybackPath =
@@ -1601,6 +1607,8 @@ async function startNativePlayback(
             )
         );
     }
+
+    if (activeWarmInputTuner) args.push("-live_start_index", "-1");
 
     args.push(
         "-i",
@@ -2058,6 +2066,8 @@ async function startNativePlayback(
             );
 
             if (ffmpegProcess === processRef) {
+                activeWarmInputTuner?.stop();
+                activeWarmInputTuner = null;
                 ffmpegProcess = null;
 
                 if (activeVlcInputBridge) {
@@ -2123,6 +2133,8 @@ async function startNativePlayback(
             }
 
             if (ffmpegProcess === processRef) {
+                activeWarmInputTuner?.stop();
+                activeWarmInputTuner = null;
                 ffmpegProcess = null;
                 if (code === 0 && !signal) {
                     nativePlaybackActive = false;

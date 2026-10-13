@@ -1693,7 +1693,7 @@ function PlayoutPanel({
             nextMedia?.sourceType === "input" &&
             remaining !== null &&
             remaining > 0.1 &&
-            remaining <= 5;
+            remaining <= 15;
 
         if (shouldPrepare && nextMedia) {
             if (
@@ -1764,6 +1764,13 @@ function PlayoutPanel({
 
             return;
         }
+
+        // Keep the prepared source alive while ENDED/selection updates race
+        // with the IPC that transfers it to PROGRAM.
+        if (preparedInputIdRef.current && (
+            preparedInputIdRef.current === selectedMedia?.id ||
+            (nativePlayout.state === "ENDED" && preparedInputIdRef.current === nextMedia?.id)
+        )) return;
 
         if (
             preparedInputIdRef.current &&

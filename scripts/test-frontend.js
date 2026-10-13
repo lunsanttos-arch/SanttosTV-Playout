@@ -459,12 +459,12 @@ assert(
 assert(
     app.includes("prepareNdiInput") &&
     app.includes("cancelPreparedNdiInput") &&
-    app.includes("remaining <= 5") &&
+    app.includes("remaining <= 15") &&
     app.includes("PRÉ-CARREGANDO INPUT") &&
     app.includes("INPUT PRONTO") &&
     electronMain.includes('"ndi:prepare-input"') &&
     electronMain.includes("Input pré-carregado assumido pelo PROGRAM"),
-    "O próximo Input deve ser pré-carregado 5s antes e reutilizado pelo PROGRAM."
+    "O próximo Input deve ser pré-carregado 15s antes e reutilizado pelo PROGRAM."
 );
 assert(
     webInputs.includes("const value =") &&

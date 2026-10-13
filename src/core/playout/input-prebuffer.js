@@ -51,6 +51,7 @@ class InputPrebufferManager {
         findVlcPath,
         selectInputEngine,
         startVlcInputBridge,
+        startWarmTuner,
         ttlMs = 20000,
         now = Date.now
     }) {
@@ -64,6 +65,8 @@ class InputPrebufferManager {
             selectInputEngine;
         this.startVlcInputBridge =
             startVlcInputBridge;
+        this.startWarmTuner = startWarmTuner;
+        this.controller = null;
         this.ttlMs =
             Math.max(
                 5000,
@@ -82,6 +85,7 @@ class InputPrebufferManager {
         if (!session) return;
 
         try {
+            session.tuner?.stop?.();
             session.vlcBridge?.stop?.();
         } catch {
             // Processo já encerrado.
@@ -100,6 +104,8 @@ class InputPrebufferManager {
 
     cancel() {
         this.generation += 1;
+        this.controller?.abort();
+        this.controller = null;
 
         if (this.timer) {
             clearTimeout(
@@ -112,7 +118,7 @@ class InputPrebufferManager {
     }
 
     status() {
-        if (!this.session) {
+        if (!this.session || !this.session.tuner?.isAlive()) {
             return {
                 ready: false,
                 key: null,
@@ -126,6 +132,8 @@ class InputPrebufferManager {
 
         return {
             ready: true,
+            hasVideo: this.session.tuner.hasVideo,
+            hasAudio: this.session.tuner.hasAudio,
             key:
                 this.session.key,
             itemId:
@@ -163,6 +171,7 @@ class InputPrebufferManager {
         if (
             this.session &&
             this.session.key === key &&
+            this.session.tuner?.isAlive() &&
             this.session.expiresAtMs >
                 this.now()
         ) {
@@ -173,6 +182,8 @@ class InputPrebufferManager {
 
         const generation =
             this.generation;
+        const controller = new AbortController();
+        this.controller = controller;
 
         const resolved =
             await this.resolveRemoteInput(
@@ -187,6 +198,7 @@ class InputPrebufferManager {
 
         let proxy = null;
         let vlcBridge = null;
+        let tuner = null;
 
         try {
             let sourceUrl =
@@ -258,10 +270,22 @@ class InputPrebufferManager {
                     );
             }
 
+            if (generation !== this.generation) throw new Error("Pré-carga cancelada.");
+            tuner = await this.startWarmTuner(vlcBridge?.videoUrl || sourceUrl, {
+                userAgent: proxy || vlcBridge ? "" : resolved.userAgent,
+                referer: proxy || vlcBridge ? "" : resolved.referer,
+                cookie: proxy || vlcBridge ? "" : resolved.cookie,
+                signal: controller.signal
+            });
+            if (!tuner.ready || !tuner.hasVideo || !tuner.isAlive()) {
+                throw new Error("O tuner não confirmou vídeo decodificado para a pré-carga.");
+            }
+
             if (
                 generation !==
                 this.generation
             ) {
+                tuner.stop();
                 try {
                     vlcBridge?.stop?.();
                 } catch {
@@ -296,14 +320,12 @@ class InputPrebufferManager {
                 resolved,
                 proxy,
                 vlcBridge,
+                tuner,
                 engine,
                 playbackPath:
-                    vlcBridge?.videoUrl ||
-                    sourceUrl,
+                    tuner.url,
                 audioPlaybackPath:
-                    vlcBridge?.audioUrl ||
-                    vlcBridge?.videoUrl ||
-                    sourceUrl,
+                    tuner.url,
                 warmedAtMs,
                 expiresAtMs
             };
@@ -327,6 +349,7 @@ class InputPrebufferManager {
 
             return this.status();
         } catch (error) {
+            tuner?.stop?.();
             try {
                 vlcBridge?.stop?.();
             } catch {
@@ -339,6 +362,7 @@ class InputPrebufferManager {
                 // Ignora cleanup.
             }
 
+            if (generation !== this.generation) return { ready: false, stale: true };
             throw error;
         }
     }
@@ -359,11 +383,12 @@ class InputPrebufferManager {
 
         if (
             this.session.key !== key ||
+            !this.session.tuner?.isAlive() ||
             this.session.expiresAtMs <=
                 this.now()
         ) {
             if (
-                this.session.expiresAtMs <=
+                !this.session.tuner?.isAlive() || this.session.expiresAtMs <=
                 this.now()
             ) {
                 this.cancel();
@@ -382,6 +407,7 @@ class InputPrebufferManager {
         const session =
             this.session;
 
+        this.controller = null;
         this.session = null;
         this.generation += 1;
 
