@@ -3865,13 +3865,6 @@ function PlayoutPanel({
                             disabled={applyingRundown}
                             onClick={stopVideo}
                         >■</button>
-                        <button
-                            title="Ativar ou desativar logo"
-                            className={selectedMedia?.watermark ? "transport-active" : ""}
-                            aria-pressed={Boolean(selectedMedia?.watermark)}
-                            disabled={applyingRundown || !selectedMedia}
-                            onClick={() => selectedMedia && toggleTimelineWatermark(selectedMedia.id)}
-                        >LOGO</button>
                         <button title="Congelar ao final" className={selectedMedia?.freezeEnd ? "transport-active" : ""}
                             aria-pressed={Boolean(selectedMedia?.freezeEnd)} disabled={applyingRundown || !selectedMedia}
                             onClick={() => selectedMedia && toggleTimelineFreeze(selectedMedia.id)}>FREEZE</button>
