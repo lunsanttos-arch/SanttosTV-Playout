@@ -388,3 +388,15 @@
 @media (max-width: 680px) {
     .opec-item-fields { grid-template-columns: minmax(0, 1fr); }
 }
+
+.opec-rundown-item.opec-pending-item { border-color: #ef4444; border-left-width: 3px; background: #ef444408; }
+.opec-pending-label { color: #f87171; font-size: 10px; font-weight: 700; letter-spacing: .04em; }
+.opec-rundown-item.opec-pending-item.drop-active { border-color: #8b5cf6; }
+
+.opec-block-tools { grid-column: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 11px; color: #aaa; }
+.opec-block-tools label { display: flex; align-items: center; gap: 5px; }
+.opec-block-tools input { width: 76px; min-width: 0; height: 26px; }
+.opec-block-tools button { min-height: 26px; padding: 3px 8px; font-size: 11px; }
+.opec-rundown-item .opec-remove { grid-column: 4; grid-row: 1; }
+
+.opec-block-tools button[hidden] { display: none; }

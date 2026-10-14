@@ -3,6 +3,7 @@ import type { MediaItem, RundownItem } from "./App";
 import { normalizeExhibitionType } from "./exhibition";
 import { buildPlannedSchedule } from "./timeline-forecast";
 import "./opec-scheduler.css";
+import { splitRundownItem } from "./rundown-blocks";
 import "./library-categories.css";
 import StyledDatePicker from "./StyledDatePicker";
 import type { LibraryCategory } from "./LibraryFolderSettingsTab";
@@ -71,6 +72,8 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
     const [status, setStatus] = useState("");
     const [loading, setLoading] = useState(false);
     const [dropTarget, setDropTarget] = useState<string | null>(null);
+    const [splitId, setSplitId] = useState<string | null>(null);
+    const [blockCount, setBlockCount] = useState(2);
     const [draggedId, setDraggedId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -165,6 +168,15 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
         setStatus("");
     }
 
+    function splitItem(item: RundownItem) {
+        try {
+            const blocks = splitRundownItem(item, blockCount, () => crypto.randomUUID());
+            setItems(current => current.flatMap(entry => entry.rundownItemId === item.rundownItemId ? blocks : [entry]));
+            setSplitId(null);
+            setStatus(`${blocks.length} blocos criados. A duração total foi preservada.`);
+        } catch (error) { setStatus(error instanceof Error ? error.message : "Não foi possível dividir."); }
+    }
+
     function removeItem(id: string) {
         setItems((current) => current.filter((item) => item.rundownItemId !== id));
         setStatus("");
@@ -185,6 +197,10 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
     }
 
     async function saveRundown(showMessage = true) {
+        if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(startTime)) {
+            setStatus("Defina a hora inicial da programação antes de salvar.");
+            throw new Error("Hora inicial inválida.");
+        }
         setLoading(true);
         try {
             const result = await window.santtosAPI.saveDailyRundown({
@@ -272,7 +288,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                         {items.map((item, index) => (
                             <article
                                 key={item.rundownItemId}
-                                className={`opec-rundown-item ${draggedId === item.rundownItemId ? "dragging" : ""} ${dropTarget === item.rundownItemId ? "drop-active" : ""}`}
+                                className={`opec-rundown-item ${item.placeholder ? "opec-pending-item" : ""} ${draggedId === item.rundownItemId ? "dragging" : ""} ${dropTarget === item.rundownItemId ? "drop-active" : ""}`}
                                 draggable
                                 onDragStart={event => {
                                     if ((event.target as HTMLElement).closest("input, select, button")) { event.preventDefault(); return; }
@@ -288,6 +304,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                 <div className="opec-order" title="Arrastar para reordenar"><span className="opec-drag-handle">⠿</span>{index + 1}</div>
                                 <div className="opec-entry-time">{scheduleTimes.times.get(item.rundownItemId)}</div>
                                 <div className="opec-item-main">
+                                    {item.placeholder && <span className="opec-pending-label">A DEFINIR</span>}
                                     {item.placeholder ? <input className="opec-placeholder-name" aria-label="Nome do espaço" value={item.name}
                                         onChange={event => patchItem(item.rundownItemId, { name: event.currentTarget.value })} /> : <strong title={item.name}>{item.name}</strong>}
                                     <div className="opec-item-fields">
@@ -304,6 +321,29 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                             onChange={(e) => patchItem(item.rundownItemId, { notes: e.currentTarget.value })}
                                         />
                                     </div>
+                                </div>
+                                <div className="opec-block-tools">
+                                    <span>{formatDuration(clipDuration(item))}</span>
+                                    {!item.placeholder && <>
+                                        <label>IN <input type="number" step="0.01" min="0" max={clipOut(item)} aria-label={`Entrada em segundos de ${item.name}`}
+                                            value={clipIn(item)} onChange={event => { const value = Number(event.currentTarget.value);
+                                                if (Number.isFinite(value) && value >= 0 && value < clipOut(item)) patchItem(item.rundownItemId, { inPoint: value }); }} /></label>
+                                        <label>OUT <input type="number" step="0.01" min={clipIn(item)} max={item.duration || undefined} aria-label={`Saída em segundos de ${item.name}`}
+                                            value={clipOut(item)} onChange={event => { const value = Number(event.currentTarget.value);
+                                                if (Number.isFinite(value) && value > clipIn(item) && value <= (item.duration || 0)) patchItem(item.rundownItemId, { outPoint: value }); }} /></label>
+                                    </>}
+                                    {item.placeholder && <label>Minutos <input type="number" min="0.016667" max="1440" step="0.5"
+                                        aria-label={`Duração em minutos de ${item.name}`} value={Number((clipDuration(item) / 60).toFixed(4))}
+                                        onChange={event => { const seconds = Number(event.currentTarget.value) * 60;
+                                            if (Number.isFinite(seconds) && seconds >= 1 && seconds <= 86400)
+                                                patchItem(item.rundownItemId, { duration: seconds, inPoint: 0, outPoint: seconds }); }} /></label>}
+                                    <button hidden={Boolean(item.placeholder)} disabled={clipDuration(item) < 2} onClick={() => { setSplitId(splitId === item.rundownItemId ? null : item.rundownItemId); setBlockCount(2); }}>Dividir em blocos</button>
+                                    {splitId === item.rundownItemId && <>
+                                        <input type="number" min="2" max="100" aria-label="Quantidade de blocos" value={blockCount}
+                                            onChange={event => setBlockCount(Number(event.currentTarget.value))} />
+                                        <button onClick={() => splitItem(item)}>Dividir</button>
+                                        <button onClick={() => setSplitId(null)}>Cancelar</button>
+                                    </>}
                                 </div>
                                 <button className="opec-remove" title="Remover da programação" onClick={() => removeItem(item.rundownItemId)}>×</button>
                             </article>

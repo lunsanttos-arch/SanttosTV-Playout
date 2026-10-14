@@ -41,3 +41,9 @@ Validação adicional com `https://encode.ontvbrasil.com.br/PortoAlegre24hs/vide
 O teste funcional `scripts/test-input-web-handoff.cjs` exige o perfil isolado DEV NULL em Linux, uma mídia de pelo menos seis segundos cadastrada, Vite e Electron com depuração na porta 9333. Execute `SANTTOS_QA_STALL=1 node scripts/test-input-web-handoff.cjs` para simular a interrupção; omita a variável para testar a transmissão diretamente. `SANTTOS_QA_HLS_URL` permite escolher outra fonte. A suíte padrão cobre o limite de término e a liberação de áudio pendente sem depender da transmissão externa.
 
 A aplicação da OPEC aguarda uma troca de decoder que já esteja em andamento. Enquanto a aplicação é confirmada, os controles de transporte aguardam; um término recebido nesse intervalo é processado uma única vez depois que a nova lista estiver pronta.
+
+### Espaços a definir e cortes em blocos
+
+A OPEC pode reservar um espaço com nome, identificação, observação e duração em minutos. Esses itens ficam com borda vermelha e a indicação **A DEFINIR**, tanto no aplicativo quanto no navegador. O horário inicial é definido no cabeçalho; as entradas seguintes são calculadas pelas durações e cortes da sequência.
+
+O master arrasta o arquivo da biblioteca sobre o espaço reservado. Depois de definir o vídeo, **Dividir em blocos** cria de 2 a 100 trechos iguais dentro dos pontos IN/OUT atuais, mantendo a origem e a duração total. O master pode ajustar os pontos IN e OUT de cada bloco em segundos, mover os blocos e inserir outros materiais entre eles. A divisão não altera o arquivo original. Espaços vazios não podem ser divididos nem aplicados no Playout.
