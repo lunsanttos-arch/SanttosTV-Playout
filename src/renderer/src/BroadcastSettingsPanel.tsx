@@ -7,6 +7,7 @@ import "./broadcast-settings.css";
 import WatermarkSettingsTab from "./WatermarkSettingsTab";
 import LibraryFolderSettingsTab from "./LibraryFolderSettingsTab";
 import ExhibitionSettingsTab from "./ExhibitionSettingsTab";
+import DataBackupSettingsTab from "./DataBackupSettingsTab";
 import CacheSettingsTab from "./CacheSettingsTab";
 import ReportingSettingsTab from "./ReportingSettingsTab";
 import { DEFAULT_EXHIBITION_STYLE } from "./exhibition";
@@ -19,7 +20,8 @@ type SettingsTab =
     | "watermark"
     | "exhibition"
     | "hashtag"
-    | "reporting";
+    | "reporting"
+    | "backup";
 
 interface HashtagStyle {
     fontFamily: string;
@@ -341,6 +343,7 @@ export default function BroadcastSettingsPanel({
             description:
                 "Perfil técnico do PROGRAM, áudio e transportes."
         },
+        backup: { title: "Backup de dados", description: "Programação, cadastros, configurações e relatórios. Sem vídeos." },
         cache: { title: "Cache de mídia", description: "Cache automático de discos e pastas de rede." },
         library: {
             title: "Biblioteca",
@@ -383,6 +386,7 @@ export default function BroadcastSettingsPanel({
                 </div>
 
                 <div className="settings-tabs">
+                    <button className={tab === "backup" ? "active" : ""} onClick={() => setTab("backup")}>Backup</button>
                     <button type="button" className={tab === "cache" ? "active" : ""} onClick={() => setTab("cache")}>Cache</button>
                     <button
                         type="button"
@@ -468,6 +472,8 @@ export default function BroadcastSettingsPanel({
                     patchOmt={patchOmt}
                     patchSrt={patchSrt}
                 />
+            ) : tab === "backup" ? (
+                <DataBackupSettingsTab />
             ) : tab === "cache" ? (
                 <CacheSettingsTab />
             ) : tab === "library" ? (
@@ -509,6 +515,7 @@ export default function BroadcastSettingsPanel({
                     }
                     style={
                         (
+                            tab === "backup" ||
                             tab === "watermark" ||
                             tab === "library" ||
                             tab === "reporting"

@@ -213,6 +213,16 @@ const DEFAULT_HASHTAG_STYLE: HashtagStyle = {
 declare global {
     interface Window {
         santtosAPI: {
+            getDataBackupStatus: () => Promise<import("./DataBackupSettingsTab").BackupStatus>;
+            saveDataBackupSettings: (settings: { enabled: boolean; keep: number; intervalHours: number }) => Promise<import("./DataBackupSettingsTab").BackupStatus>;
+            chooseDataBackupFolder: () => Promise<import("./DataBackupSettingsTab").BackupStatus>;
+            clearDataBackupFolder: () => Promise<import("./DataBackupSettingsTab").BackupStatus>;
+            createDataBackup: () => Promise<{ ok: boolean; error?: string; warning?: string }>;
+            openDataBackupFolder: () => Promise<{ ok: boolean; error?: string }>;
+            exportDataBackup: () => Promise<{ ok?: boolean; canceled?: boolean; error?: string }>;
+            inspectDataBackup: () => Promise<{ ok?: boolean; canceled?: boolean; error?: string; info?: { createdAt: string; appVersion: string; mediaCount: number; files: string[] } }>;
+            restoreDataBackup: () => Promise<{ ok: boolean; error?: string }>;
+
             selectVideos: () => Promise<string[]>;
             getMedia: () => Promise<MediaItem[]>;
             importMedia: (

@@ -13,6 +13,15 @@ const buildMediaUrl = (filePath) =>
 contextBridge.exposeInMainWorld(
     "santtosAPI",
     {
+        getDataBackupStatus: () => ipcRenderer.invoke("backup:status"),
+        saveDataBackupSettings: settings => ipcRenderer.invoke("backup:settings", settings),
+        chooseDataBackupFolder: () => ipcRenderer.invoke("backup:folder"),
+        clearDataBackupFolder: () => ipcRenderer.invoke("backup:clear-folder"),
+        createDataBackup: () => ipcRenderer.invoke("backup:create"),
+        openDataBackupFolder: () => ipcRenderer.invoke("backup:open-folder"),
+        exportDataBackup: () => ipcRenderer.invoke("backup:export"),
+        inspectDataBackup: () => ipcRenderer.invoke("backup:inspect"),
+        restoreDataBackup: () => ipcRenderer.invoke("backup:restore"),
         getControllerStatus: () => ipcRenderer.invoke("controller:status"),
         setControllerEnabled: (enabled) => ipcRenderer.invoke("controller:set-enabled", enabled),
         getReportFiles: () => ipcRenderer.invoke("report:list"),

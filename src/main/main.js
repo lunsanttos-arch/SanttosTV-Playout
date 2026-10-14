@@ -52,6 +52,9 @@ const { VideoClockedPcm } = require("../core/audio/video-clocked-pcm");
 const { startWarmInputTuner } = require("../core/playout/warm-input-tuner");
 const { LiveGraphics } = require("../core/playout/live-graphics");
 let activeGraphics = null;
+const { DataBackupService, applyPendingRestore } = require("../core/backup/data-backup");
+let dataBackups = null;
+let preparedBackupRestore = null;
 const { InputDeadline } = require("../core/playout/input-deadline");
 const { FramePacer } = require("../core/playout/frame-pacer");
 const { FixedFrameAssembler } = require("../core/ndi/frame-aligner");
@@ -2561,6 +2564,44 @@ function refreshIdentificationGraphics() {
 }
 
 function registerIpcHandlers() {
+    const backupResult = async action => { try { return await action(); } catch (error) { return { ok: false, error: error.message }; } };
+    registerTrustedHandle("backup:status", () => backupResult(async () => ({ ok: true, ...await dataBackups.run("status"), busy: dataBackups.busy, error: dataBackups.lastError })));
+    registerTrustedHandle("backup:settings", (_event, settings) => backupResult(() => dataBackups.run("configure", {
+        enabled: settings?.enabled, intervalHours: settings?.intervalHours, keep: settings?.keep })));
+    registerTrustedHandle("backup:folder", () => backupResult(async () => {
+        const selected = await dialog.showOpenDialog(mainWindow, { title: "Pasta adicional para backups", properties: ["openDirectory", "createDirectory"] });
+        if (selected.canceled) return { canceled: true };
+        return dataBackups.run("configure", { additionalFolder: path.join(selected.filePaths[0], "SanTTos Playout Backups") });
+    }));
+    registerTrustedHandle("backup:clear-folder", () => backupResult(() => dataBackups.run("configure", { additionalFolder: "" })));
+    registerTrustedHandle("backup:create", () => backupResult(() => dataBackups.run("create")));
+    registerTrustedHandle("backup:open-folder", () => backupResult(async () => {
+        const { localFolder } = await dataBackups.run("status"); await fs.promises.mkdir(localFolder, { recursive: true });
+        const error = await shell.openPath(localFolder); return error ? { ok: false, error } : { ok: true };
+    }));
+    registerTrustedHandle("backup:export", () => backupResult(async () => {
+        const selected = await dialog.showSaveDialog(mainWindow, { title: "Exportar dados do Santtos", defaultPath: `Santtos-${new Date().toISOString().slice(0,10)}.santtos-backup`,
+            filters: [{ name: "Backup Santtos", extensions: ["santtos-backup"] }] });
+        if (selected.canceled) return { canceled: true };
+        return dataBackups.run("export", { file: selected.filePath });
+    }));
+    registerTrustedHandle("backup:inspect", () => backupResult(async () => {
+        preparedBackupRestore = null;
+        const selected = await dialog.showOpenDialog(mainWindow, { title: "Selecionar backup para restaurar", properties: ["openFile"], filters: [{ name: "Backup Santtos", extensions: ["santtos-backup"] }] });
+        if (selected.canceled) return { canceled: true };
+        const info = await dataBackups.run("inspect", { file: selected.filePaths[0] });
+        preparedBackupRestore = { file: selected.filePaths[0], createdAt: info.createdAt };
+        return { ok: true, info };
+    }));
+    registerTrustedHandle("backup:restore", () => backupResult(async () => {
+        if (!preparedBackupRestore) throw Error("Selecione e valide o backup antes de restaurar.");
+        if (["PLAYING", "STARTING", "PAUSED"].includes(playoutEngine.snapshot().state)) throw Error("Pare o PROGRAM antes de restaurar os dados.");
+        const current = await dataBackups.run("inspect", { file: preparedBackupRestore.file });
+        if (current.createdAt !== preparedBackupRestore.createdAt) throw Error("O backup mudou. Selecione novamente.");
+        await dataBackups.run("stage", { file: preparedBackupRestore.file });
+        preparedBackupRestore = null; app.relaunch(); app.quit(); return { ok: true };
+    }));
+
     registerTrustedHandle("playout:graphics", async (_event, update) => {
         const snapshot = playoutEngine.snapshot();
         if (!activeGraphics || !ffmpegProcess || update?.itemId !== snapshot.itemId)
@@ -4171,6 +4212,7 @@ function startSystem() {
         "Inicializando Santtos TV Automation..."
     );
 
+    applyPendingRestore(app.getPath("userData"));
     initializeDatabase({
         userDataPath: app.getPath("userData"),
         migrateLegacy: !isTestBench
@@ -4195,6 +4237,8 @@ function startSystem() {
             ? path.join(testBenchConfig.userDataPath, "documents")
             : app.getPath("documents")
     });
+    dataBackups = new DataBackupService(app.getPath("userData"), app.getVersion());
+    dataBackups.start();
     addLog("Sistema iniciado");
 
     console.log("Banco de dados OK");
@@ -4262,6 +4306,7 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", () => {
+    dataBackups?.stop();
     schedulingController?.stop();
     clearInterval(recoveryTimer);
     try { playoutRecovery?.captureNative(playoutEngine.snapshot()); }
