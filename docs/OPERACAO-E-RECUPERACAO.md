@@ -43,3 +43,12 @@ O controlador remoto permanece HTTP com autenticação na rede local. Acesso ext
 Electron atualizado de 37.10.3 para 44.7.2; Vite 8.3.4, TypeScript 6.0.3 e ferramentas de build atualizadas com lockfile. A auditoria de produção retornou zero vulnerabilidades. A auditoria completa retornou oito entradas moderadas na cadeia de ferramentas de build (`sprintf-js` → `roarr`/`global-agent` → `@electron/get`/electron-builder), sem altas ou críticas. São entradas de uma cadeia de advisory; não oito falhas independentes. Não havia versão corrigida de sprintf-js indicada pela auditoria. O CI inclui Electron e ferramentas no gate de vulnerabilidades altas/críticas.
 
 A versão continua candidata: o workflow e o código não substituem as medições e os gates Windows. A versão mínima de mídia permite montar um candidato; não significa que todos os builds ou perfis estejam homologados.
+
+
+## Espaços ao vivo na Programação
+
+A OPEC pode marcar um “Conteúdo a definir” como **Ao Vivo**. O título é opcional e os minutos reservados continuam calculando os horários seguintes. A marcação é salva também pelo controlador no navegador e permite aplicar a grade sem selecionar um arquivo para esse espaço. Lacunas comuns ainda precisam ser substituídas.
+
+Ao chegar ao espaço ao vivo, o Santtos fica pausado, com saída preta e áudio silencioso. O master corta a transmissão para o vMix manualmente e, ao terminar, avança para o próximo item no Santtos e retorna o corte. A duração reservada é uma previsão; esse espaço não dispara avanço automático nem controle do vMix. Os blocos de um filme substituído não ocupam os espaços marcados como Ao Vivo.
+
+O campo de minutos permite apagar e redigitar o valor, inclusive fracionado. Ao sair do campo, valores vazios ou fora do intervalo de 1 segundo a 24 horas retornam à última duração válida.

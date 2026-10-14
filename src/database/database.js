@@ -729,6 +729,7 @@ function getTimeline() {
 
     return data.timeline
         .map((entry) => {
+            if (entry.placeholder && entry.liveSlot) return { ...entry, name: entry.name || "Ao Vivo" };
             if (entry.sourceType === "input") {
                 return {
                     id: entry.id,
@@ -837,6 +838,14 @@ function saveTimeline(timelineItems) {
 
     data.timeline = timelineItems
         .map((item) => {
+            if (item?.placeholder && item.liveSlot === true && typeof item.id === "string") {
+                const duration = Math.min(86400, Math.max(1, Number(item.duration) || 1800));
+                return { id: item.id, placeholder: true, liveSlot: true, sourceMediaId: "", path: "",
+                    name: normalizeText(item.name, "Ao Vivo", 120), duration, inPoint: 0, outPoint: duration,
+                    extension: "AO VIVO", status: "live", fileSize: 0, notes: normalizeText(item.notes, "", 500),
+                    blockLabel: normalizeText(item.blockLabel, "", 80), programmedStartTime: item.programmedStartTime,
+                    width: null, height: null, fps: null, thumbnail: null, videoCodec: null, audioCodec: null };
+            }
             const sourceMediaId =
                 item?.sourceMediaId ??
                 item?.id;
@@ -974,7 +983,7 @@ function getDailyRundown(dateValue) {
         ? stored.items.map((entry) => {
               if (entry.placeholder) return {
                   id: `placeholder:${entry.rundownItemId}`, rundownItemId: entry.rundownItemId, sourceMediaId: "",
-                  placeholder: true, name: entry.name || "Conteúdo a definir", path: "", extension: "VAZIO",
+                  placeholder: true, liveSlot: entry.liveSlot === true, name: entry.name === "Conteúdo a definir" ? "" : entry.name ?? "", path: "", extension: "VAZIO",
                   sourceType: "file", fileSize: 0, duration: entry.duration || 1800, inPoint: 0, outPoint: entry.duration || 1800,
                   width: null, height: null, fps: null, videoCodec: null, audioCodec: null, thumbnail: null,
                   status: "placeholder", createdAt: stored.updatedAt || new Date().toISOString(),
@@ -1028,7 +1037,7 @@ function saveDailyRundown(rundown) {
     const items = sourceItems.map((item) => {
         if (item?.placeholder === true) return {
             rundownItemId: typeof item.rundownItemId === "string" && item.rundownItemId ? item.rundownItemId : crypto.randomUUID(),
-            placeholder: true, name: normalizeText(item.name, "Conteúdo a definir", 120),
+            placeholder: true, liveSlot: item.liveSlot === true, name: normalizeText(item.name, "", 120),
             duration: Math.min(86400, Math.max(1, Number(item.duration) || 1800)),
             blockLabel: normalizeText(item.blockLabel, "", 80), notes: normalizeText(item.notes, "", 500)
         };

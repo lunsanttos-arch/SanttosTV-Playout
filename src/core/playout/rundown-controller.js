@@ -2,8 +2,9 @@
 // The PROGRAM owns its occurrence, advancement and execution report. The UI is a client.
 class RundownController {
     constructor({ getItems, start, stop, snapshot, reportStart, reportFinish, reportSuccessor = null,
-        onChange = null, onContingency = null, getContingency = null, reportReady = null }) {
+        onChange = null, onContingency = null, getContingency = null, reportReady = null, startLive = null }) {
         Object.assign(this,{getItems,startRaw:start,stopRaw:stop,snapshot,reportStart,reportFinish,reportSuccessor,reportReady,onChange,onContingency,getContingency});
+        this.startLive = startLive;
         this.flags=new Map();this.current=null;this.report=null;this.epoch=0;this.opening=false;this.generation=null;this.handled=-1;
         this.accumulated=0;this.startPosition=0;this.pendingFailures=[];this.lastIssue=null;this.contingency=false;this.finished=false;
     }
@@ -23,6 +24,14 @@ class RundownController {
     }
     async open(token,position,overlay={}) {
         if(token!==this.epoch)return {ok:false,canceled:true};
+        if (this.current.placeholder) {
+            if (!this.current.liveSlot || !this.startLive) return this.fail("Conteúdo a definir sem material", token);
+            this.closeReport("PULADO", { reason: "Entrada ao vivo manual" });
+            this.stopRaw("preserve");
+            await this.startLive(this.current);
+            this.opening=false;this.pendingFault=null;this.contingency=false;this.generation=this.snapshot().generation;
+            this.notify();return {ok:true,held:true,playout:this.snapshot(),item:this.current};
+        }
         this.opening=true;this.pendingFault=null;this.generation=null;
         if(!this.report){try{this.report=this.reportStart({...this.current,plannedDurationSeconds:Math.max(0,(Number(this.current.outPoint)||Number(this.current.duration)||0)-(Number(this.current.inPoint)||0))}).id}
             catch(error){this.lastIssue="Relatório: "+error.message}}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState, type DragEvent } from "react";
 import { FilmBlockEditor, type MediaItem, type RundownItem } from "./App";
 import { normalizeExhibitionType } from "./exhibition";
 import { buildPlannedSchedule } from "./timeline-forecast";
@@ -56,6 +56,20 @@ function formatDuration(seconds: number) {
     const m = Math.floor((safe % 3600) / 60);
     const s = safe % 60;
     return [h, m, s].map((v) => String(v).padStart(2, "0")).join(":");
+}
+
+
+function SlotMinutes({ seconds, onChange }: { seconds: number; onChange: (seconds: number) => void }) {
+    const formatted = Number((seconds / 60).toFixed(4)).toString();
+    const [text, setText] = useState(formatted);
+    const focused = useRef(false);
+    useEffect(() => { if (!focused.current) setText(formatted); }, [formatted]);
+    return <input type="number" min="0.016667" max="1440" step="any" aria-label="Duração em minutos"
+        value={text} onFocus={() => { focused.current = true; }} onChange={event => {
+            const value = event.currentTarget.value; setText(value);
+            const next = Number(value) * 60;
+            if (value !== "" && Number.isFinite(next) && next >= 1 && next <= 86400) onChange(next);
+        }} onBlur={() => { focused.current = false; setText(formatted); }} />;
 }
 
 
@@ -154,7 +168,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
         const source = media.find(item => item.id === mediaId);
         if (source) {
             if (target?.placeholder) patchItem(target.rundownItemId, { ...source, sourceMediaId: source.id,
-                placeholder: false, replacedPlaceholder: true, blockLabel: target.blockLabel || "", notes: target.notes || "", inPoint: clipIn(source), outPoint: clipOut(source) });
+                placeholder: false, liveSlot: false, replacedPlaceholder: true, blockLabel: target.blockLabel || "", notes: target.notes || "", inPoint: clipIn(source), outPoint: clipOut(source) });
             else addItem(source, target?.rundownItemId);
         } else {
             const id = event.dataTransfer.getData("application/x-santtos-rundown") || draggedId;
@@ -231,7 +245,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
 
     async function applyRundown() {
         try {
-            if (items.some(item => item.placeholder)) { setStatus("Substitua os conteúdos a definir antes de aplicar a programação."); return; }
+            if (items.some(item => item.placeholder && !item.liveSlot)) { setStatus("Substitua os conteúdos a definir antes de aplicar a programação."); return; }
             const saved = await saveRundown(false);
             onApply(
                 saved.items,
@@ -286,7 +300,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                     </div>
 
                     <button onClick={() => setItems(current => [...current, { id: "placeholder", sourceMediaId: "", rundownItemId: `slot-${Date.now()}-${Math.random()}`,
-                        placeholder: true, name: "Conteúdo a definir", path: "", extension: "VAZIO", fileSize: 0, duration: 1800, outPoint: 1800,
+                        placeholder: true, name: "", path: "", extension: "VAZIO", fileSize: 0, duration: 1800, outPoint: 1800,
                         notes: "", width: null, height: null, fps: null, videoCodec: null, audioCodec: null, thumbnail: null,
                         status: "placeholder", createdAt: new Date().toISOString() }])}>+ Conteúdo a definir</button>
                     <div className={`opec-rundown-list ${dropTarget === "end" ? "drop-active" : ""}`}
@@ -296,7 +310,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                         {items.map((item, index) => (
                             <article
                                 key={item.rundownItemId}
-                                className={`opec-rundown-item ${item.placeholder ? "opec-pending-item" : ""} ${draggedId === item.rundownItemId ? "dragging" : ""} ${dropTarget === item.rundownItemId ? "drop-active" : ""}`}
+                                className={`opec-rundown-item ${item.placeholder && !item.liveSlot ? "opec-pending-item" : ""} ${draggedId === item.rundownItemId ? "dragging" : ""} ${dropTarget === item.rundownItemId ? "drop-active" : ""}`}
                                 draggable
                                 onDragStart={event => {
                                     if ((event.target as HTMLElement).closest("input, select, button")) { event.preventDefault(); return; }
@@ -312,8 +326,8 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                 <div className="opec-order" title="Arrastar para reordenar"><span className="opec-drag-handle">⠿</span>{index + 1}</div>
                                 <div className="opec-entry-time">{scheduleTimes.times.get(item.rundownItemId)}</div>
                                 <div className="opec-item-main">
-                                    {item.placeholder && <span className="opec-pending-label">A DEFINIR</span>}
-                                    {item.placeholder ? <input className="opec-placeholder-name" aria-label="Nome do espaço" value={item.name}
+                                    {item.placeholder && <span className="opec-pending-label">{item.liveSlot ? "AO VIVO · AVANÇO MANUAL" : "A DEFINIR"}</span>}
+                                    {item.placeholder ? <input className="opec-placeholder-name" aria-label="Nome do espaço" placeholder="Conteúdo a definir" value={item.name}
                                         onChange={event => patchItem(item.rundownItemId, { name: event.currentTarget.value })} /> : <strong title={item.name}>{item.name}</strong>}
                                     <div className="opec-item-fields">
                                         <input
@@ -332,11 +346,12 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                 </div>
                                 <div className="opec-block-tools">
                                     <span>{formatDuration(clipDuration(item))}</span>
-                                    {item.placeholder && <label>Minutos <input type="number" min="0.016667" max="1440" step="0.5"
-                                        aria-label={`Duração em minutos de ${item.name}`} value={Number((clipDuration(item) / 60).toFixed(4))}
-                                        onChange={event => { const seconds = Number(event.currentTarget.value) * 60;
-                                            if (Number.isFinite(seconds) && seconds >= 1 && seconds <= 86400)
-                                                patchItem(item.rundownItemId, { duration: seconds, inPoint: 0, outPoint: seconds }); }} /></label>}
+                                    {item.placeholder && <>
+                                        <button type="button" aria-pressed={item.liveSlot === true} className={item.liveSlot ? "opec-live-active" : ""}
+                                            onClick={() => patchItem(item.rundownItemId, { liveSlot: !item.liveSlot })}>Ao Vivo</button>
+                                        <label>Minutos <SlotMinutes seconds={clipDuration(item)} onChange={seconds =>
+                                            patchItem(item.rundownItemId, { duration: seconds, inPoint: 0, outPoint: seconds })} /></label>
+                                    </>}
                                     {!remote && !item.placeholder && item.replacedPlaceholder && <button
                                         disabled={clipDuration(item) < 1} onClick={() => { setSplitError(""); setEditingFilm({ ...item, id: item.rundownItemId }); }}>Dividir em blocos</button>}
                                 </div>

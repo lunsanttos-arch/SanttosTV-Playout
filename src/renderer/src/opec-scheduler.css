@@ -400,3 +400,6 @@
 .opec-rundown-item .opec-remove { grid-column: 4; grid-row: 1; }
 
 .opec-block-tools button[hidden] { display: none; }
+
+.opec-block-tools button.opec-live-active { background: #7447c8; border-color: #9568ed; color: #fff; }
+.opec-placeholder-name:focus::placeholder { color: transparent; }

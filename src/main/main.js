@@ -4208,6 +4208,11 @@ function startSystem() {
     });
     if (nativeOutputAllowed) {
         rundownController = new RundownController({ getItems: getTimeline, snapshot: () => playoutEngine.snapshot(),
+            startLive: item => {
+                stopNativePlayback({ engineAction: "stop" });
+                playoutEngine.start({ itemId: item.id, filePath: "", outPointSeconds: item.duration, waitForFirstFrame: true });
+                playoutEngine.pause();
+            },
             start: (item, position, overrides) => {
                 const overlay = nativeOverlay(item, position, overrides);
                 const priorPlayout = playoutEngine.snapshot();
@@ -4250,7 +4255,7 @@ function startSystem() {
         const saved = playoutRecovery.state;
         const item = saved && (getTimeline().find(item => item.id === saved.itemId) ||
             (saved.itemId === "__contingency__" ? { ...rundownController.getContingency?.(), id: "__contingency__", isContingency: true, loop: true } : null));
-        if (item?.path) {
+        if (item?.path || item?.liveSlot) {
             const position = Math.max(Number(item.inPoint)||0, Math.min(Number(item.outPoint)||Number(item.duration)||saved.positionSeconds, saved.positionSeconds));
             if (saved.playing && operationSettings.value.resumeOnLaunch) {
                 backendRecoveryTimer = setTimeout(() => void rundownController.play(item, position).catch(error => console.error("Retomada:", error.message)), 1000);

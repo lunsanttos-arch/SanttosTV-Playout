@@ -6,4 +6,10 @@ controller.setFlags('clip-2',{freezeEnd:true});time+=10000;await controller.ende
 items=[{...items[0],id:'loop',loop:true}];await controller.play(items[0]);const generation=engine.generation;time+=10000;await controller.ended(engine.complete());assert(engine.generation>generation);controller.setFlags('loop',{loop:false});time+=10000;await controller.ended(engine.complete());assert.equal(engine.state,'IDLE');
 await controller.play(items[0]);time+=3000;controller.pause();assert.equal(engine.state,'PAUSED');engine.seek(7);const reportCount=reports.length;await controller.play(items[0],engine.positionSeconds());assert.equal(reports.length,reportCount);time+=2000;controller.stop();assert.equal(reports.at(-1).seconds,5);
 for(const format of ['i420','uyvy','bgra']){const profile={width:16,height:16,ndiPixelFormat:format,frameSize:format==='i420'?384:format==='uyvy'?512:1024};const frame=blackFrame(profile);assert.equal(frame.length,profile.frameSize);if(format==='i420'){assert.equal(frame[0],16);assert.equal(frame[256],128)}else if(format==='uyvy')assert.deepEqual([...frame.subarray(0,4)],[128,16,128,16]);else assert.equal(frame[3],255)}
+let liveStarts=0;controller.startLive=async item=>{liveStarts++;engine.start({itemId:item.id,filePath:'',outPointSeconds:item.duration,waitForFirstFrame:true});engine.pause()};
+items=[{id:'live',name:'Jornal ao vivo',placeholder:true,liveSlot:true,duration:600}, {...items[0],id:'after-live',loop:false}];
+const errorsBefore=reports.filter(r=>r.status==='PULADO_POR_ERRO').length;
+await controller.play(items[0]);assert.equal(engine.state,'PAUSED');assert.equal(engine.itemId,'live');assert.equal(liveStarts,1);
+assert.equal(reports.filter(r=>r.status==='PULADO_POR_ERRO').length,errorsBefore);
+await controller.advance();assert.equal(engine.itemId,'after-live');
 console.log('RUNDOWN OWNER: automatic advancement without UI, failed-item report/successor, stale completion, FREEZE, LOOP, pause/resume ledger and all black formats passed');})().catch(error=>{console.error(error);process.exitCode=1});

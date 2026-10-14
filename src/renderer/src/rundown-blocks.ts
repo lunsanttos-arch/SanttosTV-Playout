@@ -14,7 +14,7 @@ export function placeRundownBlocks(items: RundownItem[], sourceId: string, range
         throw new Error("Defina de 1 a 6 blocos válidos, em ordem, sem sobreposição.");
     const positions = [index];
     for (let i = index + 1; i < items.length && positions.length < ranges.length; i++)
-        if (items[i].placeholder) positions.push(i);
+        if (items[i].placeholder && !items[i].liveSlot) positions.push(i);
     if (positions.length < ranges.length)
         throw new Error(`Há ${positions.length - 1} lacuna(s) seguinte(s). São necessárias ${ranges.length - 1} para estes blocos.`);
     const result = [...items];

@@ -1,0 +1,45 @@
+"use strict";
+const assert = require('node:assert/strict');
+(async () => {
+    const pages = await (await fetch('http://127.0.0.1:9333/json')).json();
+    const ws = new WebSocket(pages.find(p => p.type === 'page').webSocketDebuggerUrl);
+    await new Promise(r => ws.addEventListener('open', r, { once: true }));
+    let id = 0; const pending = new Map();
+    ws.addEventListener('message', event => { const data = JSON.parse(event.data); pending.get(data.id)?.(data); pending.delete(data.id); });
+    const send = (method, params = {}) => new Promise(resolve => { const key = ++id; pending.set(key, resolve); ws.send(JSON.stringify({ id: key, method, params })); });
+    const evaluate = async expression => { const data = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true });
+        if (data.result.exceptionDetails) throw Error(data.result.exceptionDetails.exception?.description); return data.result.result.value; };
+    const wait = ms => new Promise(r => setTimeout(r, ms));
+    try {
+        const status = await evaluate('window.santtosAPI.getNdiStatus()');
+        assert(status.devNullSink && !status.testBench, 'Requires disposable DEV NULL profile');
+        await evaluate('window.santtosAPI.stopNdiFile()');
+        await evaluate(`(async()=>{const d=new Date();const date=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');const old=await window.santtosAPI.getDailyRundown(date);await window.santtosAPI.saveDailyRundown({date,expectedUpdatedAt:old.updatedAt,items:[]})})()`);
+        await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Programação')).click()`);
+        await wait(300);
+        await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('+ Conteúdo a definir')).click()`);
+        assert.equal(await evaluate(`document.querySelector('.opec-placeholder-name').value`), '');
+        assert.equal(await evaluate(`document.querySelector('.opec-placeholder-name').placeholder`), 'Conteúdo a definir');
+        await evaluate(`document.querySelector('.opec-block-tools input').focus()`);
+        await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'a', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 2 });
+        await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+        await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8 });
+        assert.equal(await evaluate(`document.querySelector('.opec-block-tools input').value`), '');
+        await send('Input.insertText', { text: '12.5' });
+        assert.equal(await evaluate(`document.querySelector('.opec-block-tools input').value`), '12.5');
+        await evaluate(`document.querySelector('.opec-block-tools input').blur()`);
+        await evaluate(`[...document.querySelectorAll('.opec-block-tools button')].find(b=>b.innerText==='Ao Vivo').click()`);
+        assert.equal(await evaluate(`document.querySelector('.opec-block-tools button').getAttribute('aria-pressed')`), 'true');
+        await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Aplicar no Playout')).click()`);
+        await wait(500);
+        const timeline = await evaluate('window.santtosAPI.getTimeline()');
+        assert.equal(timeline.length, 1); assert.equal(timeline[0].liveSlot, true); assert.equal(timeline[0].duration, 750);
+        await evaluate(`document.querySelector('button[title="Reproduzir"]').click()`);
+        await wait(500);
+        const held = (await evaluate('window.santtosAPI.getNdiStatus()')).playout;
+        assert.equal(held.itemId, timeline[0].id); assert.equal(held.state, 'PAUSED');
+        await evaluate('window.santtosAPI.advanceNativeRundown()');
+        assert.equal((await evaluate('window.santtosAPI.getNdiStatus()')).playout.state, 'IDLE');
+        console.log('OPEC: empty title, clear/retype fractional minutes, live toggle, application, safe manual hold and advance passed');
+    } finally { ws.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

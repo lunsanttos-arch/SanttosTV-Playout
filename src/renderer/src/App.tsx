@@ -28,6 +28,7 @@ export interface MediaItem {
     id: string;
     sourceMediaId?: string;
     placeholder?: boolean;
+    liveSlot?: boolean;
     isContingency?: boolean;
     replacedPlaceholder?: boolean;
     programmedStartTime?: string;

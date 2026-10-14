@@ -27,6 +27,18 @@ const { SchedulingWebController } = require("../src/core/scheduling/web-controll
         assert.equal(updated.items[0].replacedPlaceholder, true);
         assert.equal(db.getDailyRundown(updated.date).items[0].replacedPlaceholder, true);
         assert.throws(() => db.saveDailyRundown({ ...first, expectedUpdatedAt: null }), /outro operador/);
+        const live = db.saveDailyRundown({ date: "2026-10-15", items: [
+            { placeholder: true, liveSlot: true, rundownItemId: "live-1", name: "", duration: 600 },
+            { placeholder: true, rundownItemId: "pending-1", name: "", duration: 1200 }
+        ] });
+        assert.equal(live.items[0].name, "");
+        assert.equal(live.items[0].liveSlot, true);
+        assert.equal(live.items[1].liveSlot, false);
+        const timeline = db.saveTimeline([{ ...live.items[0], id: "live-on-air" }]);
+        assert.equal(timeline.length, 1);
+        assert.equal(timeline[0].liveSlot, true);
+        assert.equal(timeline[0].name, "Ao Vivo");
+        assert.equal(timeline[0].outPoint, 600);
         const status = await controller.start();
         const base = `http://127.0.0.1:${status.port}`;
         assert.equal((await fetch(base + "/api/media")).status, 401);

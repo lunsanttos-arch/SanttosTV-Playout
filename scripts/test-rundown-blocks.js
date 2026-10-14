@@ -15,3 +15,10 @@ const empty={items:[],history:[]};const replacement=[slot('x','')];state=rundown
 console.log('RUNDOWN BLOCKS: replacement eligibility, custom cuts into later slots, intervening ads and metadata preserved, insufficient slots rejected atomically, undo restores full draft');
 
 state=rundownDraftReducer({items:initial,history:[]},{type:'edit',update:placed});state=rundownDraftReducer(state,{type:'normalize',items:placed.map(item=>({...item}))});state=rundownDraftReducer(state,{type:'undo'});assert.equal(state.items,initial);
+
+const liveSlot={...slot('reserved-live','Entrada vMix'),liveSlot:true};
+const withLive=[source,liveSlot,slot('return','Filme')];
+const afterLive=placeRundownBlocks(withLive,'film-slot',ranges.slice(0,2));
+assert.equal(afterLive[1],liveSlot);
+assert.equal(afterLive[2].sourceMediaId,'movie');
+assert.throws(()=>placeRundownBlocks([source,liveSlot],'film-slot',ranges.slice(0,2)),/lacuna/);
