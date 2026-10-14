@@ -19,6 +19,7 @@ database/
 src/core/ndi/*.obj
 src/core/ndi/*.exe
 src/core/ndi/Processing.NDI.Lib.x64.dll
+src/core/runtime/*.exe
 
 # Logs and temp files
 *.log

@@ -28,6 +28,7 @@ export interface MediaItem {
     id: string;
     sourceMediaId?: string;
     placeholder?: boolean;
+    isContingency?: boolean;
     replacedPlaceholder?: boolean;
     programmedStartTime?: string;
     sourceType?: "file" | "input";
@@ -129,6 +130,8 @@ interface RemoveResult {
 }
 
 interface NativePlayoutStatus {
+    autonomous?: boolean;
+    currentItem?: MediaItem;
     generation: number;
     state: "IDLE" | "STARTING" | "PLAYING" | "PAUSED" | "ENDED" | "FAULT";
     filePath: string | null;
@@ -213,6 +216,15 @@ const DEFAULT_HASHTAG_STYLE: HashtagStyle = {
 declare global {
     interface Window {
         santtosAPI: {
+            getOperationSettings: () => Promise<import("./OperationSettingsTab").OperationStatus>;
+            saveOperationSettings: (settings: import("./OperationSettingsTab").OperationOptions) => Promise<import("./OperationSettingsTab").OperationStatus>;
+            exportDiagnostics: () => Promise<{ ok?: boolean; canceled?: boolean; error?: string }>;
+
+            advanceNativeRundown: () => Promise<{ ok: boolean; error?: string; item?: MediaItem }>;
+            updateNativeItemFlags: (id: string, flags: { loop?: boolean; freezeEnd?: boolean }) => Promise<{ ok: boolean }>;
+            applyNativeRundown: (items: MediaItem[]) => Promise<{ ok: boolean; timeline: MediaItem[]; playout: NativePlayoutStatus }>;
+            onNativeRundownChanged: (callback: (payload: { timeline: MediaItem[]; playout: NativePlayoutStatus }) => void) => () => void;
+
             getDataBackupStatus: () => Promise<import("./DataBackupSettingsTab").BackupStatus>;
             saveDataBackupSettings: (settings: { enabled: boolean; keep: number; intervalHours: number }) => Promise<import("./DataBackupSettingsTab").BackupStatus>;
             chooseDataBackupFolder: () => Promise<import("./DataBackupSettingsTab").BackupStatus>;
@@ -968,6 +980,7 @@ export default function App() {
                             serverMediaEnabled={Boolean(serverMediaStatus?.enabled)}
                             nativePlaybackActive={nativePlaybackActive}
                             nativePlayout={nativePlayout}
+                            onNativeStateChange={setNativePlayout}
                             playoutError={playoutError}
                             media={media}
                             isLoading={isLoading}
@@ -1099,6 +1112,7 @@ interface PlayoutPanelProps {
     serverMediaEnabled: boolean;
     nativePlaybackActive: boolean;
     nativePlayout: NativePlayoutStatus;
+    onNativeStateChange: (status: NativePlayoutStatus) => void;
     playoutError: string | null;
     media: MediaItem[];
     isLoading: boolean;
@@ -1141,6 +1155,7 @@ function PlayoutPanel({
     serverMediaEnabled,
     nativePlaybackActive,
     nativePlayout,
+    onNativeStateChange,
     playoutError,
     media,
     isLoading,
@@ -1297,12 +1312,20 @@ function PlayoutPanel({
     useEffect(() => {
         let cancelled = false;
 
-        Promise.all([window.santtosAPI.getTimeline(), window.santtosAPI.getPlayoutRecovery()])
-            .then(([savedTimeline, recovery]) => {
+        Promise.all([window.santtosAPI.getTimeline(), window.santtosAPI.getPlayoutRecovery(), window.santtosAPI.getNdiStatus()])
+            .then(([savedTimeline, recovery, status]) => {
                 if (!cancelled) {
                     setTimelineQueue(savedTimeline);
+                    const engine = status.playout;
+                    const backendItem = engine?.autonomous && engine.state !== "IDLE" ? (savedTimeline.find(item => item.id === engine.itemId) || engine.currentItem) : null;
+                    if (backendItem && engine) {
+                        pendingRecoveryRef.current = null; restoredPositionRef.current = null;
+                        selectedMediaRef.current = backendItem; onSelectMedia(backendItem);
+                        setCurrentTime(engine.positionSeconds); setIsPlaying(engine.state === "PLAYING");
+                        timelineLoadedRef.current = true; return;
+                    }
                     const index = recovery ? savedTimeline.findIndex(item => item.id === recovery.itemId) : -1;
-                    if (recovery && index >= 0) {
+                    if (recovery && index >= 0 && !nativeOutputEnabled) {
                         const item = savedTimeline[index];
                         const positionSeconds = Math.max(getClipIn(item), Math.min(getClipOut(item), recovery.positionSeconds));
                         pendingRecoveryRef.current = { ...recovery, positionSeconds };
@@ -1325,6 +1348,19 @@ function PlayoutPanel({
             cancelled = true;
         };
     }, []);
+
+    useEffect(() => window.santtosAPI.onNativeRundownChanged(result => {
+        // The backend can replace the grade while a UI autosave is waiting.
+        // Adopt it immediately so the old queue cannot be written back later.
+        setTimelineQueue(result.timeline);
+        onNativeStateChange(result.playout);
+        const active = result.timeline.find(item => item.id === result.playout.itemId);
+        const chosen = active && ["PLAYING", "STARTING", "PAUSED"].includes(result.playout.state) ? active : result.timeline[0];
+        pendingRecoveryRef.current = null;
+        restoredPositionRef.current = null;
+        setFreezeHoldItemId(null);
+        if (chosen) { selectedMediaRef.current = chosen; onSelectMedia(chosen); }
+    }), []);
 
     useEffect(() => {
         if (!rundownApplyRequest) {
@@ -1365,6 +1401,19 @@ function PlayoutPanel({
             // transaction finish before selecting the occurrence to preserve.
             await nativeStartRef.current?.catch(() => undefined);
             if (cancelled) return;
+            if (nativeOutputEnabled) {
+                const result = await window.santtosAPI.applyNativeRundown(prepared);
+                if (cancelled) return;
+                onNativeStateChange(result.playout);
+                setTimelineQueue(result.timeline);
+                const active = result.timeline.find(item => item.id === result.playout.itemId);
+                const chosen = active && ["PLAYING", "STARTING", "PAUSED"].includes(result.playout.state) ? active : result.timeline[0];
+                pendingRecoveryRef.current = null; restoredPositionRef.current = null;
+                setFreezeHoldItemId(null); setPausedItemId(null);
+                if (chosen) { selectedMediaRef.current = chosen; onSelectMedia(chosen); }
+                setIsPlaying(result.playout.state === "PLAYING");
+                return;
+            }
             const status = nativeOutputEnabled ? await window.santtosAPI.getNdiStatus() : null;
             if (cancelled) return;
             const engine = status?.playout;
@@ -2055,6 +2104,12 @@ function PlayoutPanel({
     ]);
 
     useEffect(() => {
+        if (!nativeOutputEnabled || !nativePlayout.autonomous || !nativePlayout.itemId || nativePlayout.state === "IDLE" || nativePlayout.itemId === selectedMediaRef.current?.id) return;
+        const current = timelineQueue.find(item => item.id === nativePlayout.itemId) || (nativePlayout.currentItem?.isContingency ? nativePlayout.currentItem : null);
+        if (current) { selectedMediaRef.current = current; onSelectMedia(current); clipAdvanceGuardRef.current = false; setFreezeHoldItemId(null); }
+    }, [nativeOutputEnabled, nativePlayout.itemId, nativePlayout.generation, timelineQueue]);
+
+    useEffect(() => {
         if (
             !nativeOutputEnabled ||
             !selectedMedia ||
@@ -2212,6 +2267,8 @@ function PlayoutPanel({
                 getClipIn(mediaItem),
             itemId:
                 mediaItem.id,
+            loop: Boolean(mediaItem.loop),
+            freezeEnd: Boolean(mediaItem.freezeEnd),
             outPointSeconds:
                 getClipOut(mediaItem),
             watermarkEnabled:
@@ -2256,6 +2313,7 @@ function PlayoutPanel({
     }
 
     async function startExecutionReport(mediaItem: MediaItem) {
+        if (nativeOutputEnabled) return;
         if (activeReportIdRef.current) {
             return;
         }
@@ -2289,6 +2347,7 @@ function PlayoutPanel({
         mediaItem: MediaItem | null = selectedMedia,
         forcedPlayedSeconds?: number
     ) {
+        if (nativeOutputEnabled) return;
         const reportId = activeReportIdRef.current;
         if (!reportId) {
             return;
@@ -2395,7 +2454,7 @@ function PlayoutPanel({
     // NDI esta fora do ar. Quando o sender retorna, resincroniza no timecode
     // exato em que o monitor foi pausado.
     useEffect(() => {
-        if (!nativeOutputEnabled) return;
+        if (!nativeOutputEnabled || nativePlayout.autonomous) return;
         const video = videoRef.current;
         if (!(ndiOnline || omtOnline || transportOnline)) {
             if (
@@ -2709,6 +2768,7 @@ function PlayoutPanel({
     useEffect(() => {
         const timer = window.setInterval(() => {
             const state = checkpointStateRef.current;
+            if (state.nativeOutputEnabled && state.nativePlayout.autonomous) return;
             const item = state.selectedMedia;
             if (!timelineLoadedRef.current || pendingRecoveryRef.current || !item) return;
             const native = state.nativeOutputEnabled && state.nativePlayout.itemId === item.id;
@@ -2870,6 +2930,11 @@ function PlayoutPanel({
     async function playNextMedia(
         reason: "completed" | "skipped" = "skipped"
     ) {
+        if (nativeOutputEnabled && nativePlayout.autonomous) {
+            const result = await window.santtosAPI.advanceNativeRundown();
+            if (!result.ok) throw Error(result.error || "Não foi possível avançar.");
+            return;
+        }
         setFreezeHoldItemId(null);
 
         // Relatório não pode bloquear o corte do PROGRAM.
@@ -2980,6 +3045,10 @@ function PlayoutPanel({
     }
 
     function handleNativeEnded(status: NativePlayoutStatus) {
+        if (status.autonomous) {
+            if (status.itemId === selectedMediaRef.current?.id && selectedMediaRef.current?.freezeEnd) holdLastFrame(selectedMediaRef.current);
+            return;
+        }
         if (applyingRundownRef.current) {
             if (!pendingNativeEndRef.current || status.generation >= pendingNativeEndRef.current.generation)
                 pendingNativeEndRef.current = status;
@@ -3233,15 +3302,20 @@ function PlayoutPanel({
             )
         );
 
-        if (selectedMedia?.id === mediaId) {
-            onSelectMedia({
-                ...selectedMedia,
+        if (nativeOutputEnabled) {
+            const item = timelineQueueRef.current.find(item => item.id === mediaId);
+            if (item) void window.santtosAPI.updateNativeItemFlags(mediaId, { loop: enabling, freezeEnd: enabling ? false : Boolean(item.freezeEnd) });
+        }
+        if (selectedMediaRef.current?.id === mediaId) {
+            const updated = {
+                ...selectedMediaRef.current,
                 loop: enabling,
                 freezeEnd:
                     enabling
                         ? false
-                        : Boolean(selectedMedia.freezeEnd)
-            });
+                        : Boolean(selectedMediaRef.current.freezeEnd)
+            };
+            selectedMediaRef.current = updated; onSelectMedia(updated);
         }
     }
 
@@ -3268,15 +3342,20 @@ function PlayoutPanel({
             )
         );
 
-        if (selectedMedia?.id === mediaId) {
-            onSelectMedia({
-                ...selectedMedia,
+        if (nativeOutputEnabled) {
+            const item = timelineQueueRef.current.find(item => item.id === mediaId);
+            if (item) void window.santtosAPI.updateNativeItemFlags(mediaId, { freezeEnd: enabling, loop: enabling ? false : Boolean(item.loop) });
+        }
+        if (selectedMediaRef.current?.id === mediaId) {
+            const updated = {
+                ...selectedMediaRef.current,
                 freezeEnd: enabling,
                 loop:
                     enabling
                         ? false
-                        : Boolean(selectedMedia.loop)
-            });
+                        : Boolean(selectedMediaRef.current.loop)
+            };
+            selectedMediaRef.current = updated; onSelectMedia(updated);
         }
     }
 

@@ -1,0 +1,48 @@
+name: Windows release candidate
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-package:
+    # Dedicated build machine with licensed NDI SDK and approved media runtime.
+    # No installer is published as a production release by this workflow.
+    runs-on: [self-hosted, Windows, X64, santtos-release]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Stage approved media runtime
+        shell: pwsh
+        run: |
+          if (-not $env:SANTTOS_MEDIA_RUNTIME) { throw 'Configure SANTTOS_MEDIA_RUNTIME on the dedicated runner with approved ffmpeg.exe, ffprobe.exe and manifest.json.' }
+          Copy-Item "$env:SANTTOS_MEDIA_RUNTIME\ffmpeg.exe","$env:SANTTOS_MEDIA_RUNTIME\ffprobe.exe","$env:SANTTOS_MEDIA_RUNTIME\manifest.json" src/core/runtime/
+          Get-ChildItem $env:SANTTOS_MEDIA_RUNTIME -File | Where-Object { $_.Name -match "^(LICENSE|SOURCE)" } | Copy-Item -Destination src/core/runtime/
+          "FFMPEG_BIN=$((Resolve-Path src/core/runtime/ffmpeg.exe).Path)" >> $env:GITHUB_ENV
+          "FFPROBE_BIN=$((Resolve-Path src/core/runtime/ffprobe.exe).Path)" >> $env:GITHUB_ENV
+      - name: Compile NDI and check all native runtimes
+        shell: cmd
+        run: |
+          call scripts\build-ndi.cmd
+          if errorlevel 1 exit /b 1
+          node scripts\check-native-runtime.js
+      - run: npm test
+      - run: npm audit --audit-level=high
+      - name: Build NSIS candidate
+        run: npm run build
+      - name: Installer SHA256
+        shell: pwsh
+        run: |
+          Get-ChildItem build -Filter '*.exe' | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content build/SHA256SUMS.txt
+          Copy-Item docs/HOMOLOGACAO-WINDOWS.md build/HOMOLOGACAO-WINDOWS.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-candidate-${{ github.sha }}
+          path: |
+            build/*.exe
+            build/SHA256SUMS.txt
+            build/HOMOLOGACAO-WINDOWS.md

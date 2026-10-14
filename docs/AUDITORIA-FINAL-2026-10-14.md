@@ -1,5 +1,7 @@
 # Revisão de prontidão para uso profissional — 14/10/2026
 
+> Esta auditoria registra o estado anterior às correções. Para o motor e recuperação atuais, consulte [OPERACAO-E-RECUPERACAO.md](OPERACAO-E-RECUPERACAO.md); os gates físicos de liberação estão em [HOMOLOGACAO-WINDOWS.md](HOMOLOGACAO-WINDOWS.md).
+
 Código examinado: `feb46e751752a44ae2644b90e927b211bbcc1c98`. Esta revisão avalia implementação, testes, recuperação, saídas, programação, distribuição e dependências. Nenhum código funcional foi alterado nesta revisão.
 
 ## Parecer

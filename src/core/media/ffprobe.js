@@ -3,24 +3,7 @@ const {
 } = require("node:child_process");
 const path = require("node:path");
 
-const ffprobeModule = require(
-    "@derhuerst/ffprobe-static"
-);
-
-const reportedFfprobePath =
-    typeof ffprobeModule === "string"
-        ? ffprobeModule
-        : ffprobeModule.path ??
-          ffprobeModule.default;
-const ffprobePath = typeof reportedFfprobePath === "string"
-    ? reportedFfprobePath.replace("app.asar", "app.asar.unpacked")
-    : reportedFfprobePath;
-
-if (!ffprobePath) {
-    throw new Error(
-        "O executável do FFprobe não foi encontrado."
-    );
-}
+const ffprobePath = require("./runtime-paths").resolveMediaRuntime("ffprobe");
 
 function runProbe(filePath, options = {}) {
     return new Promise(

@@ -1,14 +1,8 @@
 const {
     execFile
 } = require("node:child_process");
-const ffmpegStatic = require("ffmpeg-static");
-
-if (!ffmpegStatic) {
-    throw new Error(
-        "FFmpeg runtime não encontrado para validação de decode."
-    );
-}
-const ffmpegPath = ffmpegStatic.replace("app.asar", "app.asar.unpacked");
+const { resolveMediaRuntime } = require("./runtime-paths");
+const ffmpegPath = resolveMediaRuntime("ffmpeg");
 
 function runDecodeProbe(
     filePath,

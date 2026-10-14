@@ -30,7 +30,7 @@ async function test(kind, folder) {
         fpsExpression: "25/1", sampleRate: 48000, channels: 2 };
     const output = new TransportOutput({ ffmpegPath: ffmpeg, profile, kind,
         settings: kind === "srt" ? { host: "127.0.0.1", port, mode: "caller", latencyMs: 120 } : { url: destination } });
-    let timer;
+    let timer, recoveredReceiver;
     try {
         await delay(350);
         output.start();
@@ -43,7 +43,27 @@ async function test(kind, folder) {
         timer = setInterval(() => { output.writeAudio(pcm); output.writeVideo(frame); }, 40);
         await delay(10000);
         assert(output.online, `${kind} sender failed: ${output.error || errors}`);
+        const firstEncoder = output.process.pid;
         receiver.kill("SIGINT");
+        await Promise.race([closed, delay(2000)]);
+        const recoveredFile = path.join(folder, kind + "-recovered.ts");
+        // Keep supplying the same occurrence while the destination is offline.
+        await delay(1500);
+        recoveredReceiver = spawn(ffmpeg, ["-hide_banner", "-loglevel", "error", ...(kind === "rtmp" ? ["-listen", "1"] : []),
+            "-analyzeduration", "500000", "-probesize", "32768", "-i", destination, "-map", "0:v", "-map", "0:a", "-c", "copy", "-y", recoveredFile],
+            { stdio: ["ignore", "ignore", "pipe"] });
+        recoveredReceiver.stderr.on("data", data => errors += data.toString());
+        const recoveredClosed = new Promise(resolve => recoveredReceiver.once("close", resolve));
+        for (let attempt = 0; attempt < 150 && !(output.online && output.process?.pid !== firstEncoder); attempt++) await delay(100);
+        assert(output.online && output.process?.pid !== firstEncoder && output.reconnects > 0, `${kind} must reconnect the same occurrence`);
+        await delay(4000);
+        recoveredReceiver.kill("SIGINT");
+        await Promise.race([recoveredClosed, delay(2000)]);
+        const recoveredInfo = JSON.parse(execFileSync(ffprobe, ["-v", "error", "-show_streams", "-show_format", "-of", "json", recoveredFile], { encoding: "utf8" }));
+        assert(recoveredInfo.streams.some(stream => stream.codec_type === "video" && stream.codec_name === "h264"));
+        assert(recoveredInfo.streams.some(stream => stream.codec_type === "audio" && stream.codec_name === "aac"));
+        assert(Number(recoveredInfo.format.duration) >= 2, `${kind} reconnection must restore sustained A/V`);
+        console.log(`${kind.toUpperCase()} recovered destination without advancing or restarting PROGRAM (${output.reconnects} encoder retries)`);
         await delay(500);
         clearInterval(timer);
         output.stop();
@@ -54,7 +74,7 @@ async function test(kind, folder) {
         assert(info.streams.some(stream => stream.codec_type === "audio" && stream.codec_name === "aac"));
         assert(Number(info.format.duration) >= 2, `${kind} must transmit sustained audio/video`);
         console.log(`${kind.toUpperCase()} loopback: H.264 + AAC received (${Number(info.format.duration).toFixed(1)}s)`);
-    } finally { clearInterval(timer); output.stop(); receiver.kill("SIGKILL"); }
+    } finally { clearInterval(timer); output.stop(); receiver.kill("SIGKILL"); recoveredReceiver?.kill("SIGKILL"); }
 }
 (async () => {
     assert.throws(() => transportUrl({ url: "https://example.com" }, "rtmp"));

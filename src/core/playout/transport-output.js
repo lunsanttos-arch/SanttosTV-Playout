@@ -20,12 +20,15 @@ function transportUrl(settings, kind) {
 }
 
 class TransportOutput {
-    constructor({ ffmpegPath, profile, settings, kind, onError = null }) {
-        Object.assign(this, { ffmpegPath, profile, settings, kind, onError });
+    constructor({ ffmpegPath, profile, settings, kind, onError = null, onRecovered = null }) {
+        Object.assign(this, { ffmpegPath, profile, settings, kind, onError, onRecovered });
         this.process = null; this.error = null;
-        this.online = false; this.audioSeen = false;
+        this.online = false; this.audioSeen = false; this.stopping = false; this.retryTimer = null; this.attempts = 0; this.reconnects = 0;
     }
     start() {
+        this.stopping = false; clearTimeout(this.retryTimer); this.retryTimer = null;
+        if (this.process) return this;
+        this.audioSeen = false; this.startedAt = Date.now();
         const url = transportUrl(this.settings, this.kind);
         const p = this.profile;
         const fps = p.fpsN / p.fpsD;
@@ -41,36 +44,45 @@ class TransportOutput {
             "-f", this.kind === "rtmp" ? "flv" : "mpegts", url
         ], { windowsHide: true, stdio: ["pipe", "ignore", "pipe", "pipe", "pipe"] });
         this.process = child;
-        const fail = error => {
-            this.error = String(error.message || error).replace(/(?:srt|rtmps?):\/\/\S+/g, "[destino]").slice(-500);
-            this.onError?.(this.error);
-        };
+        const fail = error => { if (this.process === child && !this.stopping) this.recover(error); };
         child.on("error", fail);
         let stderr = "";
         child.stderr.on("data", chunk => { stderr = (stderr + chunk.toString()).slice(-1200); });
         child.stdio[4].on("data", chunk => {
-            if (/frame=\s*[1-9]/.test(chunk.toString())) { this.online = true; this.error = null; }
+            if (this.process === child && /frame=\s*[1-9]/.test(chunk.toString())) { const wasOffline = !this.online; this.online = true; this.error = null; this.attempts = 0; if (wasOffline) this.onRecovered?.(); }
         });
         child.stdin.on("error", fail); child.stdio[3].on("error", fail);
-        child.on("close", code => { if (this.process === child) { this.process = null; this.online = false; if (code) fail(stderr || "Transporte encerrou: " + code); } });
+        child.on("close", code => { if (this.process === child && !this.stopping) fail(stderr || "Transporte encerrou: " + code); });
         return this;
+    }
+    recover(error) {
+        if (this.stopping || this.retryTimer) return;
+        this.error = String(error.message || error).replace(/(?:srt|rtmps?):\/\/\S+/g, "[destino]").slice(-500);
+        this.online = false; this.onError?.(this.error);
+        const child = this.process; this.process = null;
+        if (child) { child.stdin.destroy(); child.stdio[3].destroy(); child.kill();
+            const kill = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL"); }, 1000);
+            kill.unref(); child.once("close", () => clearTimeout(kill)); }
+        const delay = Math.min(15000, 1000 * 2 ** Math.min(this.attempts++,4));
+        this.reconnects += 1;
+        this.retryTimer = setTimeout(() => { this.retryTimer = null; if (!this.stopping) { try { this.start(); } catch (error) { this.recover(error); } } }, delay);
+        this.retryTimer.unref();
     }
     writeVideo(frame) {
         const sink = this.process?.stdin;
-        if (sink && !sink.destroyed && sink.writableLength <= frame.length * 3) sink.write(frame);
-        if (!this.audioSeen) {
-            const audio = this.process?.stdio[3];
-            if (audio && !audio.destroyed && audio.writableLength < 512 * 1024) {
-                audio.write(Buffer.alloc(Math.ceil(this.profile.sampleRate * this.profile.fpsD / this.profile.fpsN) * this.profile.channels * 4));
-            }
-        }
+        if (!sink || sink.destroyed) return;
+        if (sink.writableLength > frame.length * (Date.now() - this.startedAt < 5000 ? Math.max(3, Math.min(120, Math.floor(64 * 1024 * 1024 / frame.length))) : 3)) return this.recover("Encoder sem consumir vídeo; reconectando áudio e vídeo juntos.");
+        sink.write(frame);
     }
     writeAudio(pcm) {
         this.audioSeen = true;
         const sink = this.process?.stdio[3];
-        if (sink && !sink.destroyed && sink.writableLength <= 512 * 1024) sink.write(pcm);
+        if (!sink || sink.destroyed) return;
+        if (sink.writableLength > (Date.now() - this.startedAt < 5000 ? 4 * 1024 * 1024 : 512 * 1024)) return this.recover("Encoder sem consumir áudio; reconectando áudio e vídeo juntos.");
+        sink.write(pcm);
     }
     stop() {
+        this.stopping = true; clearTimeout(this.retryTimer); this.retryTimer = null;
         this.online = false;
         const child = this.process; this.process = null;
         if (child) {

@@ -1,0 +1,9 @@
+const assert=require('node:assert/strict'),net=require('node:net'),fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
+const {ProgramAudioRouter}=require('../src/core/audio/program-audio-router');
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+(async()=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'santtos-pcm-router-'));const pipe=process.platform==='win32'?'\\\\.\\pipe\\santtos-pcm-'+crypto.randomUUID():path.join(root,'pcm.sock');const chunks=[],clients=[];const server=net.createServer(socket=>{clients.push(socket);socket.on('data',chunk=>chunks.push(chunk));socket.on('error',()=>{})});const router=new ProgramAudioRouter();
+async function connected(count){for(let n=0;n<60;n++){if(router.connected&&clients.length>=count)return;await wait(50)}throw Error('PCM router connection timeout')}
+try{await new Promise(resolve=>server.listen(pipe,resolve));router.setPipe(pipe);await connected(1);const pcm=Buffer.alloc(4096);for(let n=0;n<pcm.length;n+=4)pcm.writeFloatLE(0.125,n);router.write(pcm);for(let n=0;n<40&&Buffer.concat(chunks).length<pcm.length;n++)await wait(25);assert.deepEqual(Buffer.concat(chunks),pcm);assert.equal(router.bytes,4096);
+clients[0].destroy();await connected(2);chunks.length=0;router.write(pcm);for(let n=0;n<40&&Buffer.concat(chunks).length<pcm.length;n++)await wait(25);assert.deepEqual(Buffer.concat(chunks),pcm);assert.equal(router.bytes,8192);assert.equal(router.droppedBytes,0);router.stop();await wait(150);assert.equal(router.connected,false);assert.equal(router.timer,null);
+console.log('PROGRAM PCM ROUTER: actual pipe bytes, automatic reconnect and deliberate shutdown passed');
+}finally{router.stop();for(const client of clients)client.destroy();await new Promise(resolve=>server.close(resolve));fs.rmSync(root,{recursive:true,force:true})}})().catch(error=>{console.error(error);process.exitCode=1});

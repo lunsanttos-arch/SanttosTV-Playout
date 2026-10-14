@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawn } = require("node:child_process");
-const ffmpegStatic = require("ffmpeg-static");
+const { resolveMediaRuntime } = require("./runtime-paths");
 
 const activeConversions = new Map();
 const activeChildren = new Set();
@@ -36,10 +36,7 @@ async function preparePreviewProxy(sourcePath, cacheFolder, options = {}) {
         throw new Error("Ja existe uma previa sendo preparada. Aguarde a conclusao.");
     }
 
-    const ffmpegPath = options.ffmpegPath ||
-        (typeof ffmpegStatic === "string"
-            ? ffmpegStatic.replace("app.asar", "app.asar.unpacked")
-            : null);
+    const ffmpegPath = options.ffmpegPath || resolveMediaRuntime("ffmpeg");
     if (!ffmpegPath || !fs.existsSync(ffmpegPath)) {
         throw new Error("FFmpeg nao encontrado para preparar a previa.");
     }

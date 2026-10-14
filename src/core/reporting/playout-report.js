@@ -96,7 +96,15 @@ function initializePlayoutReports({
             ? config.reportFolder.trim()
             : defaultReportFolder;
 
-    ensureFolder(reportFolder);
+    try {
+        ensureFolder(reportFolder);
+        if (!fs.statSync(reportFolder).isDirectory()) throw Error("O destino dos relatórios não é uma pasta.");
+    } catch (error) {
+        if (reportFolder === defaultReportFolder) throw error;
+        console.warn("Pasta configurada dos relatórios indisponível; usando a pasta padrão:", error.message);
+        reportFolder = defaultReportFolder;
+        ensureFolder(reportFolder);
+    }
 
     state = { entries: [] };
 
@@ -140,6 +148,7 @@ function initializePlayoutReports({
     const recoveredAt =
         new Date().toISOString();
     let recovered = false;
+    const recoveredDates = new Set();
 
     for (const entry of state.entries) {
         if (
@@ -149,10 +158,14 @@ function initializePlayoutReports({
             continue;
         }
 
-        entry.status = "PULADO";
+        entry.status = "PULADO_POR_ERRO";
+        entry.errorReason = "Execução interrompida por encerramento inesperado do aplicativo ou reinício do computador.";
         entry.endedAt = recoveredAt;
         entry.playedSeconds = 0;
+        entry.playedSecondsUnknown = true;
+        entry.errorReason += " Tempo parcial exibido não recuperado.";
         entry.recoveredAfterCrash = true;
+        recoveredDates.add(entry.reportDate);
         recovered = true;
     }
 
@@ -166,7 +179,7 @@ function initializePlayoutReports({
         if (
             (
                 entry.status !== "EXECUTADO" &&
-                entry.status !== "PULADO"
+                !["PULADO", "PULADO_POR_ERRO"].includes(entry.status)
             ) ||
             typeof entry.reportDate !== "string" ||
             !/^\d{4}-\d{2}-\d{2}$/.test(
@@ -205,6 +218,7 @@ function initializePlayoutReports({
 
         try {
             needsExport =
+                recoveredDates.has(dateKey) ||
                 !fs.existsSync(outputFile) || !fs.existsSync(outputFile.replace(/\.xml$/, ".html")) ||
                 fs.statSync(outputFile)
                     .mtimeMs +
@@ -419,8 +433,7 @@ async function exportDate(dateKey) {
                     (
                         entry.status ===
                             "EXECUTADO" ||
-                        entry.status ===
-                            "PULADO"
+                        ["PULADO", "PULADO_POR_ERRO"].includes(entry.status)
                     )
             )
             .sort(
@@ -433,16 +446,29 @@ async function exportDate(dateKey) {
                     ).getTime()
             );
 
+    if (!rows.length) return;
+    const { Worker } = require("node:worker_threads");
+    return new Promise((resolve, reject) => {
+        const worker = new Worker(path.join(__dirname, "report-export-worker.js"), { workerData: { dateKey, destination, rows } });
+        let settled = false;
+        const timeout = setTimeout(() => { if (!settled) { settled = true; void worker.terminate(); reject(Error("Exportação de relatório excedeu 60 segundos.")); } }, 60000);
+        worker.once("message", result => { settled = true; clearTimeout(timeout); result.error ? reject(Error(result.error)) : resolve(result.filePath); });
+        worker.once("error", error => { settled = true; clearTimeout(timeout); reject(error); });
+        worker.once("exit", code => { if (!settled) { settled = true; clearTimeout(timeout); reject(Error(`Exportador terminou sem resultado (${code}).`)); } });
+    });
+}
+
+async function writeReportSnapshot({ dateKey, destination, rows }) {
     if (rows.length === 0) {
         return;
     }
 
     ensureFolder(destination);
 
-    const headers = ["Data", "Arquivo", "Bloco", "Entrada", "Saída", "Previsto", "Exibido", "Status", "Caminho"];
+    const headers = ["Data", "Arquivo", "Bloco", "Entrada", "Saída", "Previsto", "Exibido", "Status", "Caminho", "Motivo", "Conteúdo seguinte", "Contingência"];
     const values = rows.map(entry => [localDateLabel(entry.startedAt), entry.fileName, entry.blockLabel || "",
         localTimeLabel(entry.startedAt), entry.endedAt ? localTimeLabel(entry.endedAt) : "",
-        formatDuration(entry.plannedDurationSeconds), formatDuration(entry.playedSeconds), entry.status, entry.filePath || ""]);
+        formatDuration(entry.plannedDurationSeconds), entry.playedSecondsUnknown ? "Não recuperado" : formatDuration(entry.playedSeconds), entry.status.replaceAll("_", " "), entry.filePath || "", entry.errorReason || "", entry.nextContent || "", entry.contingencyContent || ""]);
     const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Relatório ${xmlEscape(dateKey)}</title>
         <style>body{font:14px Arial;background:#14141e;color:#eee;padding:24px}h1{color:#a78bfa}
         table{width:100%;border-collapse:collapse}th,td{padding:10px;text-align:left;border-bottom:1px solid #353544}th{background:#292339}
@@ -519,6 +545,10 @@ async function exportDate(dateKey) {
                 "status",
                 entry.status
             ),
+            xmlTag("duracao_exibida_conhecida", entry.playedSecondsUnknown ? "false" : "true"),
+            xmlTag("motivo", entry.errorReason || ""),
+            xmlTag("conteudo_seguinte", entry.nextContent || ""),
+            xmlTag("contingencia", entry.contingencyContent || ""),
             xmlTag(
                 "caminho",
                 entry.filePath
@@ -569,26 +599,24 @@ async function exportDate(dateKey) {
     }
 }
 
+const pendingExports = new Set();
 function queueExport(dateKey) {
-    writeQueue =
-        writeQueue
-            .then(
-                () =>
-                    exportDate(
-                        dateKey
-                    )
-            )
-            .catch(
-                (error) => {
-                    console.error(
-                        "Falha ao atualizar relatório XML:",
-                        error
-                    );
-                }
-            );
-
+    // Several errors/successor updates in the same turn need one fresh export.
+    pendingExports.add(dateKey);
+    if (!exportScheduled) {
+        exportScheduled = true;
+        writeQueue = writeQueue.then(async () => {
+            while (pendingExports.size) {
+                const date = pendingExports.values().next().value;
+                pendingExports.delete(date);
+                try { await exportDate(date); }
+                catch (error) { console.error("Falha ao atualizar relatório:", error); }
+            }
+        }).finally(() => { exportScheduled = false; });
+    }
     return writeQueue;
 }
+let exportScheduled = false;
 
 function reexportAllDates() {
     const dates =
@@ -600,8 +628,7 @@ function reexportAllDates() {
                         (
                             entry.status ===
                                 "EXECUTADO" ||
-                            entry.status ===
-                                "PULADO"
+                            ["PULADO", "PULADO_POR_ERRO"].includes(entry.status)
                         )
                 )
                 .map(
@@ -728,12 +755,11 @@ function startPlayoutEntry(media) {
 function finishPlayoutEntry(
     entryId,
     status,
-    playedSeconds = 0
+    playedSeconds = 0,
+    details = {}
 ) {
     const normalizedStatus =
-        status === "EXECUTADO"
-            ? "EXECUTADO"
-            : "PULADO";
+        status === "EXECUTADO" ? "EXECUTADO" : status === "PULADO_POR_ERRO" ? "PULADO_POR_ERRO" : "PULADO";
 
     const entry =
         state.entries.find(
@@ -766,8 +792,10 @@ function finishPlayoutEntry(
         sanitizeNumber(
             playedSeconds
         );
-    entry.status =
-        normalizedStatus;
+    entry.status = normalizedStatus;
+    entry.errorReason = sanitizeText(details.reason, 1400);
+    entry.nextContent = sanitizeText(details.nextContent, 512);
+    entry.contingencyContent = sanitizeText(details.contingency, 512);
 
     saveState();
     queueExport(
@@ -781,6 +809,22 @@ function finishPlayoutEntry(
         },
         reportFolder
     };
+}
+
+function markPlayoutEntryReady(id) {
+    const entry = state.entries.find(item => item.id === id);
+    if (!entry || entry.status !== "EM_EXIBICAO" || entry.actualStartedAt) return;
+    entry.attemptedAt = entry.startedAt;
+    entry.startedAt = entry.actualStartedAt = new Date().toISOString();
+    entry.reportDate = localDateKey(entry.startedAt);
+    // Persist together with finish/successor updates. No full-history disk write
+    // on the first PROGRAM frame; an abrupt interruption remains identifiable.
+}
+
+function updatePlayoutEntrySuccessor(id, content) {
+    const entry = state.entries.find(item => item.id === id);
+    if (!entry || entry.status !== "PULADO_POR_ERRO") return;
+    entry.nextContent = sanitizeText(content, 512); saveState(); queueExport(entry.reportDate);
 }
 
 function closeOpenEntriesAsSkipped() {
@@ -852,10 +896,14 @@ module.exports = {
     initializePlayoutReports,
     startPlayoutEntry,
     finishPlayoutEntry,
+    getPendingFailedReportIds: () => state.entries.filter(entry => entry.status === "PULADO_POR_ERRO" && !entry.nextContent).map(entry => entry.id),
+    updatePlayoutEntrySuccessor,
+    markPlayoutEntryReady,
     closeOpenEntriesAsSkipped,
     getReportFolder,
     setReportFolder,
     resetReportFolder,
     exportDate,
+    writeReportSnapshot,
     listReportFiles
 };

@@ -13,6 +13,12 @@ const buildMediaUrl = (filePath) =>
 contextBridge.exposeInMainWorld(
     "santtosAPI",
     {
+        getOperationSettings: () => ipcRenderer.invoke("operation:get"),
+        saveOperationSettings: settings => ipcRenderer.invoke("operation:save", settings),
+        exportDiagnostics: () => ipcRenderer.invoke("operation:diagnostics"),
+        advanceNativeRundown: () => ipcRenderer.invoke("playout:next"),
+        updateNativeItemFlags: (id, flags) => ipcRenderer.invoke("playout:flags", id, flags),
+        applyNativeRundown: items => ipcRenderer.invoke("playout:apply-rundown", items),
         getDataBackupStatus: () => ipcRenderer.invoke("backup:status"),
         saveDataBackupSettings: settings => ipcRenderer.invoke("backup:settings", settings),
         chooseDataBackupFolder: () => ipcRenderer.invoke("backup:folder"),
@@ -211,6 +217,11 @@ contextBridge.exposeInMainWorld(
                 "timeline:save",
                 timelineItems
             ),
+        onNativeRundownChanged: callback => {
+            const listener = (_event, payload) => callback(payload);
+            ipcRenderer.on("playout:rundown-changed", listener);
+            return () => ipcRenderer.removeListener("playout:rundown-changed", listener);
+        },
 
         getSettings: () =>
             ipcRenderer.invoke(

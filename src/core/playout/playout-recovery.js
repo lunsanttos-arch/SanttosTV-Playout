@@ -29,6 +29,8 @@ class PlayoutRecovery {
             itemId: value.itemId.slice(0, 256),
             positionSeconds: value.positionSeconds,
             playing: value.playing === true,
+            rundownFinished: value.rundownFinished === true,
+            ended: value.ended === true,
             savedAt: new Date().toISOString()
         };
     }
@@ -50,11 +52,47 @@ class PlayoutRecovery {
     }
 
     captureNative(snapshot) {
-        if (snapshot.itemId && ["PLAYING", "STARTING", "PAUSED", "FAULT"].includes(snapshot.state)) {
+        if (snapshot.itemId && ["PLAYING", "STARTING", "PAUSED", "FAULT", "ENDED"].includes(snapshot.state)) {
             this.save({ itemId: snapshot.itemId, positionSeconds: snapshot.positionSeconds,
-                playing: ["PLAYING", "STARTING"].includes(snapshot.state) });
+                playing: ["PLAYING", "STARTING"].includes(snapshot.state), ended: snapshot.state === "ENDED" });
         }
     }
+
+    saveAsync(value) {
+        // Only keep the most recent waiting checkpoint if the disk is slow.
+        // The currently writing checkpoint still completes atomically.
+        this.pendingValue = this.normalize(value);
+        if (!this.writePromise) this.writePromise = this.writePending().finally(() => { this.writePromise = null; });
+        return this.writePromise;
+    }
+
+    async writePending() {
+        while (this.pendingValue) {
+            const next = this.pendingValue; this.pendingValue = null;
+            await fs.promises.mkdir(path.dirname(this.file), { recursive: true });
+            const temp = this.file + ".tmp";
+            const handle = await fs.promises.open(temp, "w", 0o600);
+            try { await handle.writeFile(JSON.stringify(next)); await handle.sync(); }
+            finally { await handle.close(); }
+            if (this.primaryValid) {
+                try { await fs.promises.copyFile(this.file, this.file + ".bak"); }
+                catch (error) { if (error.code !== "ENOENT") throw error; }
+            }
+            await fs.promises.rename(temp, this.file);
+            this.state = next; this.primaryValid = true;
+        }
+        return this.state;
+    }
+
+    captureNativeAsync(snapshot) {
+        if (snapshot.itemId && ["PLAYING", "STARTING", "PAUSED", "FAULT", "ENDED"].includes(snapshot.state)) {
+            return this.saveAsync({ itemId: snapshot.itemId, positionSeconds: snapshot.positionSeconds,
+                playing: ["PLAYING", "STARTING"].includes(snapshot.state), ended: snapshot.state === "ENDED" });
+        }
+        return Promise.resolve(this.state);
+    }
+
+    flush() { return this.writePromise || Promise.resolve(this.state); }
 }
 
 module.exports = { PlayoutRecovery };

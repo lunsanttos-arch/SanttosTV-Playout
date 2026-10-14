@@ -62,6 +62,7 @@ class NativePlayoutEngine {
                   )
                 : null;
         this.anchorPositionSeconds = this.clampPosition(startSeconds);
+        this.startPositionSeconds = this.anchorPositionSeconds;
         this.anchorAtMs = waitForFirstFrame ? null : this.now();
         this.state = waitForFirstFrame ? "STARTING" : "PLAYING";
         this.lastError = null;
@@ -69,7 +70,7 @@ class NativePlayoutEngine {
     }
 
     pause() {
-        if (this.state === "PLAYING") {
+        if (this.state === "PLAYING" || this.state === "STARTING") {
             this.anchorPositionSeconds = this.positionSeconds();
             this.anchorAtMs = null;
             this.state = "PAUSED";
@@ -136,6 +137,7 @@ class NativePlayoutEngine {
             inPointSeconds: this.inPointSeconds,
             outPointSeconds: this.outPointSeconds,
             positionSeconds,
+            startPositionSeconds: this.startPositionSeconds,
             remainingSeconds,
             active: this.state === "PLAYING",
             paused: this.state === "PAUSED",

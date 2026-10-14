@@ -9,12 +9,11 @@ const { promisify } = require("node:util");
 const { isRemoteInputUrl, remoteInputArgs } = require("./remote-input");
 
 const execFileAsync = promisify(execFile);
-const probeModule = require("@derhuerst/ffprobe-static");
-const defaultProbe = typeof probeModule === "string" ? probeModule : probeModule.path ?? probeModule.default;
+const { resolveMediaRuntime } = require("../media/runtime-paths");
 
 async function startWarmInputTuner(sourceUrl, {
-    ffmpegPath = require("ffmpeg-static"),
-    ffprobePath = process.env.FFPROBE_BIN || defaultProbe.replace("app.asar", "app.asar.unpacked"),
+    ffmpegPath = resolveMediaRuntime("ffmpeg"),
+    ffprobePath = resolveMediaRuntime("ffprobe"),
     userAgent = "", referer = "", cookie = "",
     timeoutMs = 14000, signal
 } = {}) {

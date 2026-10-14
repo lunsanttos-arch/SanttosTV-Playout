@@ -7,6 +7,7 @@ import "./broadcast-settings.css";
 import WatermarkSettingsTab from "./WatermarkSettingsTab";
 import LibraryFolderSettingsTab from "./LibraryFolderSettingsTab";
 import ExhibitionSettingsTab from "./ExhibitionSettingsTab";
+import OperationSettingsTab from "./OperationSettingsTab";
 import DataBackupSettingsTab from "./DataBackupSettingsTab";
 import CacheSettingsTab from "./CacheSettingsTab";
 import ReportingSettingsTab from "./ReportingSettingsTab";
@@ -21,7 +22,8 @@ type SettingsTab =
     | "exhibition"
     | "hashtag"
     | "reporting"
-    | "backup";
+    | "backup"
+    | "operation";
 
 interface HashtagStyle {
     fontFamily: string;
@@ -343,6 +345,7 @@ export default function BroadcastSettingsPanel({
             description:
                 "Perfil técnico do PROGRAM, áudio e transportes."
         },
+        operation: { title: "Operação e recuperação", description: "Continuidade do PROGRAM, contingência e início automático." },
         backup: { title: "Backup de dados", description: "Programação, cadastros, configurações e relatórios. Sem vídeos." },
         cache: { title: "Cache de mídia", description: "Cache automático de discos e pastas de rede." },
         library: {
@@ -386,6 +389,7 @@ export default function BroadcastSettingsPanel({
                 </div>
 
                 <div className="settings-tabs">
+                    <button className={tab === "operation" ? "active" : ""} onClick={() => setTab("operation")}>Operação</button>
                     <button className={tab === "backup" ? "active" : ""} onClick={() => setTab("backup")}>Backup</button>
                     <button type="button" className={tab === "cache" ? "active" : ""} onClick={() => setTab("cache")}>Cache</button>
                     <button
@@ -472,6 +476,8 @@ export default function BroadcastSettingsPanel({
                     patchOmt={patchOmt}
                     patchSrt={patchSrt}
                 />
+            ) : tab === "operation" ? (
+                <OperationSettingsTab />
             ) : tab === "backup" ? (
                 <DataBackupSettingsTab />
             ) : tab === "cache" ? (
@@ -515,6 +521,7 @@ export default function BroadcastSettingsPanel({
                     }
                     style={
                         (
+                            tab === "operation" ||
                             tab === "backup" ||
                             tab === "watermark" ||
                             tab === "library" ||

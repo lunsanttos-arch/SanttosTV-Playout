@@ -2,7 +2,7 @@
 const fs = require("node:fs"), path = require("node:path"), crypto = require("node:crypto"), zlib = require("node:zlib");
 const { Worker, isMainThread, parentPort, workerData } = require("node:worker_threads");
 const FILES = ["database/santtos-tv.json", "library-categories.json", "web-inputs.json", "server-media.json",
-    "reporting/playout-report-state.json", "reporting/playout-report-config.json", "playout-recovery.json"];
+    "reporting/playout-report-state.json", "reporting/playout-report-config.json", "playout-recovery.json", "operation-settings.json"];
 const MAX = 128 * 1024 * 1024;
 function atomic(file, bytes) {
     fs.mkdirSync(path.dirname(file), { recursive: true });

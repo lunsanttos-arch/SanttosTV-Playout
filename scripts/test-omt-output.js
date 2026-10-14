@@ -126,27 +126,8 @@ assert(
     ),
     "Controller OMT deve suportar modo auxiliar com drop e modo OMT-only com backpressure."
 );
-assert(
-    electronMain.includes(
-        "const ndiFrameReady ="
-    ) &&
-    electronMain.includes(
-        "allowDrop:"
-    ) &&
-    electronMain.includes(
-        "ndiFrameReady ||"
-    ) &&
-    electronMain.includes(
-        "isRemoteInput"
-    ) &&
-    electronMain.includes(
-        "!ndiFrameReady &&"
-    ) &&
-    electronMain.includes(
-        "omtTarget.onceVideoDrain"
-    ),
-    "OMT deve ser não bloqueante ao lado do NDI, mas assumir o pacing quando for a única saída."
-);
+assert(electronMain.includes("function writeNativeProgramFrame") && electronMain.includes("allowDrop: true") &&
+    electronMain.includes("pacer = new FramePacer"), "OMT deve ser consumidor isolado; o relógio do PROGRAM deve existir em todas as saídas.");
 
 if (process.platform === "win32") {
     const output =

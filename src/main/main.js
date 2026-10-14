@@ -40,7 +40,7 @@ const {
 } = require("../core/playout/input-prebuffer");
 const { LABELS, getExhibitionOverlay, buildExhibitionDrawtext } = require("../core/graphics/exhibition-overlay");
 const { spawn } = require("child_process");
-const { Writable } = require("node:stream");
+const { Writable, PassThrough } = require("node:stream");
 const crypto = require("node:crypto");
 const { checkNdiRuntime } = require("../core/ndi/ndi-capabilities");
 const { NdiAudioSource } = require("../core/audio/ndi-audio-source");
@@ -52,6 +52,25 @@ const { VideoClockedPcm } = require("../core/audio/video-clocked-pcm");
 const { startWarmInputTuner } = require("../core/playout/warm-input-tuner");
 const { LiveGraphics } = require("../core/playout/live-graphics");
 let activeGraphics = null;
+const { ProcessWatchdog } = require("../core/playout/process-watchdog");
+let processWatchdog = null;
+const { OperationSettings } = require("../core/playout/operation-settings");
+let operationSettings = null;
+let programSupervisorTimer = null;
+let backendRecoveryTimer = null;
+const programMetrics = { frames: 0, audioSamples: 0, startedAt: Date.now() };
+let uiRecoveryTimer = null;
+let shuttingDown = false;
+const { RundownController } = require("../core/playout/rundown-controller");
+const { blackFrame, ProgramStandby } = require("../core/playout/program-standby");
+const { ProgramAudioRouter } = require("../core/audio/program-audio-router");
+let rundownController = null;
+let programStandby = null;
+let lastProgramFrame = null;
+let lastFrameGeneration = -1;
+let lastProgramFrameAt = 0;
+let nativeStartGeneration = 0;
+const programAudioRouter = new ProgramAudioRouter({ onOverload: () => ndiProcess?.kill() });
 const { DataBackupService, applyPendingRestore } = require("../core/backup/data-backup");
 let dataBackups = null;
 let preparedBackupRestore = null;
@@ -71,7 +90,6 @@ const {
     outputProfile,
     profileSignature
 } = require("../core/playout/output-profile");
-const ffmpegStatic = require("ffmpeg-static");
 const { configureTestBench } = require("./testbench");
 
 app.commandLine.appendSwitch(
@@ -123,7 +141,10 @@ const {
     initializePlayoutReports,
     startPlayoutEntry,
     finishPlayoutEntry,
+    updatePlayoutEntrySuccessor,
     closeOpenEntriesAsSkipped,
+    getPendingFailedReportIds,
+    markPlayoutEntryReady,
     getReportFolder,
     setReportFolder,
     resetReportFolder,
@@ -317,18 +338,14 @@ const playoutEngine = new NativePlayoutEngine({
 });
 const serverMedia = new ServerMediaManager();
 function onPlayoutFault(message) {
-    for (const output of transportOutputs.values()) output.stop();
-    transportOutputs.clear();
     playoutLastError = message;
     nativePlaybackActive = false;
     playoutEngine.fault(message);
 
     // Em falha inesperada, enviar um frame preto valido ao sender:
     // evita que o ultimo frame do comercial congele sem aviso.
-    const blackFrame =
-        Buffer.alloc(
-            activeOutputProfile.frameSize
-        );
+    const black = blackFrame(activeOutputProfile);
+    lastProgramFrame = black;
 
     if (
         ndiReady &&
@@ -336,7 +353,7 @@ function onPlayoutFault(message) {
         !ndiProcess.stdin.destroyed
     ) {
         ndiProcess.stdin.write(
-            blackFrame,
+            black,
             (error) => {
                 if (error) {
                     console.error(
@@ -352,11 +369,32 @@ function onPlayoutFault(message) {
         omtOutput?.canWriteVideo()
     ) {
         omtOutput.writeVideo(
-            blackFrame
+            black
         );
     }
+    if (!rundownController?.opening) void rundownController?.fault(message).catch(error => console.error("Contingência:", error.message));
 }
 
+function writeNativeProgramFrame(frame) {
+    programMetrics.frames += 1;
+    const sink = ndiReady ? ndiProcess?.stdin : null;
+    if (sink && !sink.destroyed) {
+        if (sink.writableLength > frame.length * 3) { ndiProcess?.kill(); }
+        else sink.write(frame, error => { if (error) ndiProcess?.kill(); });
+    }
+    if (omtOutput?.canWriteVideo()) omtOutput.writeVideo(frame, { allowDrop: true });
+}
+function nativeOverlay(item, position = 0, overrides = {}) {
+    let outPoint = Number(item.outPoint) > 0 ? Number(item.outPoint) : Number(item.duration) || null;
+    if (item.sourceType === "input" && item.inputTimingMode === "clock" && /^\d{2}:\d{2}$/.test(item.inputEndTime || "")) {
+        const [h,m] = item.inputEndTime.split(":").map(Number), now = new Date(), end = new Date(now);
+        end.setHours(h,m,0,0); if (end <= now) end.setDate(end.getDate()+1);
+        outPoint = Math.max(1,(end-now)/1000);
+    }
+    return { ...item, inPointSeconds: Number(item.inPoint)||0, outPointSeconds: outPoint, durationSeconds: outPoint,
+        watermarkEnabled: Boolean(item.watermark), watermarkFadeIn: false, watermarkFadeOut: false,
+        ...overrides, itemId: item.id };
+}
 const analysesInProgress = new Map();
 const approvedPreviewPaths = new Set();
 
@@ -405,6 +443,17 @@ function createWindow() {
             appIconPath: resolveAppIconPath("icon.ico")
         });
     }
+
+    mainWindow.webContents.on("render-process-gone", (_event, details) => {
+        addLog(`Interface interrompida (${details.reason}); PROGRAM continua no backend.`);
+        clearTimeout(uiRecoveryTimer);
+        uiRecoveryTimer = setTimeout(() => { if (!shuttingDown && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.reload(); }, 1000);
+    });
+    mainWindow.on("unresponsive", () => {
+        clearTimeout(uiRecoveryTimer);
+        uiRecoveryTimer = setTimeout(() => { if (!shuttingDown && mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.forcefullyCrashRenderer(); }, 15000);
+    });
+    mainWindow.on("responsive", () => clearTimeout(uiRecoveryTimer));
 
     mainWindow.webContents.on("will-navigate", (event, targetUrl) => {
         if (!isTrustedRendererUrl(targetUrl)) event.preventDefault();
@@ -566,26 +615,10 @@ async function analyzeMediaItems(mediaItems) {
 }
 
 function resolveFfmpegPath() {
-    if (!ffmpegStatic) {
-        throw new Error(
-            "FFmpeg runtime não encontrado."
-        );
-    }
-
-    const resolvedPath = app.isPackaged
-        ? ffmpegStatic.replace(
-              "app.asar",
-              "app.asar.unpacked"
-          )
-        : ffmpegStatic;
-
-    if (!fs.existsSync(resolvedPath)) {
-        throw new Error(
-            `FFmpeg não encontrado em ${resolvedPath}`
-        );
-    }
-
-    return resolvedPath;
+    const runtime = require("../core/media/runtime-paths");
+    const file = runtime.resolveMediaRuntime("ffmpeg");
+    runtime.verifyProgramRuntime(file);
+    return file;
 }
 
 function escapeDrawtextText(value) {
@@ -1027,6 +1060,8 @@ function sendProgramAudioPcm(
         return;
     }
 
+    programMetrics.audioSamples += chunk.length / (channels * 4);
+    programAudioRouter.write(chunk);
     // OMT consome exatamente o mesmo PCM que alimenta o medidor e o NDI.
     // Não existe uma segunda abertura/decodificação da mídia.
     omtOutput?.writeAudio(
@@ -1056,12 +1091,9 @@ function sendProgramAudioPcm(
     );
 }
 
-function stopNativePlayback({ engineAction = "stop" } = {}) {
+function stopNativePlayback({ engineAction = "stop", cancelPendingStart = true } = {}) {
+    if (cancelPendingStart) { nativeStartGeneration += 1; clearTimeout(backendRecoveryTimer); backendRecoveryTimer = null; }
     activeGraphics?.stop(); activeGraphics = null;
-    if (engineAction !== "preserve") {
-        for (const output of transportOutputs.values()) output.stop();
-        transportOutputs.clear();
-    }
     activeWarmInputTuner?.stop();
     activeWarmInputTuner = null;
     if (activeVlcInputBridge) {
@@ -1078,6 +1110,7 @@ function stopNativePlayback({ engineAction = "stop" } = {}) {
         playoutEngine.pause();
     } else if (engineAction === "stop") {
         playoutEngine.stop();
+        lastProgramFrame = null; lastFrameGeneration = -1;
         serverMedia.clearActive();
         serverMedia.setRealtimePriority(
             false
@@ -1181,12 +1214,41 @@ function cancelInputPrebuffer() {
     };
 }
 
+function ensureTransportOutputs(ffmpegPath, profile = activeOutputProfile) {
+    const configuredTransports = getSettings().output;
+    for (const kind of ["srt", "rtmp"]) {
+        const settings = configuredTransports[kind];
+        const signature = JSON.stringify([profile.width, profile.height, profile.fpsExpression,
+            profile.ffmpegPixelFormat, profile.sampleRate, profile.channels, settings]);
+        const current = transportOutputs.get(kind);
+        if (settings?.enabled && current && !current.stopping && current.signature === signature) continue;
+        current?.stop(); transportOutputs.delete(kind);
+        if (!settings?.enabled) { if (playoutLastError.startsWith(`Saída ${kind.toUpperCase()}:`)) playoutLastError = ""; continue; }
+        try {
+            const output = new TransportOutput({ ffmpegPath, profile, settings, kind,
+                onRecovered: () => { if (playoutLastError.startsWith(`Saída ${kind.toUpperCase()}:`)) playoutLastError = ""; },
+                onError: error => {
+                    console.error(`[${kind.toUpperCase()}] ${error}`);
+                    playoutLastError = `Saída ${kind.toUpperCase()}: ${error}`;
+                } }).start();
+            output.signature = signature;
+            transportOutputs.set(kind, output);
+        } catch (error) { console.error(`Saída ${kind.toUpperCase()}:`, error.message); }
+    }
+}
+
 async function startNativePlayback(
     filePath,
     startSeconds = 0,
     hashtag = "",
     overlayState = {}
 ) {
+    const startToken = ++nativeStartGeneration;
+    const checkedStart = async (promise, cleanup = null) => {
+        const value = await promise;
+        if (startToken !== nativeStartGeneration) { cleanup?.(value); throw new Error("Início de reprodução cancelado."); }
+        return value;
+    };
     if (
         typeof filePath !== "string" ||
         filePath.length === 0
@@ -1267,7 +1329,7 @@ async function startNativePlayback(
     // Se o mesmo item continua pausado, sempre retomamos do timecode salvo no
     // NativePlayoutEngine, mesmo que o renderer envie startSeconds antigo.
     const pausedPlayout =
-        playoutEngine.snapshot();
+        overlayState.__priorPlayout || playoutEngine.snapshot();
     const requestedItemId =
         typeof overlayState?.itemId === "string"
             ? overlayState.itemId
@@ -1305,31 +1367,7 @@ async function startNativePlayback(
             omtOutput?.canWriteVideo()
         );
 
-    if (
-        !ndiProgramReady &&
-        !omtProgramReady &&
-        !getSettings().output.srt?.enabled && !getSettings().output.rtmp?.enabled
-    ) {
-        const details = [
-            desiredOutputs.ndiEnabled
-                ? ndiLastError || "NDI ainda não está pronto."
-                : null,
-            desiredOutputs.omtEnabled
-                ? omtStatus().error || "OMT ainda não está pronto."
-                : null
-        ].filter(Boolean);
-
-        throw new Error(
-            "Nenhuma saída do PROGRAM está pronta." +
-            (
-                details.length
-                    ? " " + details.join(" ")
-                    : " Ative NDI ou OMT nas Configurações de Saída."
-            )
-        );
-    }
-
-    stopNativePlayback({ engineAction: "preserve" });
+    stopNativePlayback({ engineAction: "preserve", cancelPendingStart: false });
     playoutLastError = "";
 
     const ffmpegPath = resolveFfmpegPath();
@@ -1401,7 +1439,7 @@ async function startNativePlayback(
             inputPrebuffer.cancel();
 
             resolvedRemoteInput =
-                await resolveRemoteInput(
+                await checkedStart(resolveRemoteInput(
                     filePath,
                     {
                         userAgent:
@@ -1409,7 +1447,7 @@ async function startNativePlayback(
                         referer:
                             programState.inputHttpReferer
                     }
-                );
+                ));
 
             playbackPath =
                 resolvedRemoteInput.url;
@@ -1456,9 +1494,9 @@ async function startNativePlayback(
                 "dailymotion"
             ) {
                 activeRemoteInputProxy =
-                    await createRemoteHlsProxy(
+                    await checkedStart(createRemoteHlsProxy(
                         resolvedRemoteInput
-                    );
+                    ), value => value.close());
 
                 sourceForBridge =
                     activeRemoteInputProxy.url;
@@ -1474,7 +1512,7 @@ async function startNativePlayback(
             ) {
                 try {
                     activeVlcInputBridge =
-                        await startVlcInputBridge(
+                        await checkedStart(startVlcInputBridge(
                             sourceForBridge,
                             {
                                 vlcPath,
@@ -1493,7 +1531,7 @@ async function startNativePlayback(
                                         ? normalizedStartSeconds
                                         : 0
                             }
-                        );
+                        ), value => value.stop());
 
                     playbackPath =
                         activeVlcInputBridge.videoUrl;
@@ -1544,10 +1582,7 @@ async function startNativePlayback(
         )
     ) {
         serverMediaResolution =
-            await serverMedia
-                .resolveForPlayback(
-                    filePath
-                );
+            await checkedStart(serverMedia.resolveForPlayback(filePath));
 
         playbackPath =
             serverMediaResolution
@@ -1744,7 +1779,7 @@ async function startNativePlayback(
 
     // One demuxer/clock for remote PROGRAM audio and video. Separate HTTP
     // connections can start at different live edges and probe at different speeds.
-    const sharedRemoteAudio = isRemoteInput && programState.__inputVideoOnly !== true;
+    const sharedRemoteAudio = programState.__inputVideoOnly !== true;
     if (sharedRemoteAudio) {
         args.push(
             "-map", Number.isSafeInteger(programState.audioStreamIndex) && programState.audioStreamIndex >= 0
@@ -1792,42 +1827,22 @@ async function startNativePlayback(
         inPointSeconds: normalizedInPoint,
         startSeconds: normalizedStartSeconds,
         outPointSeconds: normalizedOutPoint,
-        waitForFirstFrame: isRemoteInput
+        waitForFirstFrame: true
     });
 
-    const configuredTransports = getSettings().output;
-    for (const kind of ["srt", "rtmp"]) {
-        const settings = configuredTransports[kind];
-        const signature = JSON.stringify([profile.width, profile.height, profile.fpsExpression,
-            profile.ffmpegPixelFormat, profile.sampleRate, profile.channels, settings]);
-        const current = transportOutputs.get(kind);
-        if (settings?.enabled && current?.process && current.signature === signature) continue;
-        current?.stop(); transportOutputs.delete(kind);
-        if (!settings?.enabled) continue;
-        try {
-            const output = new TransportOutput({ ffmpegPath, profile, settings, kind,
-                onError: error => {
-                    console.error(`[${kind.toUpperCase()}] ${error}`);
-                    playoutLastError = `Saída ${kind.toUpperCase()}: ${error}`;
-                } }).start();
-            output.signature = signature;
-            transportOutputs.set(kind, output);
-        } catch (error) { console.error(`Saída ${kind.toUpperCase()}:`, error.message); }
-    }
+    ensureTransportOutputs(ffmpegPath, profile);
     const selectedAudioIndex = programState.audioStreamIndex;
     const sharedAudioClock = sharedRemoteAudio
         ? new VideoClockedPcm(processRef.stdio[4], profile) : null;
+    const silentPcm = sharedRemoteAudio ? null : new PassThrough();
+    let silentFrames = 0, silentSamples = 0;
 
     try {
-        const routedPipe =
-            ndiAudioSupported &&
-            ndiAudioReady &&
-            ndiAudioPipe
-                ? ndiAudioPipe
-                : "";
+        const routedPipe = ""; // A persistent PROGRAM router owns the NDI pipe across cuts.
+        programAudioRouter.setPipe(ndiAudioReady ? ndiAudioPipe : "");
 
         audioSource = new NdiAudioSource({
-            pcmStream: sharedAudioClock?.output ?? null,
+            pcmStream: sharedAudioClock?.output ?? silentPcm,
             pipePath:
                 routedPipe,
             ffmpegPath,
@@ -1921,142 +1936,39 @@ async function startNativePlayback(
                 return;
             }
 
+            lastProgramFrame = completeFrame;
+            lastFrameGeneration = playoutEngine.generation;
+            lastProgramFrameAt = programClock.nowMs();
             if (firstProgramFrame) {
                 firstProgramFrame = false;
                 playoutEngine.markReady();
                 inputDeadline?.start();
                 settleStartupSuccess();
+                rundownController?.ready(playoutEngine.snapshot());
             }
 
-            const drains = [];
-
-            const ndiFrameReady =
-                Boolean(
-                    ndiReady &&
-                    ndiProcess?.stdin &&
-                    !ndiProcess.stdin.destroyed
-                );
-
-            if (ndiFrameReady) {
-                const ndiTarget =
-                    ndiProcess.stdin;
-
-                const ndiCanContinue =
-                    ndiTarget.write(
-                        completeFrame
-                    );
-
-                if (!ndiCanContinue) {
-                    drains.push(
-                        (done) => {
-                            if (
-                                ndiTarget.destroyed
-                            ) {
-                                queueMicrotask(
-                                    done
-                                );
-                                return;
-                            }
-
-                            ndiTarget.once(
-                                "drain",
-                                done
-                            );
-                        }
-                    );
-                }
-            }
-
-            if (
-                omtOutput?.canWriteVideo()
-            ) {
-                // Com NDI ativo, OMT é uma saída auxiliar e pode descartar
-                // quadros próprios sob pressão sem tocar no ritmo do PROGRAM.
-                // Em OMT-only, o sender assume o pacing do decoder.
-                const omtCanContinue =
-                    omtOutput.writeVideo(
-                        completeFrame,
-                        {
-                            allowDrop:
-                                ndiFrameReady ||
-                                isRemoteInput
-                        }
-                    );
-
-                if (
-                    !ndiFrameReady &&
-                    !isRemoteInput &&
-                    !omtCanContinue
-                ) {
-                    const omtTarget =
-                        omtOutput;
-
-                    drains.push(
-                        (done) =>
-                            omtTarget.onceVideoDrain(
-                                done
-                            )
-                    );
-                }
-            }
-
+            writeNativeProgramFrame(completeFrame);
             for (const output of transportOutputs.values()) output.writeVideo(completeFrame);
-            sharedAudioClock?.advance();
+            if (sharedAudioClock) sharedAudioClock.advance();
+            else {
+                const samples = Math.floor(++silentFrames * profile.sampleRate * profile.fpsD / profile.fpsN);
+                silentPcm.write(Buffer.alloc((samples - silentSamples) * profile.channels * 4)); silentSamples = samples;
+            }
             deliveredFrames += 1;
             if (pacer) flushPacedPreview();
-            if (
-                drains.length > 0 &&
-                processRef.stdout &&
-                !processRef.stdout.destroyed
-            ) {
-                processRef.stdout.pause();
-
-                let waiting =
-                    drains.length;
-
-                const onDrain = () => {
-                    waiting -= 1;
-
-                    if (
-                        waiting === 0 &&
-                        feedActive &&
-                        ffmpegProcess === processRef &&
-                        processRef.stdout &&
-                        !processRef.stdout.destroyed
-                    ) {
-                        if (pacer) pacer.resume();
-                        else processRef.stdout.resume();
-                    }
-                };
-
-                for (
-                    const waitForDrain
-                    of drains
-                ) {
-                    waitForDrain(
-                        onDrain
-                    );
-                }
-            }
-            return drains.length === 0;
+            return true;
     };
-    if (sharedRemoteAudio) pacer = new FramePacer({ profile, source: processRef.stdout, onFrame: deliverFrame });
+    pacer = new FramePacer({ profile, source: processRef.stdout, onFrame: deliverFrame, reserveMs: isRemoteInput ? 600 : 0 });
     const assembler = new FixedFrameAssembler(profile.frameSize, frame => {
         if (pacer) pacer.push(frame); else deliverFrame(frame);
     });
 
     let startupStderr = "";
-    let startupSettled = !isRemoteInput;
+    let startupSettled = false;
     let resolveStartup;
     let rejectStartup;
 
-    const startupPromise =
-        isRemoteInput
-            ? new Promise((resolve, reject) => {
-                  resolveStartup = resolve;
-                  rejectStartup = reject;
-              })
-            : Promise.resolve();
+    const startupPromise = new Promise((resolve, reject) => { resolveStartup = resolve; rejectStartup = reject; });
 
     const settleStartupSuccess = () => {
         if (startupSettled) return;
@@ -2135,6 +2047,7 @@ async function startNativePlayback(
         inputDeadline?.stop();
         pacer?.stop();
         sharedAudioClock?.stop();
+        silentPcm?.destroy();
         processRef.stdout.off("data", onVideoBytes);
         processRef.stdout.resume();
         const result = assembler.stop();
@@ -2229,10 +2142,7 @@ async function startNativePlayback(
 
 
         if (!startupSettled) {
-            const friendlyError =
-                describeRemoteInputError(
-                    startupStderr
-                );
+            const friendlyError = isRemoteInput ? describeRemoteInputError(startupStderr) : startupStderr.slice(-900);
 
             settleStartupFailure(
                 [
@@ -2266,14 +2176,13 @@ async function startNativePlayback(
                 if (mainWindow && !mainWindow.isDestroyed()) {
                     mainWindow.webContents.send(
                         "playout:native-ended",
-                        ended
+                        { ...ended, autonomous: true }
                     );
                 }
+                queueMicrotask(() => { void rundownController?.ended(ended).catch(error => console.error("Avanço automático:", error.message)); });
             } else {
                 const detail =
-                    describeRemoteInputError(
-                        startupStderr
-                    );
+                    isRemoteInput ? describeRemoteInputError(startupStderr) : startupStderr.slice(-900);
 
                 onPlayoutFault(
                     [
@@ -2327,7 +2236,7 @@ async function startNativePlayback(
         finishClip(code, signal);
     });
 
-    if (isRemoteInput) {
+    {
         let timeout;
 
         try {
@@ -2563,7 +2472,58 @@ function refreshIdentificationGraphics() {
     activeGraphics.command("drawtext@program_identification", "enable", style.enabled !== false && LABELS[activeGraphics.identificationType] ? "1" : "0");
 }
 
+function redactDiagnostic(value) {
+    return require("../core/playout/diagnostic-redaction").redactDiagnostic(value);
+}
+
 function registerIpcHandlers() {
+    registerTrustedHandle("operation:get", async () => ({ ok: true, settings: operationSettings.value,
+        startupAvailable: process.platform === "win32" && app.isPackaged,
+        diagnostics: { metrics: { ...programMetrics, memory: process.memoryUsage() }, engine: playoutEngine.snapshot(), lastIssue: rundownController?.lastIssue, contingency: rundownController?.contingency,
+            frameAgeMs: lastProgramFrameAt ? Math.max(0,programClock.nowMs()-lastProgramFrameAt) : null,
+            ndiAudio: { connected: programAudioRouter.connected, bytes: programAudioRouter.bytes, droppedBytes: programAudioRouter.droppedBytes },
+            transports: Object.fromEntries([...transportOutputs].map(([kind,out]) => [kind,{online:out.online,error:out.error}])) } }));
+    registerTrustedHandle("operation:save", async (_event, patch) => {
+        try {
+            if (patch?.fillerMediaId && !getMedia().some(item => item.id === patch.fillerMediaId && Number(item.duration)>0)) throw Error("Escolha um vídeo cadastrado para contingência.");
+            if (typeof patch?.startOnLogin === "boolean" && patch.startOnLogin !==
+                (process.platform === "win32" && app.isPackaged ? app.getLoginItemSettings().openAtLogin : operationSettings.value.startOnLogin)) {
+                if (process.platform !== "win32" || !app.isPackaged) throw Error("Início automático está disponível no aplicativo instalado no Windows.");
+                app.setLoginItemSettings({ openAtLogin: patch.startOnLogin, path: process.execPath });
+            }
+            const settings = operationSettings.update(patch);
+            if (processWatchdog) { if (settings.watchdogEnabled) processWatchdog.start(); else processWatchdog.stop(); }
+            return { ok: true, settings };
+        } catch (error) { return { ok: false, error: error.message }; }
+    });
+    registerTrustedHandle("operation:diagnostics", async () => {
+        const selected = await dialog.showSaveDialog(mainWindow,{title:"Exportar diagnóstico",defaultPath:"Santtos-diagnostico.json",filters:[{name:"Diagnóstico",extensions:["json"]}]});
+        if (selected.canceled) return { canceled:true };
+        await fs.promises.writeFile(selected.filePath,JSON.stringify(redactDiagnostic({version:app.getVersion(),platform:process.platform,createdAt:new Date().toISOString(),engine:redactDiagnostic(playoutEngine.snapshot()),
+            profile:{resolution:activeOutputProfile.resolution,fps:activeOutputProfile.fpsText,pixelFormat:activeOutputProfile.pixelFormat},lastIssue:redactDiagnostic(rundownController?.lastIssue),
+            ndi:{ready:ndiReady,error:ndiLastError},omt:redactDiagnostic(omtStatus()),transports:Object.fromEntries([...transportOutputs].map(([kind,out])=>[kind,{online:out.online,error:out.error}]))}),null,2));
+        return {ok:true};
+    });
+    registerTrustedHandle("playout:next", () => rundownController?.advance("skipped"));
+    registerTrustedHandle("playout:flags", (_event, id, flags) => {
+        if (!getTimeline().some(item => item.id === id)) return { ok: false, stale: true };
+        const patch = {}; for (const key of ["loop", "freezeEnd"]) if (typeof flags?.[key] === "boolean") patch[key] = flags[key];
+        rundownController?.setFlags(id, patch); return { ok: true };
+    });
+    registerTrustedHandle("playout:apply-rundown", (_event, items) => {
+        if (!Array.isArray(items)) throw Error("Programação inválida.");
+        const snapshot = playoutEngine.snapshot(), current = getTimeline().find(item => item.id === snapshot.itemId) || rundownController?.current;
+        const preserve = current && ["PLAYING", "STARTING", "PAUSED"].includes(snapshot.state);
+        saveTimeline(preserve && !current.isContingency ? [current, ...items] : items);
+        if (rundownController?.current?.isContingency && items.length) void rundownController.play(getTimeline()[0]);
+        else if (!preserve && rundownController) {
+            rundownController.stop(); rundownController.current = null;
+            playoutEngine.itemId = null; playoutEngine.filePath = null;
+        }
+        const result = { ok: true, timeline: getTimeline(), playout: { ...playoutEngine.snapshot(), autonomous: true } };
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("playout:rundown-changed", result);
+        return result;
+    });
     const backupResult = async action => { try { return await action(); } catch (error) { return { ok: false, error: error.message }; } };
     registerTrustedHandle("backup:status", () => backupResult(async () => ({ ok: true, ...await dataBackups.run("status"), busy: dataBackups.busy, error: dataBackups.lastError })));
     registerTrustedHandle("backup:settings", (_event, settings) => backupResult(() => dataBackups.run("configure", {
@@ -2630,7 +2590,8 @@ function registerIpcHandlers() {
     registerTrustedHandle("playout:checkpoint", async (_event, checkpoint) => {
         if (!getTimeline().some((item) => item.id === checkpoint?.itemId)) return { ok: false };
         const native = playoutEngine.snapshot();
-        playoutRecovery.save(nativeOutputAllowed && native.itemId === checkpoint.itemId &&
+        if (nativeOutputAllowed && (rundownController?.finished || native.state !== "IDLE")) return { ok: true, backendManaged: true };
+        await playoutRecovery.saveAsync(nativeOutputAllowed && native.itemId === checkpoint.itemId &&
             ["PLAYING", "PAUSED", "STARTING"].includes(native.state)
             ? { itemId: native.itemId, positionSeconds: native.positionSeconds, playing: native.state !== "PAUSED" }
             : checkpoint);
@@ -2642,7 +2603,7 @@ function registerIpcHandlers() {
             online:
                 ndiReady &&
                 Boolean(ndiProcess) &&
-                !ndiProcess.killed,
+                !ndiProcess.killed && !ndiDevNullSink,
             source: ndiSourceName,
             profile: {
                 ...activeOutputProfile,
@@ -2651,6 +2612,7 @@ function registerIpcHandlers() {
             ndiTestMode: isNdiTestBench,
             audio: audioSource
                 ? { ...audioSource.snapshot(), route: ndiSourceName,
+                    connected: programAudioRouter.connected, routedToNdi: programAudioRouter.connected, bytesSent: programAudioRouter.bytes,
                     nativeActive: ndiAudioNativeActive,
                     receiverVerified: false }
                 : { state: audioOutputStatus, error: audioOutputError || null,
@@ -2659,13 +2621,13 @@ function registerIpcHandlers() {
                     nativeActive: ndiAudioNativeActive,
                     sampleRate: activeOutputProfile.sampleRate,
                     channels: activeOutputProfile.channels,
-                    receiverVerified: false, routedToNdi: false, route: ndiSourceName },
+                    receiverVerified: false, connected: programAudioRouter.connected, routedToNdi: programAudioRouter.connected, bytesSent: programAudioRouter.bytes, route: ndiSourceName },
             nativePlaybackActive,
             programClock: programClock.snapshot(),
             omt: omtStatus(),
             graphics: activeGraphics?.snapshot() ?? null,
             transports: Object.fromEntries([...transportOutputs].map(([kind, output]) => [kind, { online: output.online, error: output.error }])),
-            playout: playoutEngine.snapshot(),
+            playout: { ...playoutEngine.snapshot(), autonomous: Boolean(rundownController), currentItem: rundownController?.current },
             playoutError: playoutLastError || null,
             error: ndiLastError || null,
             devNullSink: ndiDevNullSink,
@@ -2736,12 +2698,18 @@ function registerIpcHandlers() {
         ) => {
             if (!nativeOutputAllowed) return { ok: true, previewOnly: true };
             try {
-                return await startNativePlayback(
-                    filePath,
-                    startSeconds,
-                    hashtag,
-                    overlayState
-                );
+                const saved = getTimeline().find(item => item.id === overlayState?.itemId);
+                const source = saved || getMedia().find(item => item.path === filePath) || getWebInputs().find(item => item.url === filePath);
+                if (!source) throw Error("Material não cadastrado.");
+                const item = { ...source, id: overlayState?.itemId || source.id, path: filePath, hashtag,
+                    sourceType: overlayState?.sourceType || source.sourceType || "file",
+                    inPoint: overlayState?.inPointSeconds ?? source.inPoint ?? 0,
+                    outPoint: overlayState?.outPointSeconds ?? source.outPoint ?? source.duration,
+                    duration: source.duration || overlayState?.durationSeconds };
+                const flags = {}; for (const key of ["loop", "freezeEnd"]) if (typeof overlayState?.[key] === "boolean") flags[key] = overlayState[key];
+                rundownController.setFlags(item.id, flags);
+                if (playoutEngine.snapshot().state === "PAUSED" && playoutEngine.itemId === item.id) startSeconds = playoutEngine.positionSeconds();
+                return await rundownController.play(item, startSeconds, overlayState);
             } catch (error) {
                 console.error(
                     "Não foi possível iniciar o playout nativo:",
@@ -2759,10 +2727,7 @@ function registerIpcHandlers() {
     registerTrustedHandle(
         "playout:pause",
         async () => {
-            const playout = stopNativePlayback({
-                engineAction: "pause"
-            });
-            return { ok: true, playout };
+            return rundownController ? rundownController.pause() : { ok: true, playout: stopNativePlayback({ engineAction: "pause" }) };
         }
     );
 
@@ -2777,10 +2742,7 @@ function registerIpcHandlers() {
     registerTrustedHandle(
         "ndi:stop-file",
         async () => {
-            const playout = stopNativePlayback({
-                engineAction: "stop"
-            });
-            return { ok: true, playout };
+            return rundownController ? rundownController.stop() : { ok: true, playout: stopNativePlayback({ engineAction: "stop" }) };
         }
     );
 
@@ -3068,6 +3030,7 @@ function registerIpcHandlers() {
                 if (nativeOutputAllowed) {
                     restartNdiSenderForProfile();
                     restartOmtSenderForProfile();
+                    ensureTransportOutputs(resolveFfmpegPath());
                 }
 
                 return {
@@ -3260,6 +3223,7 @@ function registerIpcHandlers() {
     registerTrustedHandle(
         "report:playout-start",
         async (_event, mediaItem) => {
+            if (rundownController) return { ok: true, backendManaged: true };
             try {
                 return {
                     ok: true,
@@ -3283,6 +3247,7 @@ function registerIpcHandlers() {
     registerTrustedHandle(
         "report:playout-finish",
         async (_event, entryId, status, playedSeconds) => {
+            if (rundownController) return { ok: true, backendManaged: true };
             try {
                 return finishPlayoutEntry(
                     entryId,
@@ -3964,9 +3929,7 @@ function startNdiSender() {
                 reason
             );
 
-            stopNativePlayback({
-                engineAction: "pause"
-            });
+            programAudioRouter.setPipe("");
 
             ndiReady = false;
             ndiFrameBusy = false;
@@ -4019,6 +3982,7 @@ function startNdiSender() {
                                 ndiAudioPipe
                     ) {
                         ndiAudioReady = true;
+                        programAudioRouter.setPipe(ndiAudioPipe);
                     }
 
                     if (
@@ -4133,6 +4097,7 @@ function stopNdiSender({
     ndiAudioReady = false;
     ndiAudioNativeActive = false;
     ndiAudioPipe = "";
+    programAudioRouter.setPipe("");
 
     const processRef = ndiProcess;
     ndiProcess = null;
@@ -4221,8 +4186,7 @@ function startSystem() {
         getMedia, getCategories: getLibraryCategories, getRundown: getDailyRundown, saveRundown: saveDailyRundown });
     playoutRecovery = new PlayoutRecovery(app.getPath("userData"));
     recoveryTimer = setInterval(() => {
-        try { playoutRecovery.captureNative(playoutEngine.snapshot()); }
-        catch (error) { console.error("Falha ao salvar recuperação do PROGRAM:", error); }
+        void playoutRecovery.captureNativeAsync(playoutEngine.snapshot()).catch(error => console.error("Falha ao salvar recuperação do PROGRAM:", error));
     }, 1000);
     serverMedia.initialize(
         app.getPath("userData"),
@@ -4231,12 +4195,74 @@ function startSystem() {
     startServerMediaHealthMonitor();
     initializeLibraryCategories(app.getPath("userData"));
     initializeWebInputs(app.getPath("userData"));
+    operationSettings = new OperationSettings(app.getPath("userData"));
+    if (process.platform === "win32" && app.isPackaged) {
+        processWatchdog = new ProcessWatchdog({ execPath: process.execPath, folder: app.getPath("userData"), cwd: path.dirname(process.execPath) });
+        if (operationSettings.value.watchdogEnabled) processWatchdog.start();
+    }
     initializePlayoutReports({
         userDataPath: app.getPath("userData"),
         documentsPath: isTestBench
             ? path.join(testBenchConfig.userDataPath, "documents")
             : app.getPath("documents")
     });
+    if (nativeOutputAllowed) {
+        rundownController = new RundownController({ getItems: getTimeline, snapshot: () => playoutEngine.snapshot(),
+            start: (item, position, overrides) => {
+                const overlay = nativeOverlay(item, position, overrides);
+                const priorPlayout = playoutEngine.snapshot();
+                playoutEngine.start({ filePath: item.path, itemId: item.id, inPointSeconds: overlay.inPointSeconds,
+                    startSeconds: position, outPointSeconds: overlay.outPointSeconds, waitForFirstFrame: true });
+                return startNativePlayback(item.path, position, item.hashtag || "", { ...overlay, __priorPlayout: priorPlayout });
+            },
+            stop: mode => { stopNativePlayback({ engineAction: mode === "fault" ? "preserve" : mode });
+                if (mode === "fault") playoutEngine.fault(rundownController.lastIssue || "Contingência"); },
+            getContingency: () => getMedia().find(item => item.id === operationSettings.value.fillerMediaId),
+            reportStart: startPlayoutEntry, reportFinish: finishPlayoutEntry,
+            reportReady: markPlayoutEntryReady,
+            reportSuccessor: updatePlayoutEntrySuccessor,
+            onContingency: () => { lastProgramFrame = blackFrame(activeOutputProfile); },
+            onChange: () => {
+                const snapshot = playoutEngine.snapshot();
+                if (snapshot.state === "IDLE" && rundownController.current) {
+                    void playoutRecovery.saveAsync({ itemId: rundownController.current.id,
+                        positionSeconds: rundownController.finished ? Number(rundownController.current.outPoint)||Number(rundownController.current.duration)||0 : snapshot.positionSeconds,
+                        playing: false, rundownFinished: rundownController.finished }).catch(error => console.error("Checkpoint final:", error));
+                }
+                else void playoutRecovery.captureNativeAsync(snapshot).catch(error => console.error("Checkpoint do motor:", error));
+                if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("playout:state", { ...snapshot, autonomous: true });
+            }
+        });
+        rundownController.pendingFailures.push(...getPendingFailedReportIds());
+        programStandby = new ProgramStandby({ getProfile: () => activeOutputProfile,
+            isPlaying: () => nativePlaybackActive && lastFrameGeneration === playoutEngine.generation && programClock.nowMs() - lastProgramFrameAt < 1000,
+            getFrame: () => playoutEngine.snapshot().state !== "IDLE" && lastProgramFrame?.length === activeOutputProfile.frameSize ? lastProgramFrame : null,
+            onFrame: frame => { writeNativeProgramFrame(frame); for (const output of transportOutputs.values()) output.writeVideo(frame); },
+            onAudio: sendProgramAudioPcm });
+        programStandby.start();
+        programSupervisorTimer = setInterval(() => {
+            const state = playoutEngine.snapshot();
+            if (state.state === "PLAYING" && programClock.nowMs() - lastProgramFrameAt > operationSettings.value.stallSeconds * 1000) {
+                onPlayoutFault(`Sem novos quadros do material por ${operationSettings.value.stallSeconds} segundos.`);
+            }
+        }, 1000);
+        programSupervisorTimer.unref();
+        const saved = playoutRecovery.state;
+        const item = saved && (getTimeline().find(item => item.id === saved.itemId) ||
+            (saved.itemId === "__contingency__" ? { ...rundownController.getContingency?.(), id: "__contingency__", isContingency: true, loop: true } : null));
+        if (item?.path) {
+            const position = Math.max(Number(item.inPoint)||0, Math.min(Number(item.outPoint)||Number(item.duration)||saved.positionSeconds, saved.positionSeconds));
+            if (saved.playing && operationSettings.value.resumeOnLaunch) {
+                backendRecoveryTimer = setTimeout(() => void rundownController.play(item, position).catch(error => console.error("Retomada:", error.message)), 1000);
+                backendRecoveryTimer.unref();
+            } else {
+                rundownController.current = item;
+                playoutEngine.start({ filePath: item.path, itemId: item.id, inPointSeconds: Number(item.inPoint)||0, startSeconds: position, outPointSeconds: Number(item.outPoint)||Number(item.duration)||null });
+                if (saved.rundownFinished || saved.ended) { rundownController.finished = saved.rundownFinished === true; playoutEngine.complete(); }
+                else playoutEngine.pause();
+            }
+        }
+    }
     dataBackups = new DataBackupService(app.getPath("userData"), app.getVersion());
     dataBackups.start();
     addLog("Sistema iniciado");
@@ -4279,6 +4305,7 @@ app.whenReady().then(() => {
         if (nativeOutputAllowed) {
             startNdiSender();
             startOmtSender();
+            ensureTransportOutputs(resolveFfmpegPath());
         } else {
             ndiLastError = "Bancada: NDI propositalmente desativado.";
         }
@@ -4305,18 +4332,36 @@ app.whenReady().then(() => {
     });
 });
 
-app.on("before-quit", () => {
+app.on("before-quit", async event => {
+    if (shuttingDown) return;
+    event.preventDefault();
+    shuttingDown = true;
+    const closingSnapshot = playoutEngine.snapshot();
+    if (rundownController && ["PLAYING", "STARTING"].includes(closingSnapshot.state)) rundownController.pause();
+    else playoutEngine.pause();
+    try {
+    processWatchdog?.stop();
+    clearInterval(programSupervisorTimer); clearTimeout(backendRecoveryTimer); clearTimeout(uiRecoveryTimer);
+
     dataBackups?.stop();
+    programStandby?.stop();
+    programAudioRouter.stop();
+    for (const output of transportOutputs.values()) output.stop();
+    transportOutputs.clear();
     schedulingController?.stop();
     clearInterval(recoveryTimer);
-    try { playoutRecovery?.captureNative(playoutEngine.snapshot()); }
+    stopNativePlayback({ engineAction: "preserve" });
+    try { await playoutRecovery?.flush(); playoutRecovery?.captureNative(closingSnapshot); }
     catch (error) { console.error("Falha ao salvar posição ao fechar:", error); }
     stopServerMediaHealthMonitor();
     cancelActivePreviews();
+    rundownController?.closeReport("PULADO", { reason: "Aplicativo encerrado" });
     closeOpenEntriesAsSkipped();
-    stopNativePlayback();
-    stopNdiSender();
-    stopOmtSender();
+    await listReportFiles().catch(error => console.error("Falha ao concluir relatório:", error));
+    } catch (error) { console.error("Falha ao encerrar:", error); }
+    finally {
+        stopNativePlayback(); stopNdiSender(); stopOmtSender(); app.quit();
+    }
 });
 
 app.on("window-all-closed", () => {
