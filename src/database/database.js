@@ -98,6 +98,7 @@ const initialData = {
     timeline: [],
     playlists: [],
     dailyRundowns: {},
+    weeklyRundowns: {},
     logs: []
 };
 
@@ -596,6 +597,7 @@ function loadDatabase() {
                 ? parsedData.playlists
                 : [],
 
+            weeklyRundowns: parsedData.weeklyRundowns && typeof parsedData.weeklyRundowns === "object" && !Array.isArray(parsedData.weeklyRundowns) ? parsedData.weeklyRundowns : {},
             dailyRundowns:
                 parsedData.dailyRundowns &&
                 typeof parsedData.dailyRundowns === "object" &&
@@ -975,10 +977,11 @@ function getDailyRundown(dateValue) {
         startTime: "00:00",
         items: []
     };
-    const mediaById = new Map(
-        data.media.map((item) => [item.id, item])
-    );
+    return hydrateRundown(stored, date);
+}
 
+function hydrateRundown(stored, date = "") {
+    const mediaById = new Map(data.media.map(item => [item.id, item]));
     const items = Array.isArray(stored.items)
         ? stored.items.map((entry) => {
               if (entry.placeholder) return {
@@ -1017,7 +1020,8 @@ function getDailyRundown(dateValue) {
         title: normalizeText(stored.title, "Programação diária", 120) || "Programação diária",
         startTime: normalizeRundownTime(stored.startTime),
         items,
-        updatedAt: stored.updatedAt ?? null
+        updatedAt: stored.updatedAt ?? null,
+        missingItems: Math.max(0, (stored.items?.length || 0) - items.length)
     };
 }
 
@@ -1031,10 +1035,26 @@ function saveDailyRundown(rundown) {
         rundown.expectedUpdatedAt !== (data.dailyRundowns?.[date]?.updatedAt ?? null)) {
         throw new Error("A programação foi alterada por outro operador. Atualize antes de salvar.");
     }
-    const mediaIds = new Set(data.media.map((item) => item.id));
-    const sourceItems = Array.isArray(rundown.items) ? rundown.items : [];
+    const items = normalizeRundownItems(rundown.items);
 
-    const items = sourceItems.map((item) => {
+    data.dailyRundowns = data.dailyRundowns ?? {};
+    data.dailyRundowns[date] = {
+        date,
+        title: normalizeText(rundown.title, "Programação diária", 120) || "Programação diária",
+        startTime: normalizeRundownTime(rundown.startTime),
+        items,
+        updatedAt: new Date(Math.max(Date.now(), Date.parse(data.dailyRundowns[date]?.updatedAt || "") + 1 || 0)).toISOString()
+    };
+
+    saveDatabase();
+    return getDailyRundown(date);
+}
+
+function normalizeRundownItems(source) {
+    const mediaIds = new Set(data.media.map((item) => item.id));
+    const sourceItems = Array.isArray(source) ? source : [];
+
+    return sourceItems.map((item) => {
         if (item?.placeholder === true) return {
             rundownItemId: typeof item.rundownItemId === "string" && item.rundownItemId ? item.rundownItemId : crypto.randomUUID(),
             placeholder: true, liveSlot: item.liveSlot === true, name: normalizeText(item.name, "", 120),
@@ -1063,17 +1083,28 @@ function saveDailyRundown(rundown) {
         };
     }).filter(Boolean);
 
-    data.dailyRundowns = data.dailyRundowns ?? {};
-    data.dailyRundowns[date] = {
-        date,
-        title: normalizeText(rundown.title, "Programação diária", 120) || "Programação diária",
-        startTime: normalizeRundownTime(rundown.startTime),
-        items,
-        updatedAt: new Date(Math.max(Date.now(), Date.parse(data.dailyRundowns[date]?.updatedAt || "") + 1 || 0)).toISOString()
-    };
+}
 
+function normalizeWeekday(value) {
+    if (!Number.isInteger(value) || value < 0 || value > 6) throw Error("Dia da semana inválido.");
+    return String(value);
+}
+function getWeeklyRundown(weekday) {
+    const stored = data.weeklyRundowns?.[normalizeWeekday(weekday)];
+    return { ...hydrateRundown(stored || { items: [] }), exists: Boolean(stored), weekday };
+}
+function saveWeeklyRundown(weekday, rundown) {
+    const key = normalizeWeekday(weekday);
+    if (!rundown || !Array.isArray(rundown.items)) throw Error("Modelo inválido.");
+    const previous = data.weeklyRundowns?.[key];
+    if (Object.hasOwn(rundown, "expectedUpdatedAt") && rundown.expectedUpdatedAt !== (previous?.updatedAt ?? null))
+        throw Error("O modelo foi alterado por outro operador. Atualize antes de salvar.");
+    data.weeklyRundowns ||= {};
+    data.weeklyRundowns[key] = { title: normalizeText(rundown.title, "Modelo semanal", 120),
+        startTime: normalizeRundownTime(rundown.startTime), items: normalizeRundownItems(rundown.items),
+        updatedAt: new Date(Math.max(Date.now(), Date.parse(previous?.updatedAt || "") + 1 || 0)).toISOString() };
     saveDatabase();
-    return getDailyRundown(date);
+    return getWeeklyRundown(weekday);
 }
 
 function addMedia(filePaths) {
@@ -1306,6 +1337,8 @@ module.exports = {
     saveTimeline,
     getDailyRundown,
     saveDailyRundown,
+    getWeeklyRundown,
+    saveWeeklyRundown,
     addMedia,
     removeMedia,
     updateMediaMetadata

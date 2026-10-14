@@ -9,7 +9,7 @@ const { SchedulingWebController } = require("../src/core/scheduling/web-controll
 (async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-controller-qa-"));
     const controller = new SchedulingWebController({ port: 0, distFolder: root,
-        getMedia: db.getMedia, getRundown: db.getDailyRundown, saveRundown: db.saveDailyRundown });
+        getMedia: db.getMedia, getRundown: db.getDailyRundown, saveRundown: db.saveDailyRundown, getWeekly: db.getWeeklyRundown, saveWeekly: db.saveWeeklyRundown });
     try {
         db.initializeDatabase({ userDataPath: root, migrateLegacy: false });
         fs.writeFileSync(path.join(root, "controller.html"), "<!doctype html><title>Programação</title>");
@@ -39,6 +39,16 @@ const { SchedulingWebController } = require("../src/core/scheduling/web-controll
         assert.equal(timeline[0].liveSlot, true);
         assert.equal(timeline[0].name, "Ao Vivo");
         assert.equal(timeline[0].outPoint, 600);
+        for (let day = 0; day < 7; day++) {
+            const template = db.saveWeeklyRundown(day, { title: `Modelo ${day}`, startTime: "06:30", items: [...live.items, updated.items[0]] });
+            assert.equal(template.exists, true); assert.equal(template.items.length, 3);
+            assert.equal(template.items[0].liveSlot, true); assert.equal(template.items[2].replacedPlaceholder, true);
+        }
+        db.initializeDatabase({ userDataPath: root, migrateLegacy: false });
+        const weekly = db.getWeeklyRundown(3);
+        assert.equal(weekly.title, "Modelo 3"); assert.equal(weekly.startTime, "06:30"); assert.equal(weekly.items.length, 3);
+        assert.throws(() => db.getWeeklyRundown(7), /inválido/);
+        assert.throws(() => db.saveWeeklyRundown(3, { ...weekly, expectedUpdatedAt: null }), /outro operador/);
         const status = await controller.start();
         const base = `http://127.0.0.1:${status.port}`;
         assert.equal((await fetch(base + "/api/media")).status, 401);
@@ -53,6 +63,15 @@ const { SchedulingWebController } = require("../src/core/scheduling/web-controll
         const save = await fetch(base + "/api/rundown", { method: "POST", headers,
             body: JSON.stringify({ date: "2026-10-14", expectedUpdatedAt: null, items: [{ placeholder: true, name: "Série", duration: 1200 }] }) });
         assert.equal(save.status, 200); assert.equal(db.getDailyRundown("2026-10-14").items[0].placeholder, true);
+        const remoteWeekly = await fetch(base + "/api/weekly?weekday=3", { headers });
+        assert.equal((await remoteWeekly.json()).items[0].liveSlot, true);
+        const newWeekly = await fetch(base + "/api/weekly", { method: "POST", headers, body: JSON.stringify({ weekday: 2, rundown: { title: "Terça remota", startTime: "08:00", items: live.items } }) });
+        assert.equal(newWeekly.status, 200); assert.equal(db.getWeeklyRundown(2).title, "Terça remota");
+        assert.equal((await fetch(base + "/api/weekly?weekday=9", { headers })).status, 400);
+        assert.equal((await fetch(base + "/api/weekly")).status, 401);
+        const htmlExport = await fetch(base + "/api/rundown/html", { method: "POST", headers, body: JSON.stringify({ ...live, title: '<script>alert(1)</script>' }) });
+        assert.equal(htmlExport.status, 200); assert(htmlExport.headers.get('content-type').includes('text/html'));
+        const html = await htmlExport.text(); assert(html.includes('&lt;script&gt;')); assert(!html.includes('<script>'));
         assert.equal((await fetch(base + "/api/apply", { method: "POST", headers, body: "{}" })).status, 404);
         assert.equal((await fetch(base + "/api/rundown", { method: "POST", headers: { ...headers, Origin: "http://outro-site" }, body: "{}" })).status, 403);
         assert.equal((await fetch(base + "/controller")).status, 200);

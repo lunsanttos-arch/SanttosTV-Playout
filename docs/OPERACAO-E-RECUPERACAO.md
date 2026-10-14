@@ -52,3 +52,14 @@ A OPEC pode marcar um “Conteúdo a definir” como **Ao Vivo**. O título é o
 Ao chegar ao espaço ao vivo, o Santtos fica pausado, com saída preta e áudio silencioso. O master corta a transmissão para o vMix manualmente e, ao terminar, avança para o próximo item no Santtos e retorna o corte. A duração reservada é uma previsão; esse espaço não dispara avanço automático nem controle do vMix. Os blocos de um filme substituído não ocupam os espaços marcados como Ao Vivo.
 
 O campo de minutos permite apagar e redigitar o valor, inclusive fracionado. Ao sair do campo, valores vazios ou fora do intervalo de 1 segundo a 24 horas retornam à última duração válida.
+
+
+## Roteiros, modelos semanais e importação
+
+**PDF do roteiro** e **HTML do roteiro**, ao lado de **Atualizar programação**, exportam o conteúdo que está na tela, inclusive alterações ainda não salvas. O layout usa hora, número/identificação, material, duração e observação. O PDF é A4, com cabeçalho da tabela repetido e páginas numeradas; o HTML é independente, abre no navegador e também pode ser impresso. Horários são previstos a partir da hora inicial e das durações dos cortes; depois de uma duração desconhecida, o horário aparece como indefinido.
+
+Ao arrastar um material da biblioteca sobre um item do roteiro, escolha **Substituir item**, **Incluir antes deste item** ou **Cancelar**. A substituição preserva a identificação e a observação do espaço. Soltar ao final acrescenta o material diretamente. O botão **Desfazer** reverte essas alterações.
+
+**Criar modelo semanal** salva o roteiro atual para um dos sete dias da semana. Existe um modelo por dia; o diálogo informa quando o modelo existente será substituído. Os modelos ficam no banco do master, são compartilhados com o controlador no navegador e estão incluídos no backup de dados. Não duplicam os arquivos de vídeo.
+
+Em **Importar programação**, escolha um modelo semanal ou **Programação de outra data** e selecione a origem pelo calendário, inclusive dias anteriores. É possível substituir o roteiro atual ou acrescentar os itens ao final. A data de destino é mantida; substituir importa também o nome e a hora inicial, enquanto acrescentar mantém os dados atuais. Cada ocorrência importada recebe um identificador novo. A origem permanece intacta; revise o resultado e clique em **Salvar programação**. **Desfazer** restaura os itens, o nome e a hora anteriores. Se houver materiais da origem removidos da biblioteca, a importação informa o problema e preserva o roteiro de destino.

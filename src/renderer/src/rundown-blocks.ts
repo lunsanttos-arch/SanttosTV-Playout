@@ -30,15 +30,22 @@ export function placeRundownBlocks(items: RundownItem[], sourceId: string, range
     return result;
 }
 
-export interface RundownDraft { items: RundownItem[]; history: RundownItem[][] }
-export type DraftAction = { type: "load"; items: RundownItem[] } | { type: "normalize"; items: RundownItem[] } | { type: "undo" } |
+
+export interface RundownMeta { title: string; startTime: string }
+export interface RundownDraft { items: RundownItem[]; history: RundownItem[][]; meta?: RundownMeta; metaHistory?: (RundownMeta | undefined)[] }
+export type DraftAction = { type: "load"; items: RundownItem[]; meta?: RundownMeta } | { type: "normalize"; items: RundownItem[] } | { type: "undo" } |
+    { type: "meta"; meta: RundownMeta } | { type: "import"; items: RundownItem[]; meta: RundownMeta } |
     { type: "edit"; update: RundownItem[] | ((items: RundownItem[]) => RundownItem[]) };
 export function rundownDraftReducer(state: RundownDraft, action: DraftAction): RundownDraft {
-    if (action.type === "load") return { items: action.items, history: [] };
-    if (action.type === "normalize") return { items: action.items, history: state.history };
+    if (action.type === "load") return { items: action.items, history: [], meta: action.meta ?? state.meta, metaHistory: [] };
+    if (action.type === "normalize") return { ...state, items: action.items };
     if (action.type === "undo") return state.history.length
-        ? { items: state.history[state.history.length - 1], history: state.history.slice(0, -1) } : state;
-    const items = typeof action.update === "function" ? action.update(state.items) : action.update;
-    if (JSON.stringify(items) === JSON.stringify(state.items)) return state;
-    return { items, history: [...state.history.slice(-49), state.items] };
+        ? { items: state.history[state.history.length - 1], history: state.history.slice(0, -1),
+            meta: state.metaHistory?.[state.history.length - 1] ?? state.meta, metaHistory: state.metaHistory?.slice(0, -1) } : state;
+    const items = action.type === "edit" ? (typeof action.update === "function" ? action.update(state.items) : action.update)
+        : action.type === "import" ? action.items : state.items;
+    const meta = action.type === "meta" || action.type === "import" ? action.meta : state.meta;
+    if (JSON.stringify(items) === JSON.stringify(state.items) && JSON.stringify(meta) === JSON.stringify(state.meta)) return state;
+    return { items, meta, history: [...state.history.slice(-49), state.items],
+        metaHistory: [...(state.metaHistory ?? state.history.map(() => state.meta)).slice(-49), state.meta] };
 }

@@ -22,3 +22,8 @@ const afterLive=placeRundownBlocks(withLive,'film-slot',ranges.slice(0,2));
 assert.equal(afterLive[1],liveSlot);
 assert.equal(afterLive[2].sourceMediaId,'movie');
 assert.throws(()=>placeRundownBlocks([source,liveSlot],'film-slot',ranges.slice(0,2)),/lacuna/);
+
+const originalMeta={title:'Original',startTime:'05:00'};
+let importedState=rundownDraftReducer({items:initial,history:[],meta:originalMeta},{type:'import',items:placed,meta:{title:'Importado',startTime:'08:00'}});
+importedState=rundownDraftReducer(importedState,{type:'undo'});
+assert.equal(importedState.items,initial);assert.equal(importedState.meta,originalMeta);

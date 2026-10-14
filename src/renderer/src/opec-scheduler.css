@@ -403,3 +403,17 @@
 
 .opec-block-tools button.opec-live-active { background: #7447c8; border-color: #9568ed; color: #fff; }
 .opec-placeholder-name:focus::placeholder { color: transparent; }
+
+.opec-header-actions { flex-wrap: wrap; justify-content: flex-end; }
+.opec-modal-backdrop { position: fixed; inset: 0; background: #000a; z-index: 1200; display: flex; align-items: center; justify-content: center; padding: 20px; }
+.opec-modal { width: min(560px, 100%); max-height: 90vh; overflow: auto; padding: 22px; background: #19191e; color: #eee; border: 1px solid #48434f; border-radius: 10px; box-shadow: 0 20px 80px #0008; }
+.opec-modal h2 { font-size: 18px; margin: 0 0 14px; }
+.opec-modal p, .opec-modal small { color: #aaa; font-size: 12px; }
+.opec-modal label { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+.opec-modal select { height: 34px; background: #202028; color: #eee; border: 1px solid #48434f; border-radius: 6px; padding: 4px 8px; }
+.opec-modal-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+.opec-modal-actions button { padding: 8px 12px; }
+.opec-modal-actions button:first-child { background: #7447c8; border-color: #9568ed; }
+.opec-modal .calendar-popover { position: relative; }
+
+.opec-modal p.opec-modal-error { color: #ffaaaa; padding: 10px; background: #442525; border-radius: 6px; }

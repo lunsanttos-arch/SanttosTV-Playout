@@ -118,6 +118,8 @@ const {
     saveTimeline,
     getDailyRundown,
     saveDailyRundown,
+    getWeeklyRundown,
+    saveWeeklyRundown,
     addMedia,
     removeMedia,
     updateMediaMetadata
@@ -3336,6 +3338,29 @@ function registerIpcHandlers() {
         })
     );
 
+    registerTrustedHandle("rundown:weekly-get", (_event, weekday) => getWeeklyRundown(weekday));
+    registerTrustedHandle("rundown:weekly-save", (_event, weekday, rundown) => {
+        try { return { ok: true, rundown: saveWeeklyRundown(weekday, rundown) }; }
+        catch (error) { return { ok: false, error: error.message }; }
+    });
+    registerTrustedHandle("rundown:html", async (_event, rundown) => {
+        try {
+            const html = require("../core/scheduling/rundown-pdf").rundownPrintHtml(rundown);
+            const selected = await dialog.showSaveDialog(mainWindow, { title: "Salvar roteiro em HTML", defaultPath: `Roteiro-${rundown.date}.html`, filters: [{ name: "HTML", extensions: ["html"] }] });
+            if (selected.canceled) return { ok: true, canceled: true };
+            await fs.promises.writeFile(selected.filePath, html, "utf8"); return { ok: true };
+        } catch (error) { return { ok: false, error: error.message }; }
+    });
+    registerTrustedHandle("rundown:pdf", async (_event, rundown) => {
+        try {
+            const selected = await dialog.showSaveDialog(mainWindow, { title: "Salvar roteiro em PDF", defaultPath: `Roteiro-${rundown.date}.pdf`, filters: [{ name: "PDF", extensions: ["pdf"] }] });
+            if (selected.canceled) return { ok: true, canceled: true };
+            const pdf = await require("../core/scheduling/rundown-pdf").renderRundownPdf(BrowserWindow, rundown);
+            await fs.promises.writeFile(selected.filePath, pdf);
+            return { ok: true };
+        } catch (error) { return { ok: false, error: error.message }; }
+    });
+
     registerTrustedHandle(
         "rundown:get",
         async (_event, date) => getDailyRundown(date)
@@ -4183,7 +4208,8 @@ function startSystem() {
         migrateLegacy: !isTestBench
     });
     schedulingController = new SchedulingWebController({ distFolder: path.join(__dirname, "../../dist"),
-        getMedia, getCategories: getLibraryCategories, getRundown: getDailyRundown, saveRundown: saveDailyRundown });
+        getMedia, getCategories: getLibraryCategories, getRundown: getDailyRundown, saveRundown: saveDailyRundown, getWeekly: getWeeklyRundown, saveWeekly: saveWeeklyRundown,
+        renderPdf: rundown => require("../core/scheduling/rundown-pdf").renderRundownPdf(BrowserWindow, rundown) });
     playoutRecovery = new PlayoutRecovery(app.getPath("userData"));
     recoveryTimer = setInterval(() => {
         void playoutRecovery.captureNativeAsync(playoutEngine.snapshot()).catch(error => console.error("Falha ao salvar recuperação do PROGRAM:", error));

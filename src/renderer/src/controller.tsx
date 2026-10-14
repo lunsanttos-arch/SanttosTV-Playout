@@ -12,6 +12,13 @@ async function request(url: string, body?: unknown) {
     if (!response.ok) throw new Error(result.error || "Não foi possível acessar o master.");
     return result;
 }
+async function downloadRundown(format: "pdf" | "html", rundown: Parameters<typeof window.santtosAPI.exportRundownPdf>[0]) {
+    const response = await fetch(`/api/rundown/${format}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(rundown) });
+    if (!response.ok) throw Error((await response.json()).error || "Não foi possível exportar o roteiro.");
+    const url = URL.createObjectURL(await response.blob()); const link = document.createElement("a");
+    link.href = url; link.download = `Roteiro-${rundown.date}.${format}`; document.body.append(link); link.click(); link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000); return { ok: true };
+}
 function Controller() {
     const [media, setMedia] = useState<MediaItem[] | null>(null);
     const [pin, setPin] = useState("");
@@ -19,7 +26,11 @@ function Controller() {
     async function login() {
         try {
             await request("/api/login", { pin });
-            window.santtosAPI = { getLibraryCategories: () => request("/api/library-categories"), getDailyRundown: date => request(`/api/rundown?date=${encodeURIComponent(date)}`),
+            window.santtosAPI = {
+                getWeeklyRundown: weekday => request(`/api/weekly?weekday=${weekday}`),
+                saveWeeklyRundown: (weekday, rundown) => request("/api/weekly", { weekday, rundown }),
+                exportRundownHtml: rundown => downloadRundown("html", rundown),
+                exportRundownPdf: rundown => downloadRundown("pdf", rundown), getLibraryCategories: () => request("/api/library-categories"), getDailyRundown: date => request(`/api/rundown?date=${encodeURIComponent(date)}`),
                 saveDailyRundown: rundown => request("/api/rundown", rundown) } as typeof window.santtosAPI;
             setMedia(await request("/api/media"));
         } catch (error) { setError(error instanceof Error ? error.message : "Acesso indisponível."); }

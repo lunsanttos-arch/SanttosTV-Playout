@@ -28,7 +28,7 @@ let ready=false;for(let n=0;n<100;n++){try{if(!ws||ws.readyState!==WebSocket.OPE
 await evaluate(`window.santtosAPI.importMedia(${JSON.stringify([fixture])})`);let media;for(let n=0;n<100;n++){media=(await evaluate('window.santtosAPI.getMedia()'))[0];if(media?.duration>=6)break;await wait(100)}if(!media?.duration)throw Error('Fixture was not analyzed');
 // A compact raster keeps CI load separate from hardware production benchmarks.
 const settings=await evaluate('window.santtosAPI.getSettings()');await evaluate(`window.santtosAPI.saveOutputSettings(${JSON.stringify({...settings.output,resolution:'1280x720',fps:'25',ndi:{enabled:true,name:'Santtos QA DEV NULL'},omt:{enabled:false},srt:{enabled:false},rtmp:{enabled:false}})})`);
-ws.close();ws=null;await run('test-opec-live-slots.cjs');await run('test-opec-auto-advance.cjs');
+ws.close();ws=null;await run('test-opec-live-slots.cjs');await run('test-opec-models.cjs',{SANTTOS_QA_OUTPUT:logs});await run('test-opec-auto-advance.cjs');
 await run('test-program-autonomy.cjs',{SANTTOS_QA_USERDATA:path.join(config,'santtos-tv-playout')});
 if(process.argv.includes('--live')){await run('test-input-web-handoff.cjs',{SANTTOS_QA_GRAPHICS:'1'});await run('test-input-web-handoff.cjs',{SANTTOS_QA_STALL:'1'});}
 await connect();const item={...media,id:'burn-in-smoke',sourceMediaId:media.id,inPoint:0,outPoint:40,loop:true,freezeEnd:false};await evaluate(`window.santtosAPI.applyNativeRundown(${JSON.stringify([item])})`);await evaluate(`window.santtosAPI.playNdiFile(${JSON.stringify(media.path)},0,'',${JSON.stringify({itemId:item.id,inPointSeconds:0,outPointSeconds:40,loop:true})})`);

@@ -250,11 +250,16 @@ declare global {
             removeMedia: (
                 mediaId: string
             ) => Promise<RemoveResult>;
+            getWeeklyRundown: (weekday: number) => Promise<{ title: string; startTime: string; items: RundownItem[]; updatedAt?: string | null; exists: boolean; missingItems?: number }>;
+            saveWeeklyRundown: (weekday: number, rundown: { title: string; startTime: string; items: RundownItem[]; expectedUpdatedAt?: string | null }) => Promise<{ ok: boolean; error?: string }>;
+            exportRundownHtml: (rundown: { date: string; title: string; startTime: string; items: RundownItem[] }) => Promise<{ ok: boolean; canceled?: boolean; error?: string }>;
+            exportRundownPdf: (rundown: { date: string; title: string; startTime: string; items: RundownItem[] }) => Promise<{ ok: boolean; canceled?: boolean; error?: string }>;
             getDailyRundown: (date: string) => Promise<{
                 date: string;
                 title: string;
                 startTime: string;
                 items: RundownItem[];
+                missingItems?: number;
                 updatedAt?: string | null;
             }>;
             saveDailyRundown: (rundown: {

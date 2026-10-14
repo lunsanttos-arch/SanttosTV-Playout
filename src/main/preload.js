@@ -70,6 +70,10 @@ contextBridge.exposeInMainWorld(
                 mediaId
             ),
 
+        getWeeklyRundown: weekday => ipcRenderer.invoke("rundown:weekly-get", weekday),
+        saveWeeklyRundown: (weekday, rundown) => ipcRenderer.invoke("rundown:weekly-save", weekday, rundown),
+        exportRundownHtml: rundown => ipcRenderer.invoke("rundown:html", rundown),
+        exportRundownPdf: rundown => ipcRenderer.invoke("rundown:pdf", rundown),
         getDailyRundown: (date) =>
             ipcRenderer.invoke(
                 "rundown:get",

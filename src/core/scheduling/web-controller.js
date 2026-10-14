@@ -6,8 +6,8 @@ const crypto = require("node:crypto");
 const os = require("node:os");
 
 class SchedulingWebController {
-    constructor({ distFolder, getMedia, getRundown, saveRundown, getCategories = () => [], port = 8787 }) {
-        Object.assign(this, { distFolder, getMedia, getRundown, saveRundown, getCategories, port });
+    constructor({ distFolder, getMedia, getRundown, saveRundown, getCategories = () => [], getWeekly, saveWeekly, renderPdf, port = 8787 }) {
+        Object.assign(this, { distFolder, getMedia, getRundown, saveRundown, getCategories, getWeekly, saveWeekly, renderPdf, port });
         this.server = null; this.sessions = new Map(); this.attempts = new Map();
         this.pin = "";
     }
@@ -65,6 +65,30 @@ class SchedulingWebController {
             if (!session || (this.sessions.get(session) || 0) < Date.now()) {
                 this.sessions.delete(session);
                 return send(401, { error: "Informe o código de acesso do master." });
+            }
+            if (req.method === "GET" && parsed.pathname === "/api/weekly" && this.getWeekly) {
+                try { return send(200, this.getWeekly(Number(parsed.searchParams.get("weekday")))); }
+                catch (error) { return send(400, { error: error.message }); }
+            }
+            if (req.method === "POST" && parsed.pathname === "/api/weekly" && this.saveWeekly) {
+                try { const body = await this.body(req); return send(200, { ok: true, rundown: this.saveWeekly(body.weekday, body.rundown) }); }
+                catch (error) { return send(400, { error: error.message }); }
+            }
+            if (req.method === "POST" && parsed.pathname === "/api/rundown/html") {
+                try {
+                    const html = require("./rundown-pdf").rundownPrintHtml(await this.body(req));
+                    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Content-Disposition": 'attachment; filename="roteiro-santtos.html"' }); res.end(html); return;
+                } catch (error) { return send(400, { error: error.message }); }
+            }
+            if (req.method === "POST" && parsed.pathname === "/api/rundown/pdf" && this.renderPdf) {
+                if (this.pdfBusy) return send(409, { error: "Um PDF está sendo gerado. Aguarde." });
+                this.pdfBusy = true;
+                try {
+                    const pdf = await this.renderPdf(await this.body(req));
+                    res.writeHead(200, { "Content-Type": "application/pdf", "Content-Disposition": 'attachment; filename="roteiro-santtos.pdf"' });
+                    res.end(pdf); return;
+                } catch (error) { return send(400, { error: error.message }); }
+                finally { this.pdfBusy = false; }
             }
             if (req.method === "GET" && parsed.pathname === "/api/media") return send(200, this.getMedia());
             if (req.method === "GET" && parsed.pathname === "/api/library-categories") return send(200, this.getCategories());

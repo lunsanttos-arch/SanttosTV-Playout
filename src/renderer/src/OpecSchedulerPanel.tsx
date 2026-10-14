@@ -9,12 +9,15 @@ import StyledDatePicker from "./StyledDatePicker";
 import type { LibraryCategory } from "./LibraryFolderSettingsTab";
 import RemoteControllerAccess from "./RemoteControllerAccess";
 
+const WEEKDAYS = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
+
 interface DailyRundown {
     date: string;
     title: string;
     startTime: string;
     items: RundownItem[];
     updatedAt?: string | null;
+    missingItems?: number;
 }
 
 interface Props {
@@ -76,12 +79,13 @@ function SlotMinutes({ seconds, onChange }: { seconds: number; onChange: (second
 export default function OpecSchedulerPanel({ media, onApply, remote = false }: Props) {
     const [date, setDate] = useState(todayKey());
     const [version, setVersion] = useState<string | null>(null);
-    const [title, setTitle] = useState("Programação diária");
-    const [startTime, setStartTime] = useState("00:00");
-    const [draft, dispatchDraft] = useReducer(rundownDraftReducer, { items: [], history: [] });
+    const [draft, dispatchDraft] = useReducer(rundownDraftReducer, { items: [], history: [], meta: { title: "Programação diária", startTime: "00:00" } });
+    const title = draft.meta?.title ?? "Programação diária", startTime = draft.meta?.startTime ?? "00:00";
+    const setTitle = (title: string) => dispatchDraft({ type: "meta", meta: { title, startTime } });
+    const setStartTime = (startTime: string) => dispatchDraft({ type: "meta", meta: { title, startTime } });
     const items = draft.items;
     const setItems = (update: RundownItem[] | ((items: RundownItem[]) => RundownItem[])) => dispatchDraft({ type: "edit", update });
-    const loadItems = (items: RundownItem[]) => dispatchDraft({ type: "load", items });
+    const loadItems = (items: RundownItem[], meta?: { title: string; startTime: string }) => dispatchDraft({ type: "load", items, meta });
     const [categories, setCategories] = useState<LibraryCategory[]>([]);
     useEffect(() => { void window.santtosAPI.getLibraryCategories().then(setCategories).catch(() => {}); }, []);
     const [libraryFolder, setLibraryFolder] = useState("");
@@ -91,6 +95,23 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
     const [dropTarget, setDropTarget] = useState<string | null>(null);
     const [splitError, setSplitError] = useState("");
     const [editingFilm, setEditingFilm] = useState<RundownItem | null>(null);
+    const [pendingDrop, setPendingDrop] = useState<{ source: MediaItem; targetId: string } | null>(null);
+    const [importOpen, setImportOpen] = useState(false);
+    const [importKind, setImportKind] = useState<"weekday" | "date">("weekday");
+    const [weekday, setWeekday] = useState(() => new Date(`${todayKey()}T12:00:00`).getDay());
+    const [sourceDate, setSourceDate] = useState(todayKey());
+    const [importMode, setImportMode] = useState<"replace" | "append">("replace");
+    const [modelAction, setModelAction] = useState<"import" | "save">("import");
+    const [modelPreview, setModelPreview] = useState<Awaited<ReturnType<typeof window.santtosAPI.getWeeklyRundown>> | null>(null);
+    const [modalError, setModalError] = useState("");
+    const [modelLoading, setModelLoading] = useState(false);
+    useEffect(() => {
+        if (!importOpen || importKind !== "weekday") return;
+        let canceled = false; setModelPreview(null); setModelLoading(true); setModalError("");
+        void window.santtosAPI.getWeeklyRundown(weekday).then(result => { if (!canceled) setModelPreview(result); })
+            .catch(error => { if (!canceled) { setStatus(error.message); setModalError(error.message); } }).finally(() => { if (!canceled) setModelLoading(false); });
+        return () => { canceled = true; };
+    }, [importOpen, importKind, weekday]);
     const [draggedId, setDraggedId] = useState<string | null>(null);
 
     useEffect(() => {
@@ -102,9 +123,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
             .then((rundown: DailyRundown) => {
                 if (cancelled) return;
                 setVersion(rundown.updatedAt ?? null);
-                setTitle(rundown.title || "Programação diária");
-                setStartTime(rundown.startTime || "00:00");
-                loadItems(Array.isArray(rundown.items) ? rundown.items : []);
+                loadItems(Array.isArray(rundown.items) ? rundown.items : [], { title: rundown.title || "Programação diária", startTime: rundown.startTime || "00:00" });
             })
             .catch((error: unknown) => {
                 console.error(error);
@@ -167,9 +186,9 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
         const mediaId = event.dataTransfer.getData("application/x-santtos-media");
         const source = media.find(item => item.id === mediaId);
         if (source) {
-            if (target?.placeholder) patchItem(target.rundownItemId, { ...source, sourceMediaId: source.id,
-                placeholder: false, liveSlot: false, replacedPlaceholder: true, blockLabel: target.blockLabel || "", notes: target.notes || "", inPoint: clipIn(source), outPoint: clipOut(source) });
-            else addItem(source, target?.rundownItemId);
+            if (target) setPendingDrop({ source, targetId: target.rundownItemId });
+            else addItem(source);
+
         } else {
             const id = event.dataTransfer.getData("application/x-santtos-rundown") || draggedId;
             if (id && target) moveItem(id, target.rundownItemId);
@@ -177,6 +196,50 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                 ...current.filter(item => item.rundownItemId === id)]);
         }
         setDraggedId(null); setDropTarget(null);
+    }
+
+    function resolveDrop(replace: boolean) {
+        if (!pendingDrop) return;
+        const target = items.find(item => item.rundownItemId === pendingDrop.targetId);
+        if (!target) { setPendingDrop(null); return; }
+        const source = pendingDrop.source;
+        if (replace) patchItem(target.rundownItemId, { ...source, sourceMediaId: source.id, placeholder: false,
+            liveSlot: false, replacedPlaceholder: target.placeholder || target.replacedPlaceholder === true,
+            blockLabel: target.blockLabel || "", notes: target.notes || "", inPoint: clipIn(source), outPoint: clipOut(source) });
+        else addItem(source, target.rundownItemId);
+        setPendingDrop(null);
+    }
+
+    async function exportRoteiro(format: "pdf" | "html") {
+        setLoading(true);
+        try {
+            const result = await (format === "pdf" ? window.santtosAPI.exportRundownPdf : window.santtosAPI.exportRundownHtml)({ date, title, startTime, items });
+            if (!result.ok) throw Error(result.error || "Não foi possível exportar o roteiro.");
+            if (!result.canceled) setStatus(`Roteiro exportado em ${format.toUpperCase()}.`);
+        } catch (error) { setStatus(error instanceof Error ? error.message : "Não foi possível exportar o roteiro."); }
+        finally { setLoading(false); }
+    }
+
+    async function useModel() {
+        setLoading(true); setModalError("");
+        try {
+            if (modelAction === "save") {
+                if (!modelPreview) throw Error("Aguarde o carregamento do modelo.");
+                const result = await window.santtosAPI.saveWeeklyRundown(weekday, { title, startTime, items, expectedUpdatedAt: modelPreview.updatedAt ?? null });
+                if (!result.ok) throw Error(result.error || "Não foi possível salvar o modelo.");
+                setStatus(`Modelo de ${WEEKDAYS[weekday]} salvo.`);
+            } else {
+                const source = importKind === "date" ? await window.santtosAPI.getDailyRundown(sourceDate) : modelPreview;
+                if (!source || ("exists" in source && !source.exists) || !source.items.length) throw Error("A origem não tem programação salva.");
+                if (source.missingItems) throw Error("Há materiais da origem ausentes na biblioteca. Recupere-os antes de importar.");
+                const imported = source.items.map((item, index) => ({ ...item, rundownItemId: `import-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}` }));
+                dispatchDraft({ type: "import", items: importMode === "append" ? [...items, ...imported] : imported,
+                    meta: importMode === "append" ? { title, startTime } : { title: source.title, startTime: source.startTime } });
+                setStatus("Programação importada. Revise e salve para confirmar. Desfazer restaura a programação anterior.");
+            }
+            setImportOpen(false);
+        } catch (error) { const message = error instanceof Error ? error.message : "Não foi possível importar."; setStatus(message); setModalError(message); }
+        finally { setLoading(false); }
     }
 
     function patchItem(id: string, patch: Partial<RundownItem>) {
@@ -269,14 +332,45 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                 <div className="opec-header-actions">
                     <button disabled={loading || !draft.history.length} onClick={() => { dispatchDraft({ type: "undo" }); setEditingFilm(null); setStatus("Última alteração desfeita. Salve para atualizar a programação."); }}>Desfazer</button>
                     <button disabled={loading} onClick={() => void window.santtosAPI.getDailyRundown(date).then(rundown => {
-                        loadItems(rundown.items ?? []); setTitle(rundown.title); setStartTime(rundown.startTime); setVersion(rundown.updatedAt ?? null); setStatus("Programação atualizada.");
+                        loadItems(rundown.items ?? [], { title: rundown.title, startTime: rundown.startTime }); setVersion(rundown.updatedAt ?? null); setStatus("Programação atualizada.");
                     }).catch(() => setStatus("Não foi possível atualizar."))}>Atualizar programação</button>
+                    <button disabled={loading} onClick={() => void exportRoteiro("pdf")}>PDF do roteiro</button>
+                    <button disabled={loading} onClick={() => void exportRoteiro("html")}>HTML do roteiro</button>
+                    <button disabled={loading} onClick={() => { setModalError(""); setModelAction("save"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Criar modelo semanal</button>
+                    <button disabled={loading} onClick={() => { setModalError(""); setModelAction("import"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Importar programação</button>
                     <button onClick={() => void saveRundown().catch(() => {})} disabled={loading}>Salvar programação</button>
                     <button hidden={remote} className="primary-button" onClick={applyRundown} disabled={loading || items.length === 0}>
                         Aplicar no Playout
                     </button>
                 </div>
             </header>
+
+            {pendingDrop && <div className="opec-modal-backdrop" onKeyDown={event => { if (event.key === "Escape") setPendingDrop(null); }}>
+                <section className="opec-modal" role="dialog" aria-modal="true" aria-label="Arrastar material para o roteiro">
+                    <h2>{pendingDrop.source.name}</h2><p>Como colocar este material no roteiro?</p>
+                    <div className="opec-modal-actions"><button autoFocus onClick={() => resolveDrop(true)}>Substituir item</button>
+                        <button onClick={() => resolveDrop(false)}>Incluir antes deste item</button><button onClick={() => setPendingDrop(null)}>Cancelar</button></div>
+                </section>
+            </div>}
+            {importOpen && <div className="opec-modal-backdrop" onKeyDown={event => { if (event.key === "Escape" && !loading) setImportOpen(false); }}>
+                <section className="opec-modal" role="dialog" aria-modal="true" aria-label={modelAction === "save" ? "Criar modelo semanal" : "Importar programação"}>
+                    <h2>{modelAction === "save" ? "Modelo semanal" : "Importar programação"}</h2>
+                    {modalError && <p className="opec-modal-error" role="alert">{modalError}</p>}
+                    {modelAction === "import" && <label>Origem<select value={importKind} onChange={event => setImportKind(event.currentTarget.value as "weekday" | "date")}>
+                        <option value="weekday">Modelo do dia da semana</option><option value="date">Programação de outra data</option></select></label>}
+                    {importKind === "weekday" ? <><label>Dia da semana<select value={weekday} onChange={event => setWeekday(Number(event.currentTarget.value))}>
+                        {WEEKDAYS.map((day, index) => <option key={day} value={index}>{day}</option>)}</select></label>
+                        <p>{modelLoading ? "Carregando modelo..." : modelPreview?.exists ? `${modelPreview.title} · ${modelPreview.items.length} itens · ${modelPreview.startTime}` : "Nenhum modelo salvo para este dia."}</p>
+                        {modelAction === "save" && <p>{modelPreview?.exists ? "Salvar substituirá o modelo existente desse dia." : "O roteiro atual será salvo como modelo desse dia."}</p>}</>
+                        : <label>Data de origem<StyledDatePicker value={sourceDate} onChange={setSourceDate} /></label>}
+                    {modelAction === "import" && <label>Destino<select value={importMode} onChange={event => setImportMode(event.currentTarget.value as "replace" | "append")}>
+                        <option value="replace">Substituir roteiro atual</option><option value="append">Acrescentar ao final</option></select>
+                        <small>A data atual será mantida. Ao substituir, o nome e a hora inicial vêm da origem.</small></label>}
+                    <div className="opec-modal-actions"><button autoFocus disabled={loading || (importKind === "weekday" && (modelLoading || !modelPreview))}
+                        onClick={() => void useModel()}>{modelAction === "save" ? "Salvar modelo" : "Importar"}</button>
+                        <button disabled={loading} onClick={() => setImportOpen(false)}>Cancelar</button></div>
+                </section>
+            </div>}
 
             {!remote && <RemoteControllerAccess />}
             <div className="opec-meta-row">

@@ -380,7 +380,7 @@ assert(exhibition.includes("exhibitionPreviewAnchor"),
 const opecPath = path.join(root, "src", "renderer", "src", "OpecSchedulerPanel.tsx");
 const opec = fs.readFileSync(opecPath, "utf8");
 assert(opec.includes("exhibitionType"), "Programação diária deve permitir marcação editorial.");
-assert(opec.includes('useState("00:00")') &&
+assert(opec.includes('meta: { title: "Programação diária", startTime: "00:00" }') &&
     opec.includes('saved.startTime || "00:00"'),
     "Programação deve começar às 00:00 por padrão.");
 assert(app.includes("+ Nova pasta"), "Biblioteca deve oferecer criação de nova pasta.");
