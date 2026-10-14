@@ -21,9 +21,11 @@ const { SchedulingWebController } = require("../src/core/scheduling/web-controll
         const mediaPath = path.join(root, "filme.mp4"); fs.writeFileSync(mediaPath, Buffer.alloc(100));
         const media = db.addMedia([mediaPath]).importedItems[0];
         const updated = db.saveDailyRundown({ ...first, expectedUpdatedAt: first.updatedAt,
-            items: [{ ...media, rundownItemId: "slot-1", sourceMediaId: media.id, outPoint: 60 }] });
+            items: [{ ...media, rundownItemId: "slot-1", sourceMediaId: media.id, replacedPlaceholder: true, outPoint: 60 }] });
         assert.equal(updated.items[0].rundownItemId, "slot-1");
         assert.notEqual(updated.items[0].placeholder, true);
+        assert.equal(updated.items[0].replacedPlaceholder, true);
+        assert.equal(db.getDailyRundown(updated.date).items[0].replacedPlaceholder, true);
         assert.throws(() => db.saveDailyRundown({ ...first, expectedUpdatedAt: null }), /outro operador/);
         const status = await controller.start();
         const base = `http://127.0.0.1:${status.port}`;

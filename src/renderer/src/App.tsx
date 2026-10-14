@@ -28,6 +28,7 @@ export interface MediaItem {
     id: string;
     sourceMediaId?: string;
     placeholder?: boolean;
+    replacedPlaceholder?: boolean;
     programmedStartTime?: string;
     sourceType?: "file" | "input";
     inputId?: string;
@@ -4455,6 +4456,7 @@ function PlayoutPanel({
 
 interface FilmBlockEditorProps {
     item: MediaItem;
+    errorMessage?: string;
     onClose: () => void;
     onSaveEdit: (mediaId: string, inPoint: number, outPoint: number) => void;
     onSplit: (
@@ -4482,8 +4484,9 @@ function distributeParts(inPoint: number, outPoint: number, partCount: number): 
     });
 }
 
-function FilmBlockEditor({
+export function FilmBlockEditor({
     item,
+    errorMessage,
     onClose,
     onSaveEdit,
     onSplit
@@ -4800,6 +4803,7 @@ function FilmBlockEditor({
                     </div>
                 )}
 
+                {errorMessage && <div className="film-editor-error" role="alert">{errorMessage}</div>}
                 <footer className="film-editor-footer">
                     <button onClick={onClose}>Cancelar</button>
                     <button

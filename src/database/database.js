@@ -987,6 +987,7 @@ function getDailyRundown(dateValue) {
                   ...source,
                   rundownItemId: entry.rundownItemId,
                   sourceMediaId: entry.sourceMediaId,
+                  replacedPlaceholder: entry.replacedPlaceholder === true,
                   blockLabel: normalizeText(entry.blockLabel, "", 80),
                   notes: normalizeText(entry.notes, "", 500),
                   exhibitionType: normalizeExhibitionType(entry.exhibitionType),
@@ -1041,6 +1042,7 @@ function saveDailyRundown(rundown) {
                     ? item.rundownItemId
                     : crypto.randomUUID(),
             sourceMediaId,
+            replacedPlaceholder: item.replacedPlaceholder === true,
             blockLabel: normalizeText(item.blockLabel, "", 80),
             notes: normalizeText(item.notes, "", 500),
             exhibitionType: normalizeExhibitionType(item.exhibitionType),
