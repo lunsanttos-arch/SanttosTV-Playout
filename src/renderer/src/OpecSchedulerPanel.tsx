@@ -11,6 +11,8 @@ import RemoteControllerAccess from "./RemoteControllerAccess";
 
 const WEEKDAYS = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 
+type DropIntent = { mode: "insert"; beforeId: string | null } | { mode: "replace"; itemId: string };
+
 interface DailyRundown {
     date: string;
     title: string;
@@ -92,10 +94,9 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
     const [search, setSearch] = useState("");
     const [status, setStatus] = useState("");
     const [loading, setLoading] = useState(false);
-    const [dropTarget, setDropTarget] = useState<string | null>(null);
+    const [dropIntent, setDropIntent] = useState<DropIntent | null>(null);
     const [splitError, setSplitError] = useState("");
     const [editingFilm, setEditingFilm] = useState<RundownItem | null>(null);
-    const [pendingDrop, setPendingDrop] = useState<{ source: MediaItem; targetId: string } | null>(null);
     const [importOpen, setImportOpen] = useState(false);
     const [importKind, setImportKind] = useState<"weekday" | "date">("weekday");
     const [weekday, setWeekday] = useState(() => new Date(`${todayKey()}T12:00:00`).getDay());
@@ -181,33 +182,57 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
         setStatus("");
     }
 
-    function dropItem(event: DragEvent, target?: RundownItem) {
-        event.preventDefault(); event.stopPropagation();
-        const mediaId = event.dataTransfer.getData("application/x-santtos-media");
-        const source = media.find(item => item.id === mediaId);
-        if (source) {
-            if (target) setPendingDrop({ source, targetId: target.rundownItemId });
-            else addItem(source);
-
-        } else {
-            const id = event.dataTransfer.getData("application/x-santtos-rundown") || draggedId;
-            if (id && target) moveItem(id, target.rundownItemId);
-            else if (id) setItems(current => [...current.filter(item => item.rundownItemId !== id),
-                ...current.filter(item => item.rundownItemId === id)]);
-        }
-        setDraggedId(null); setDropTarget(null);
+    function supportedDrag(event: DragEvent) {
+        return ["application/x-santtos-media", "application/x-santtos-rundown"].some(type => event.dataTransfer.types.includes(type));
     }
 
-    function resolveDrop(replace: boolean) {
-        if (!pendingDrop) return;
-        const target = items.find(item => item.rundownItemId === pendingDrop.targetId);
-        if (!target) { setPendingDrop(null); return; }
-        const source = pendingDrop.source;
-        if (replace) patchItem(target.rundownItemId, { ...source, sourceMediaId: source.id, placeholder: false,
-            liveSlot: false, replacedPlaceholder: target.placeholder || target.replacedPlaceholder === true,
-            blockLabel: target.blockLabel || "", notes: target.notes || "", inPoint: clipIn(source), outPoint: clipOut(source) });
-        else addItem(source, target.rundownItemId);
-        setPendingDrop(null);
+    function articleIntent(event: DragEvent<HTMLElement>, item: RundownItem, index: number): DropIntent {
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const position = (event.clientY - bounds.top) / Math.max(1, bounds.height);
+        if (position < .22) return { mode: "insert", beforeId: item.rundownItemId };
+        if (position > .78) return { mode: "insert", beforeId: items[index + 1]?.rundownItemId ?? null };
+        return event.dataTransfer.types.includes("application/x-santtos-media")
+            ? { mode: "replace", itemId: item.rundownItemId }
+            : { mode: "insert", beforeId: item.rundownItemId };
+    }
+
+    function previewDrop(event: DragEvent, intent: DropIntent) {
+        if (!supportedDrag(event)) return;
+        event.preventDefault(); event.stopPropagation();
+        event.dataTransfer.dropEffect = event.dataTransfer.types.includes("application/x-santtos-media") ? "copy" : "move";
+        setDropIntent(current => JSON.stringify(current) === JSON.stringify(intent) ? current : intent);
+    }
+
+    function clearDrag() { setDraggedId(null); setDropIntent(null); }
+
+    function dropItem(event: DragEvent, intent: DropIntent = { mode: "insert", beforeId: null }) {
+        if (!supportedDrag(event)) return;
+        event.preventDefault(); event.stopPropagation();
+        const source = media.find(item => item.id === event.dataTransfer.getData("application/x-santtos-media"));
+        if (source) {
+            if (intent.mode === "replace") {
+                const target = items.find(item => item.rundownItemId === intent.itemId);
+                if (target) patchItem(target.rundownItemId, { ...source, sourceMediaId: source.id, placeholder: false,
+                    liveSlot: false, replacedPlaceholder: target.placeholder || target.replacedPlaceholder === true,
+                    blockLabel: target.blockLabel || "", notes: target.notes || "", inPoint: clipIn(source), outPoint: clipOut(source) });
+            } else addItem(source, intent.beforeId ?? undefined);
+        } else {
+            const id = event.dataTransfer.getData("application/x-santtos-rundown") || draggedId;
+            if (id && intent.mode === "insert" && intent.beforeId) moveItem(id, intent.beforeId);
+            else if (id && intent.mode === "insert") setItems(current => [...current.filter(item => item.rundownItemId !== id),
+                ...current.filter(item => item.rundownItemId === id)]);
+        }
+        clearDrag();
+    }
+
+    function insertionSlot(beforeId: string | null) {
+        const active = dropIntent?.mode === "insert" && dropIntent.beforeId === beforeId;
+        return <div className={`opec-insert-slot ${active ? "active" : ""} ${beforeId === null ? "at-end" : ""}`}
+            data-before-id={beforeId ?? "end"} aria-label="Incluir Item"
+            onDragOver={event => previewDrop(event, { mode: "insert", beforeId })}
+            onDrop={event => dropItem(event, { mode: "insert", beforeId })}>
+            <span className="opec-insert-bar">Incluir Item</span>
+        </div>;
     }
 
     async function exportRoteiro(format: "pdf" | "html") {
@@ -345,13 +370,6 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                 </div>
             </header>
 
-            {pendingDrop && <div className="opec-modal-backdrop" onKeyDown={event => { if (event.key === "Escape") setPendingDrop(null); }}>
-                <section className="opec-modal" role="dialog" aria-modal="true" aria-label="Arrastar material para o roteiro">
-                    <h2>{pendingDrop.source.name}</h2><p>Como colocar este material no roteiro?</p>
-                    <div className="opec-modal-actions"><button autoFocus onClick={() => resolveDrop(true)}>Substituir item</button>
-                        <button onClick={() => resolveDrop(false)}>Incluir antes deste item</button><button onClick={() => setPendingDrop(null)}>Cancelar</button></div>
-                </section>
-            </div>}
             {importOpen && <div className="opec-modal-backdrop" onKeyDown={event => { if (event.key === "Escape" && !loading) setImportOpen(false); }}>
                 <section className="opec-modal" role="dialog" aria-modal="true" aria-label={modelAction === "save" ? "Criar modelo semanal" : "Importar programação"}>
                     <h2>{modelAction === "save" ? "Modelo semanal" : "Importar programação"}</h2>
@@ -397,14 +415,19 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                         placeholder: true, name: "", path: "", extension: "VAZIO", fileSize: 0, duration: 1800, outPoint: 1800,
                         notes: "", width: null, height: null, fps: null, videoCodec: null, audioCodec: null, thumbnail: null,
                         status: "placeholder", createdAt: new Date().toISOString() }])}>+ Conteúdo a definir</button>
-                    <div className={`opec-rundown-list ${dropTarget === "end" ? "drop-active" : ""}`}
-                        onDragOver={event => { event.preventDefault(); event.dataTransfer.dropEffect = draggedId ? "move" : "copy"; }}
+                    <div className="opec-rundown-list"
+                        onDragOver={event => previewDrop(event, { mode: "insert", beforeId: null })}
+                        onDragLeave={event => {
+                            const bounds = event.currentTarget.getBoundingClientRect();
+                            if (event.clientX < bounds.left || event.clientX >= bounds.right || event.clientY < bounds.top || event.clientY >= bounds.bottom) setDropIntent(null);
+                        }}
                         onDrop={event => dropItem(event)}>
                         {items.length === 0 && <div className="opec-empty">Arraste mídias das pastas da biblioteca para a programação.</div>}
                         {items.map((item, index) => (
+                            <div className="opec-drag-row" key={item.rundownItemId}>
+                            {insertionSlot(item.rundownItemId)}
                             <article
-                                key={item.rundownItemId}
-                                className={`opec-rundown-item ${item.placeholder && !item.liveSlot ? "opec-pending-item" : ""} ${draggedId === item.rundownItemId ? "dragging" : ""} ${dropTarget === item.rundownItemId ? "drop-active" : ""}`}
+                                className={`opec-rundown-item ${item.placeholder && !item.liveSlot ? "opec-pending-item" : ""} ${draggedId === item.rundownItemId ? "dragging" : ""} ${dropIntent?.mode === "replace" && dropIntent.itemId === item.rundownItemId ? "is-replace-target" : ""}`}
                                 draggable
                                 onDragStart={event => {
                                     if ((event.target as HTMLElement).closest("input, select, button")) { event.preventDefault(); return; }
@@ -413,10 +436,11 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                     event.dataTransfer.effectAllowed = "move";
                                     setDraggedId(item.rundownItemId);
                                 }}
-                                onDragOver={event => { event.preventDefault(); event.stopPropagation(); setDropTarget(item.rundownItemId); }}
-                                onDrop={event => dropItem(event, item)}
-                                onDragEnd={() => { setDraggedId(null); setDropTarget(null); }}
+                                onDragOver={event => previewDrop(event, articleIntent(event, item, index))}
+                                onDrop={event => dropItem(event, articleIntent(event, item, index))}
+                                onDragEnd={clearDrag}
                             >
+                                {dropIntent?.mode === "replace" && dropIntent.itemId === item.rundownItemId && <span className="opec-replace-label">Substituir Item</span>}
                                 <div className="opec-order" title="Arrastar para reordenar"><span className="opec-drag-handle">⠿</span>{index + 1}</div>
                                 <div className="opec-entry-time">{scheduleTimes.times.get(item.rundownItemId)}</div>
                                 <div className="opec-item-main">
@@ -451,10 +475,9 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                 </div>
                                 <button className="opec-remove" title="Remover da programação" onClick={() => removeItem(item.rundownItemId)}>×</button>
                             </article>
+                            </div>
                         ))}
-                        {items.length > 0 && <div className="opec-drop-end"
-                            onDragOver={event => { event.preventDefault(); setDropTarget("end"); }}
-                            onDrop={event => dropItem(event)}>Solte aqui para adicionar ao final</div>}
+                        {insertionSlot(null)}
                     </div>
                 </div>
 
@@ -467,7 +490,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                             className={libraryFolder === category.id ? "active" : ""} title={category.folderPath || "Pasta não configurada"}
                             onClick={() => setLibraryFolder(category.id)}>{category.name}</button>)}
                     </div>
-                    <p className="opec-library-hint">Arraste para inserir, reordenar ou substituir um conteúdo a definir.</p>
+                    <p className="opec-library-hint">Arraste sobre um item para substituir ou entre os itens para incluir.</p>
                     <input className="opec-search" placeholder="Pesquisar mídia..." value={search} onChange={(e) => setSearch(e.currentTarget.value)} />
                     <div className="opec-library-list">
                         {filteredMedia.length === 0 && <div className="opec-empty">Nenhuma mídia nesta pasta.</div>}
@@ -478,7 +501,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                     event.dataTransfer.setData("application/x-santtos-media", item.id);
                                     event.dataTransfer.setData("text/plain", item.name);
                                     event.dataTransfer.effectAllowed = "copy";
-                                }} onDragEnd={() => setDropTarget(null)}>
+                                }} onDragEnd={clearDrag}>
                                 <div><strong>{item.name}</strong><span>{formatDuration(clipDuration(item))} · {item.extension.toUpperCase()}</span></div>
                                 <button onClick={() => addItem(item)}>+ Programação</button>
                             </article>

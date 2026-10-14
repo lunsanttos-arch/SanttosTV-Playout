@@ -417,3 +417,20 @@
 .opec-modal .calendar-popover { position: relative; }
 
 .opec-modal p.opec-modal-error { color: #ffaaaa; padding: 10px; background: #442525; border-radius: 6px; }
+
+/* Animated direct drop targets. The insertion slot opens in document flow. */
+.opec-rundown-list { gap: 0; }
+.opec-drag-row { flex: 0 0 auto; min-width: 0; }
+.opec-rundown-item { position: relative; transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease; }
+.opec-rundown-item > * { transition: opacity 160ms ease; }
+.opec-rundown-item.is-replace-target { background: #7447c845; border-color: #a77bf3; box-shadow: inset 0 0 0 1px #9568ed, 0 0 14px #7447c830; }
+.opec-rundown-item.opec-pending-item.is-replace-target { background: #7447c845; border-color: #a77bf3; }
+.opec-rundown-item.is-replace-target > :not(.opec-replace-label) { opacity: .25; }
+.opec-replace-label { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; pointer-events: none; font-size: 13px; font-weight: 700; color: #f5eeff; animation: opec-drop-label-in 160ms ease-out; }
+.opec-insert-slot { flex: 0 0 auto; min-width: 0; height: 7px; overflow: hidden; display: flex; align-items: center; transition: height 180ms cubic-bezier(.2,.8,.2,1); }
+.opec-insert-slot.at-end { height: 22px; }
+.opec-insert-slot.active { height: 32px; }
+.opec-insert-bar { width: 100%; height: 22px; display: flex; align-items: center; justify-content: center; border: 1px solid #a77bf3; border-radius: 4px; background: #7447c8; color: #fff; font-size: 10px; font-weight: 700; opacity: 0; transform: scaleY(.5); transition: opacity 140ms ease, transform 180ms ease; pointer-events: none; }
+.opec-insert-slot.active .opec-insert-bar { opacity: 1; transform: scaleY(1); }
+@keyframes opec-drop-label-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .opec-insert-slot, .opec-insert-bar, .opec-rundown-item, .opec-rundown-item > * { transition: none; animation: none; } }
