@@ -434,3 +434,34 @@
 .opec-insert-slot.active .opec-insert-bar { opacity: 1; transform: scaleY(1); }
 @keyframes opec-drop-label-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: translateY(0); } }
 @media (prefers-reduced-motion: reduce) { .opec-insert-slot, .opec-insert-bar, .opec-rundown-item, .opec-rundown-item > * { transition: none; animation: none; } }
+
+/* Same controls in Electron and the web controller, including native number inputs. */
+.opec-shell input:not([type="checkbox"]):not([type="range"]), .opec-shell select, .remote-controller-login input {
+    background: var(--st-surface-2, #181823); color: var(--st-text-soft, #d7d7e2);
+    border: 1px solid var(--st-border, #292938); border-radius: 6px;
+    font-family: inherit; color-scheme: dark;
+}
+.opec-shell input:focus, .opec-shell select:focus, .remote-controller-login input:focus {
+    outline: none; border-color: var(--st-purple-strong, #8b5cf6);
+    box-shadow: 0 0 0 2px var(--st-purple-soft, #7c3aed24);
+}
+.opec-shell button, .remote-controller-login button {
+    font-family: inherit; background: var(--st-surface-2, #181823); color: var(--st-text-soft, #d7d7e2);
+    border: 1px solid var(--st-border, #292938); border-radius: var(--st-radius-sm, 8px);
+    transition: background-color 140ms ease, border-color 140ms ease;
+}
+.opec-shell button:hover:not(:disabled), .remote-controller-login button:hover:not(:disabled) { background: var(--st-surface-3, #1e1e2b); border-color: var(--st-purple-strong, #8b5cf6); }
+.opec-shell button:focus-visible { outline: 2px solid var(--st-purple-strong, #8b5cf6); outline-offset: 2px; }
+.opec-shell button:disabled { opacity: .45; cursor: default; }
+.opec-shell button.primary-button, .opec-shell button.active, .opec-shell button[aria-selected="true"],
+.opec-shell .opec-block-tools button.opec-live-active, .opec-shell .opec-modal-actions button:first-child {
+    background: var(--st-purple, #7c3aed); border-color: var(--st-purple-strong, #8b5cf6); color: #fff;
+}
+.opec-shell .opec-block-tools input[type="number"] { padding: 3px 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
+.opec-title-area { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.opec-title-area .opec-title-field { flex: 1 1 180px; min-width: 0; }
+.opec-title-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.opec-title-actions button { min-height: 32px; padding: 6px 10px; font-size: 12px; }
+@media (max-width: 680px) { .opec-title-area { grid-column: 1 / -1; } }
+
+.opec-shell button.opec-remove { color: var(--st-danger, #ff647c); }

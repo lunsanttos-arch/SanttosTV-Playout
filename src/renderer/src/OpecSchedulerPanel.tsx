@@ -361,8 +361,6 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                     }).catch(() => setStatus("Não foi possível atualizar."))}>Atualizar programação</button>
                     <button disabled={loading} onClick={() => void exportRoteiro("pdf")}>PDF do roteiro</button>
                     <button disabled={loading} onClick={() => void exportRoteiro("html")}>HTML do roteiro</button>
-                    <button disabled={loading} onClick={() => { setModalError(""); setModelAction("save"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Criar modelo semanal</button>
-                    <button disabled={loading} onClick={() => { setModalError(""); setModelAction("import"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Importar programação</button>
                     <button onClick={() => void saveRundown().catch(() => {})} disabled={loading}>Salvar programação</button>
                     <button hidden={remote} className="primary-button" onClick={applyRundown} disabled={loading || items.length === 0}>
                         Aplicar no Playout
@@ -393,7 +391,13 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
             {!remote && <RemoteControllerAccess />}
             <div className="opec-meta-row">
                 <label><span>Data</span><StyledDatePicker value={date} onChange={setDate} /></label>
-                <label className="opec-title-field"><span>Nome da programação</span><input value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={120} /></label>
+                <div className="opec-title-area">
+                    <label className="opec-title-field"><span>Nome da programação</span><input value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={120} /></label>
+                    <div className="opec-title-actions">
+                    <button disabled={loading} onClick={() => { setModalError(""); setModelAction("save"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Criar modelo semanal</button>
+                    <button disabled={loading} onClick={() => { setModalError(""); setModelAction("import"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Importar programação</button>
+                    </div>
+                </div>
                 <label><span>Início programado</span><input type="time" value={startTime} onChange={(e) => setStartTime(e.currentTarget.value)} /></label>
                 <div className="opec-summary"><span>PROGRAMADO</span><strong>{totalDuration === null ? "--:--:--" : formatDuration(totalDuration)}</strong><small>até {scheduleTimes.end}</small></div>
             </div>

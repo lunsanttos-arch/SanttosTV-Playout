@@ -1,5 +1,5 @@
 'use strict';
-const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{execFileSync}=require('node:child_process');
 (async()=>{
 const pages=await(await fetch('http://127.0.0.1:9333/json')).json();const ws=new WebSocket(pages.find(p=>p.type==='page').webSocketDebuggerUrl);
 await new Promise(r=>ws.addEventListener('open',r,{once:true}));let serial=0;const pending=new Map();
@@ -30,6 +30,10 @@ assert(await evaluate(`Boolean([...document.querySelectorAll('button')].find(b=>
 const controller=await evaluate('window.santtosAPI.setControllerEnabled(true)');const base=`http://127.0.0.1:${controller.port}`;
 const login=await fetch(base+'/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({pin:controller.pin})});const cookie=login.headers.get('set-cookie').split(';')[0];const headers={Cookie:cookie,'Content-Type':'application/json'};
 assert.equal((await fetch(base+`/api/weekly?weekday=${seed.weekday}`,{headers})).status,200);
+const desktopStyle=await evaluate(`(()=>{const input=getComputedStyle(document.querySelector('.opec-block-tools input[type=number]'));const button=getComputedStyle(document.querySelector('.opec-title-actions button'));return {input:{background:input.backgroundColor,color:input.color,border:input.borderColor,radius:input.borderRadius},button:{background:button.backgroundColor,color:button.color,border:button.borderColor,radius:button.borderRadius}}})()`);
+const webConfig=path.join(process.env.SANTTOS_QA_OUTPUT,'web-ui-config.json');
+fs.writeFileSync(webConfig,JSON.stringify({url:base+'/controller',pin:controller.pin,sourceId:seed.sourceId,desktopStyle,output:process.env.SANTTOS_QA_OUTPUT,profile:path.join(process.env.SANTTOS_QA_OUTPUT,'web-browser-profile')}),{mode:0o600});
+try{const result=execFileSync(path.join(__dirname,'../node_modules/electron/dist/electron'),[path.join(__dirname,'test-web-controller-ui.cjs'),'--no-sandbox','--disable-gpu'],{env:{...process.env,SANTTOS_WEB_QA_CONFIG:webConfig},timeout:20000,encoding:'utf8'});console.log(result.trim())}finally{fs.rmSync(webConfig,{force:true});fs.rmSync(path.join(process.env.SANTTOS_QA_OUTPUT,'web-browser-profile'),{recursive:true,force:true})}
 const onAir=await evaluate(`(async()=>{await window.santtosAPI.stopNdiFile();const source=(await window.santtosAPI.getMedia())[0];const item={...source,id:'pdf-on-air',sourceMediaId:source.id,inPoint:0,outPoint:40};await window.santtosAPI.applyNativeRundown([item]);return window.santtosAPI.playNdiFile(source.path,0,'',{itemId:item.id,inPointSeconds:0,outPointSeconds:40})})()`);
 assert.equal(onAir.playout.state,'PLAYING');
 const response=await fetch(base+'/api/rundown/pdf',{method:'POST',headers,body:JSON.stringify(appended)});assert.equal(response.status,200);assert.equal(response.headers.get('content-type'),'application/pdf');const pdf=Buffer.from(await response.arrayBuffer());assert.equal(pdf.subarray(0,5).toString(),'%PDF-');assert(pdf.length>5000);if(process.env.SANTTOS_QA_OUTPUT)fs.writeFileSync(path.join(process.env.SANTTOS_QA_OUTPUT,'roteiro-export.pdf'),pdf);
