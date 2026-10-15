@@ -721,29 +721,25 @@ function OutputTab({
             <SettingsCard
                 title="NDI / OMT"
                 description="Saída de rede local do PROGRAM."
+                className="network-output-settings"
             >
-                <ToggleField
-                    label="Ativar NDI"
-                    checked={output.ndi.enabled}
-                    onChange={(enabled) =>
-                        patchNdi({ enabled })
-                    }
-                />
+                <div className="network-output-toggles">
+                    <ToggleField
+                        label="Ativar NDI"
+                        checked={output.ndi.enabled}
+                        onChange={(enabled) => patchNdi({ enabled })}
+                    />
+                    <ToggleField
+                        label="Ativar OMT"
+                        checked={output.omt.enabled}
+                        onChange={(enabled) => patchOmt({ enabled })}
+                    />
+                </div>
 
                 <TextField
                     label="Nome da fonte"
                     value={output.ndi.name}
-                    onChange={(name) =>
-                        patchNdi({ name })
-                    }
-                />
-
-                <ToggleField
-                    label="Ativar OMT"
-                    checked={output.omt.enabled}
-                    onChange={(enabled) =>
-                        patchOmt({ enabled })
-                    }
+                    onChange={(name) => patchNdi({ name })}
                 />
 
             </SettingsCard>

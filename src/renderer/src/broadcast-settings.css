@@ -329,3 +329,15 @@
     color: #ffffff;
     font-size: 11px;
 }
+
+/* Keep the local outputs together; RTMP and SRT occupy the next grid row. */
+.network-output-settings {
+    grid-column: 1 / -1;
+}
+
+.network-output-toggles {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px 24px;
+}
