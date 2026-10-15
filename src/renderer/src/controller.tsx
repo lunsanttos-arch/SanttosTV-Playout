@@ -37,8 +37,11 @@ function Controller() {
     }
     return <main className="remote-scheduler-workspace">{media ? <OpecSchedulerPanel media={media} remote onApply={() => {}} /> :
         <section className="broadcast-settings-card remote-controller-login"><h1>SanTTos · Programação</h1><p>Informe o código exibido no computador master.</p>
-            <input aria-label="Código de acesso" type="password" value={pin} onChange={event => setPin(event.currentTarget.value)}
-                onKeyDown={event => { if (event.key === "Enter") void login(); }} /><button onClick={() => void login()}>Entrar</button>
+            <div className="remote-login-controls">
+                <input aria-label="Código de acesso" type="password" value={pin} onChange={event => setPin(event.currentTarget.value)}
+                    onKeyDown={event => { if (event.key === "Enter") void login(); }} />
+                <button onClick={() => void login()}>Entrar</button>
+            </div>
             {error && <p role="alert">{error}</p>}</section>}</main>;
 }
 createRoot(document.getElementById("root")!).render(<React.StrictMode><Controller /></React.StrictMode>);
