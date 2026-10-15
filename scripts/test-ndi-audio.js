@@ -198,16 +198,16 @@ try {
         source.indexOf("NDIlib_initialize()"),
         "Verificação de recursos não pode criar uma fonte NDI por acidente.");
     const mainSource = fs.readFileSync(
-        path.join(__dirname, "../src/main/main.js"), "utf8"
+        path.join(__dirname, "../src/main/program-runtime.js"), "utf8"
     );
-    assert(mainSource.includes("streamIndex: Number.isSafeInteger(selectedAudioIndex)") &&
+    assert(mainSource.includes("Number.isSafeInteger(programState.audioStreamIndex)") &&
         mainSource.includes("audioStreamIndex") &&
         mainSource.includes("Boolean(item.audioCodec)"),
         "Playout deve recuperar áudio de mídias antigas sem índice salvo e reanalisá-las.");
     assert(
         mainSource.includes("onPcmData:") &&
         mainSource.includes("sendProgramAudioPcm") &&
-        mainSource.includes("Monitor local do PROGRAM ativo"),
+        mainSource.includes("pcmStream, pipePath: ''"),
         "PCM real do PROGRAM deve alimentar monitor local mesmo sem pipe NDI."
     );
 

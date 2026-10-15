@@ -21,7 +21,7 @@ const app = fs.readFileSync(appPath, "utf8");
 const main = fs.readFileSync(mainPath, "utf8");
 const settings = fs.readFileSync(settingsPath, "utf8");
 const librarySettings = fs.readFileSync(librarySettingsPath, "utf8");
-const electronMain = fs.readFileSync(electronMainPath, "utf8");
+const electronMain = fs.readFileSync(electronMainPath, "utf8") + fs.readFileSync(path.join(root, "src/main/program-runtime.js"), "utf8");
 const preload = fs.readFileSync(preloadPath, "utf8");
 const rendererIndex = fs.readFileSync(rendererIndexPath, "utf8");
 const packageConfig = JSON.parse(fs.readFileSync(packagePath, "utf8"));
@@ -215,22 +215,22 @@ assert(
 );
 assert(
     electronMain.includes("isHlsInput(") &&
-    electronMain.includes('preferredInputEngine === "auto"') &&
-    electronMain.includes('selectedInputEngine =') &&
-    electronMain.includes('"vlc";'),
+    electronMain.includes("(overlay.inputEngine || 'auto') === 'auto'") &&
+    electronMain.includes("engine = 'vlc'") &&
+    electronMain.includes("inputPrebuffer.take"),
     "Input HLS em AUTO deve usar o mesmo motor VLC com ou sem prebuffer para preservar sincronismo A/V."
 );
 assert(
-    electronMain.includes("canFallbackToDirectFfmpeg") &&
+    electronMain.includes("source.vlcBridge") &&
     electronMain.includes("__inputFallbackAttempted") &&
-    electronMain.includes('"ffmpeg"') &&
-    electronMain.includes("Ponte VLC não entregou o primeiro quadro"),
+    electronMain.includes("inputEngine: 'ffmpeg'") &&
+    electronMain.includes("Ponte VLC não entregou vídeo"),
     "Input Web em AUTO deve tentar FFmpeg direto se a ponte VLC não entregar vídeo."
 );
 assert(
-    electronMain.includes('pausedPlayout.state === "PAUSED"') &&
+    electronMain.includes("prior.state === 'PAUSED'") &&
     electronMain.includes("samePausedItem") &&
-    electronMain.includes("pausedPlayout.positionSeconds") &&
+    electronMain.includes("prior.positionSeconds") &&
     electronMain.includes("playoutEngine.snapshot()") &&
     app.includes("const authoritativeStart =") &&
     app.includes("nativeStart?.playout?.positionSeconds") &&
@@ -456,11 +456,13 @@ assert(
 assert(
     app.includes("prepareNdiInput") &&
     app.includes("cancelPreparedNdiInput") &&
-    app.includes("remaining <= 15") &&
+    electronMain.includes("remaining > 15") &&
+    electronMain.includes("setInterval(tickPreparation, 200)") &&
+    !app.includes(".prepareNdiInput(") &&
     app.includes("PRÉ-CARREGANDO INPUT") &&
     app.includes("INPUT PRONTO") &&
     electronMain.includes('"ndi:prepare-input"') &&
-    electronMain.includes("Input pré-carregado assumido pelo PROGRAM"),
+    electronMain.includes("await deck.ready") && electronMain.includes("await decks.take"),
     "O próximo Input deve ser pré-carregado 15s antes e reutilizado pelo PROGRAM."
 );
 assert(

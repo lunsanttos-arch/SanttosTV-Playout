@@ -67,7 +67,7 @@ class SchedulingWebController {
                 return send(401, { error: "Informe o código de acesso do master." });
             }
             if (req.method === "GET" && parsed.pathname === "/api/weekly" && this.getWeekly) {
-                try { return send(200, this.getWeekly(Number(parsed.searchParams.get("weekday")))); }
+                try { return send(200, await this.getWeekly(Number(parsed.searchParams.get("weekday")))); }
                 catch (error) { return send(400, { error: error.message }); }
             }
             if (req.method === "POST" && parsed.pathname === "/api/weekly" && this.saveWeekly) {
@@ -90,9 +90,9 @@ class SchedulingWebController {
                 } catch (error) { return send(400, { error: error.message }); }
                 finally { this.pdfBusy = false; }
             }
-            if (req.method === "GET" && parsed.pathname === "/api/media") return send(200, this.getMedia());
-            if (req.method === "GET" && parsed.pathname === "/api/library-categories") return send(200, this.getCategories());
-            if (req.method === "GET" && parsed.pathname === "/api/rundown") return send(200, this.getRundown(parsed.searchParams.get("date")));
+            if (req.method === "GET" && parsed.pathname === "/api/media") return send(200, await this.getMedia());
+            if (req.method === "GET" && parsed.pathname === "/api/library-categories") return send(200, await this.getCategories());
+            if (req.method === "GET" && parsed.pathname === "/api/rundown") return send(200, await this.getRundown(parsed.searchParams.get("date")));
             if (req.method === "POST" && parsed.pathname === "/api/rundown") {
                 try { const body = await this.body(req); await this.commit({ retry: true }); const rundown = await this.saveRundown(body); await this.commit(); return send(200, { ok: true, rundown }); }
                 catch (error) { return send(400, { ok: false, error: error.message }); }

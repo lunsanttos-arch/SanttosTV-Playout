@@ -60,14 +60,14 @@ assert.throws(() => new FixedFrameAssembler(0, () => {}), /Tamanho/);
 assert.throws(() => new FixedFrameAssembler(16, null), /Callback/);
 
 const main = fs.readFileSync(
-    path.join(__dirname, "../src/main/main.js"), "utf8"
+    path.join(__dirname, "../src/core/playout/decoder-deck.js"), "utf8"
 );
 assert(main.includes("new FixedFrameAssembler(") &&
-    main.includes('processRef.stdout.on("data", onVideoBytes)'),
+    main.includes('this.child.stdout.on("data", chunk => this.assembler.push(chunk))'),
     "Native playout must frame-align FFmpeg stdout before NDI stdin.");
 assert(!main.includes("processRef.stdout.pipe(\n        ndiProcess.stdin"),
     "Raw FFmpeg stdout must never be directly piped to the persistent NDI sender.");
-assert(main.includes("Frame ${profile.ndiPixelFormat} parcial descartado na troca"),
+assert(main.includes("this.assembler.stop()"),
     "Clip interruption must explicitly drop incomplete raw frames for any configured pixel format.");
 
 console.log(

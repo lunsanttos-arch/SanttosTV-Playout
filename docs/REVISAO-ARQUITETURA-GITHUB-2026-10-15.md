@@ -1,9 +1,10 @@
 # Revisão de arquitetura com referências do GitHub — 15/10/2026
 
-> Atualização posterior à revisão: o isolamento de gravações foi implementado
-> com workers e confirmação durável, mantendo JSON. Consulte
-> [PERSISTENCIA-ISOLADA.md](PERSISTENCIA-ISOLADA.md). A extração do serviço PROGRAM,
-> os decks A/B e a avaliação de SQLite continuam sendo trabalhos distintos.
+> Atualização de implementação: os quatro itens foram entregues: PROGRAM em
+> processo dedicado, persistência em workers, decks A/B preparados e antecipação
+> pelo backend. Consulte [SERVICO-PROGRAM-E-DECKS-AB.md](SERVICO-PROGRAM-E-DECKS-AB.md)
+> para a arquitetura atual, testes e limites. As observações abaixo registram o
+> diagnóstico anterior às mudanças; SQLite não foi adotado.
 
 ## Conclusão
 

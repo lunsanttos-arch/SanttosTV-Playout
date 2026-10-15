@@ -216,6 +216,20 @@ async function main() {
         assert.strictEqual(savedInput.engine, "vlc");
         assert.strictEqual(webInputs.getWebInputs().length, 1);
 
+        // Prepared and active remote decks must retain the same engine/HTTP options
+        // after saving the rundown and reloading the application database.
+        db.saveTimeline([{ id: "remote-options", sourceType: "input", path: savedInput.url,
+            inputEngine: "vlc", inputHttpReferer: savedInput.httpReferer,
+            inputHttpUserAgent: savedInput.httpUserAgent, duration: 90 }]);
+        await flushPersistence();
+        db.initializeDatabase({ userDataPath: databaseUserData });
+        const restoredRemote = db.getTimeline()[0];
+        assert.strictEqual(restoredRemote.inputEngine, "vlc");
+        assert.strictEqual(restoredRemote.inputHttpReferer, savedInput.httpReferer);
+        assert.strictEqual(restoredRemote.inputHttpUserAgent, savedInput.httpUserAgent);
+        db.saveTimeline(timeline);
+
+
         const reports = require("../src/core/reporting/playout-report");
         const docs = path.join(tempRoot, "docs");
         reports.initializePlayoutReports({

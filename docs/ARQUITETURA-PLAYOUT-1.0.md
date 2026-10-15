@@ -1,5 +1,8 @@
 # SanTTos Playout — arquitetura de motor 1.0
 
+> Estado atual: a separação completa de PROGRAM e os decks A/B também foram
+> implementados. Veja [SERVICO-PROGRAM-E-DECKS-AB.md](SERVICO-PROGRAM-E-DECKS-AB.md).
+
 > Este documento descreve o plano de migração original; as fases abaixo não
 > representam, por si, o estado atual de implementação. Consulte a
 > [revisão de 15/10/2026](REVISAO-ARQUITETURA-GITHUB-2026-10-15.md) para a

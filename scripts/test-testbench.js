@@ -48,7 +48,7 @@ try {
     assert.equal(packaged.enabled, false);
     assert.equal(packaged.userDataPath, productionData);
 
-    const main = fs.readFileSync(path.join(__dirname, "../src/main/main.js"), "utf8");
+    const main = fs.readFileSync(path.join(__dirname, "../src/main/program-runtime.js"), "utf8");
     const renderer = fs.readFileSync(path.join(__dirname, "../src/renderer/src/App.tsx"), "utf8");
     assert(main.includes("if (nativeOutputAllowed) {") &&
         main.includes("const nativeOutputAllowed = !isTestBench || isNdiTestBench;") &&

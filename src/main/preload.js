@@ -343,8 +343,9 @@ contextBridge.exposeInMainWorld(
                 return () => {};
             }
 
-            const listener = (_event, payload) =>
-                callback(payload);
+            const listener = (_event, payload) => {
+                try { callback(payload); } finally { ipcRenderer.send("program:monitor-ack", "playout:audio-pcm"); }
+            };
 
             ipcRenderer.on(
                 "playout:audio-pcm",
@@ -383,8 +384,9 @@ contextBridge.exposeInMainWorld(
                 return () => {};
             }
 
-            const listener = (_event, payload) =>
-                callback(payload);
+            const listener = (_event, payload) => {
+                try { callback(payload); } finally { ipcRenderer.send("program:monitor-ack", "playout:preview-frame"); }
+            };
 
             ipcRenderer.on(
                 "playout:preview-frame",

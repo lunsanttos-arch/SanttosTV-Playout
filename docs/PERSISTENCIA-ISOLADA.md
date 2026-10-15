@@ -1,5 +1,8 @@
 # Persistência fora da thread de reprodução
 
+> Estado atual: a separação completa de PROGRAM e os decks A/B também foram
+> implementados. Veja [SERVICO-PROGRAM-E-DECKS-AB.md](SERVICO-PROGRAM-E-DECKS-AB.md).
+
 Implementação de 15/10/2026, correspondente ao item de isolamento de gravações
 da revisão de arquitetura. O formato JSON existente foi mantido. Não é
 necessário converter o banco nem reimportar vídeos ao atualizar.

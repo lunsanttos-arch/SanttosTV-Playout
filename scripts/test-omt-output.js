@@ -85,7 +85,7 @@ const electronMain =
     fs.readFileSync(
         path.resolve(
             __dirname,
-            "../src/main/main.js"
+            "../src/main/program-runtime.js"
         ),
         "utf8"
     );
@@ -127,7 +127,7 @@ assert(
     "Controller OMT deve suportar modo auxiliar com drop e modo OMT-only com backpressure."
 );
 assert(electronMain.includes("function writeNativeProgramFrame") && electronMain.includes("allowDrop: true") &&
-    electronMain.includes("pacer = new FramePacer"), "OMT deve ser consumidor isolado; o relógio do PROGRAM deve existir em todas as saídas.");
+    fs.readFileSync(path.resolve(__dirname, "../src/core/playout/decoder-deck.js"), "utf8").includes("pacer = new FramePacer"), "OMT deve ser consumidor isolado; o relógio do PROGRAM deve existir em todas as saídas.");
 
 if (process.platform === "win32") {
     const output =

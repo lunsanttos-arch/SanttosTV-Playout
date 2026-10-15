@@ -131,6 +131,7 @@ interface RemoveResult {
 }
 
 interface NativePlayoutStatus {
+    preparedNext?: { itemId: string | null; ready: boolean; error: string | null };
     autonomous?: boolean;
     currentItem?: MediaItem;
     generation: number;
@@ -1723,145 +1724,12 @@ function PlayoutPanel({
         nextMedia?.sourceType
     ]);
 
+    // Readiness is owned by PROGRAM. Renderer reloads do not start/cancel preparation.
     useEffect(() => {
-        const remaining =
-            nativePlayout.itemId === selectedMedia?.id &&
-            Number.isFinite(
-                nativePlayout.remainingSeconds
-            )
-                ? Number(
-                      nativePlayout.remainingSeconds
-                  )
-                : null;
-
-        const shouldPrepare =
-            nativeOutputEnabled &&
-            isPlaying &&
-            nativePlayout.state === "PLAYING" &&
-            !selectedMedia?.loop &&
-            !selectedMedia?.freezeEnd &&
-            nextMedia?.sourceType === "input" &&
-            remaining !== null &&
-            remaining > 0.1 &&
-            remaining <= 15;
-
-        if (shouldPrepare && nextMedia) {
-            if (
-                preparedInputIdRef.current ===
-                nextMedia.id
-            ) {
-                return;
-            }
-
-            const targetId =
-                nextMedia.id;
-
-            preparedInputIdRef.current =
-                targetId;
-            setInputPrebufferState(
-                "loading"
-            );
-
-            void window.santtosAPI
-                .prepareNdiInput(
-                    nextMedia.path,
-                    buildOverlayState(
-                        nextMedia,
-                        0
-                    )
-                )
-                .then((result) => {
-                    if (
-                        preparedInputIdRef.current !==
-                        targetId
-                    ) {
-                        return;
-                    }
-
-                    if (
-                        result.ok &&
-                        result.ready !== false
-                    ) {
-                        setInputPrebufferState(
-                            "ready"
-                        );
-                    } else {
-                        setInputPrebufferState(
-                            "error"
-                        );
-                        console.warn(
-                            "Pré-carga do próximo Input falhou; o PROGRAM atual continua normalmente:",
-                            result.error
-                        );
-                    }
-                })
-                .catch((error) => {
-                    if (
-                        preparedInputIdRef.current !==
-                        targetId
-                    ) {
-                        return;
-                    }
-
-                    setInputPrebufferState(
-                        "error"
-                    );
-                    console.warn(
-                        "Pré-carga do próximo Input falhou; o PROGRAM atual continua normalmente:",
-                        error
-                    );
-                });
-
-            return;
-        }
-
-        // Keep the prepared source alive while ENDED/selection updates race
-        // with the IPC that transfers it to PROGRAM.
-        if (preparedInputIdRef.current && (
-            preparedInputIdRef.current === selectedMedia?.id ||
-            (nativePlayout.state === "ENDED" && preparedInputIdRef.current === nextMedia?.id)
-        )) return;
-
-        if (
-            preparedInputIdRef.current &&
-            (
-                !nextMedia ||
-                preparedInputIdRef.current !==
-                    nextMedia.id ||
-                !isPlaying ||
-                nativePlayout.state !==
-                    "PLAYING" ||
-                selectedMedia?.loop ||
-                selectedMedia?.freezeEnd
-            )
-        ) {
-            preparedInputIdRef.current =
-                null;
-            setInputPrebufferState(
-                "idle"
-            );
-
-            void window.santtosAPI
-                .cancelPreparedNdiInput()
-                .catch((error) =>
-                    console.error(
-                        "Falha ao cancelar pré-carga do Input:",
-                        error
-                    )
-                );
-        }
-    }, [
-        nativeOutputEnabled,
-        isPlaying,
-        nativePlayout.state,
-        nativePlayout.itemId,
-        nativePlayout.remainingSeconds,
-        selectedMedia?.id,
-        selectedMedia?.loop,
-        selectedMedia?.freezeEnd,
-        nextMedia?.id,
-        nextMedia?.sourceType
-    ]);
+        const prepared = nativePlayout.preparedNext;
+        setInputPrebufferState(prepared?.itemId === nextMedia?.id
+            ? prepared?.error ? "error" : prepared?.ready ? "ready" : "loading" : "idle");
+    }, [nativePlayout.preparedNext, nextMedia?.id]);
 
     const selectedClipIn = getClipIn(selectedMedia);
     const selectedClipOut = getClipOut(selectedMedia);

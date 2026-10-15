@@ -19,7 +19,7 @@ class RundownController {
         this.finished=false;
         const same=this.current?.id===item.id && this.report;
         if(same)this.accumulated=this.played();else{this.closeReport("PULADO",{reason:"Troca manual"});this.accumulated=0;}
-        const token=++this.epoch;this.stopRaw("preserve");this.current={...item};this.startPosition=position;
+        const token=++this.epoch;this.current={...item};this.startPosition=position;
         return this.open(token,position,overlay);
     }
     async open(token,position,overlay={}) {
