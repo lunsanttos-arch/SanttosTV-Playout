@@ -2271,3 +2271,18 @@ button {
 .operation-status-card strong {
     color: #e7e7e7;
 }
+.persistence-error {
+    position: fixed;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 10000;
+    max-width: min(760px, 90vw);
+    padding: 12px 18px;
+    border: 1px solid #ef4444;
+    border-radius: 8px;
+    background: #341b25;
+    color: #fecaca;
+    font-size: 14px;
+    box-shadow: 0 4px 20px #0008;
+}

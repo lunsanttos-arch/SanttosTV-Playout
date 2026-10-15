@@ -128,25 +128,31 @@ function applyPendingRestore(folder) {
     } catch (error) { recover(); throw error; }
 }
 class DataBackupService {
-    constructor(folder,version) { this.folder=folder;this.version=version;this.busy=false;this.lastError="";this.timer=null;this.workers=new Set(); }
+    constructor(folder,version,beforeSnapshot=null) { this.beforeSnapshot=beforeSnapshot;this.folder=folder;this.version=version;this.busy=false;this.lastError="";this.timer=null;this.workers=new Set(); }
     run(action,args={}) {
+        if (this.stopped) return Promise.reject(Error("Backup interrompido pelo encerramento do aplicativo."));
         if (this.busy && action!=="status") return Promise.reject(Error("Uma operação de backup já está em andamento."));
         if(action!=="status")this.busy=true;
-        return new Promise((resolve,reject)=>{
-            const worker=new Worker(__filename,{workerData:{folder:this.folder,version:this.version,action,args}});this.workers.add(worker);
-            const timer=setTimeout(()=>{worker.terminate();reject(Error("A operação de backup excedeu o tempo limite. Confira o disco ou a pasta adicional."));},60000);timer.unref();
-            worker.once("message",result=>{if(result.error)reject(Error(result.error));else resolve(result.value)});
-            worker.once("error",reject);worker.once("exit",code=>{clearTimeout(timer);this.workers.delete(worker);if(code)reject(Error("O processo de backup foi interrompido."));});
+        return Promise.resolve().then(async () => {
+            if (["create", "export"].includes(action)) await this.beforeSnapshot?.();
+            if (this.stopped) throw Error("Backup interrompido pelo encerramento do aplicativo.");
+            return new Promise((resolve,reject)=>{
+                const worker=new Worker(__filename,{workerData:{folder:this.folder,version:this.version,action,args}});this.workers.add(worker);
+                const timer=setTimeout(()=>{worker.terminate();reject(Error("A operação de backup excedeu o tempo limite. Confira o disco ou a pasta adicional."));},60000);timer.unref();
+                worker.once("message",result=>{if(result.error)reject(Error(result.error));else resolve(result.value)});
+                worker.once("error",reject);worker.once("exit",code=>{clearTimeout(timer);this.workers.delete(worker);if(code)reject(Error("O processo de backup foi interrompido."));});
+            });
         }).then(value=>{if(action!=="status")this.lastError="";return value}).catch(error=>{this.lastError=error.message;throw error}).finally(()=>{if(action!=="status")this.busy=false});
     }
     start() {
+        this.stopped=false;
         const tick=async()=>{if(this.busy)return;try{const {settings}=await this.run("status");
             if(settings.enabled && (!settings.lastAttemptAt || Date.now()-Date.parse(settings.lastAttemptAt)>=settings.intervalHours*3600000))
                 await this.run("create");}catch(error){console.error("Backup automático:",error.message)}};
         this.initialTimer=setTimeout(()=>void tick(),30000);this.initialTimer.unref();
         this.timer=setInterval(()=>void tick(),60000);this.timer.unref();
     }
-    stop(){clearInterval(this.timer);clearTimeout(this.initialTimer);for(const worker of this.workers)void worker.terminate();}
+    stop(){this.stopped=true;clearInterval(this.timer);clearTimeout(this.initialTimer);for(const worker of this.workers)void worker.terminate();}
 }
 if(!isMainThread){try{const manager=new DataBackupManager(workerData.folder,workerData.version);const action=workerData.action;
     if(!["status","configure","create","export","inspect","stage"].includes(action))throw Error("Operação inválida.");

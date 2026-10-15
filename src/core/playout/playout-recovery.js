@@ -2,6 +2,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const { openJsonStore } = require("../persistence/json-store");
 
 class PlayoutRecovery {
     constructor(folder) {
@@ -37,51 +38,33 @@ class PlayoutRecovery {
 
     save(value) {
         const next = this.normalize(value);
-        fs.mkdirSync(path.dirname(this.file), { recursive: true });
-        const temp = this.file + ".tmp";
-        const fd = fs.openSync(temp, "w");
-        try {
-            fs.writeFileSync(fd, JSON.stringify(next), "utf8");
-            fs.fsyncSync(fd);
-        } finally { fs.closeSync(fd); }
-        if (this.primaryValid && fs.existsSync(this.file)) fs.copyFileSync(this.file, this.file + ".bak");
-        fs.renameSync(temp, this.file);
-        this.state = next;
-        this.primaryValid = true;
-        return next;
+        this.pendingState = next;
+        this.store ??= openJsonStore(this.file, () => this.pendingState ?? this.state, { backupValid: this.primaryValid });
+        this.store.replace(next);
+        return this.store.flush().then(() => {
+            this.state = next; this.primaryValid = true;
+            return next;
+        });
     }
 
     captureNative(snapshot) {
         if (snapshot.itemId && ["PLAYING", "STARTING", "PAUSED", "FAULT", "ENDED"].includes(snapshot.state)) {
-            this.save({ itemId: snapshot.itemId, positionSeconds: snapshot.positionSeconds,
+            return this.save({ itemId: snapshot.itemId, positionSeconds: snapshot.positionSeconds,
                 playing: ["PLAYING", "STARTING"].includes(snapshot.state), ended: snapshot.state === "ENDED" });
         }
     }
 
-    saveAsync(value) {
-        // Only keep the most recent waiting checkpoint if the disk is slow.
-        // The currently writing checkpoint still completes atomically.
-        this.pendingValue = this.normalize(value);
-        if (!this.writePromise) this.writePromise = this.writePending().finally(() => { this.writePromise = null; });
-        return this.writePromise;
-    }
-
-    async writePending() {
-        while (this.pendingValue) {
-            const next = this.pendingValue; this.pendingValue = null;
-            await fs.promises.mkdir(path.dirname(this.file), { recursive: true });
-            const temp = this.file + ".tmp";
-            const handle = await fs.promises.open(temp, "w", 0o600);
-            try { await handle.writeFile(JSON.stringify(next)); await handle.sync(); }
-            finally { await handle.close(); }
-            if (this.primaryValid) {
-                try { await fs.promises.copyFile(this.file, this.file + ".bak"); }
-                catch (error) { if (error.code !== "ENOENT") throw error; }
-            }
-            await fs.promises.rename(temp, this.file);
+    async saveAsync(value) {
+        // A failed writer must reject a Promise, never throw out of the periodic
+        // PROGRAM callback. A later checkpoint also retries after disk recovery.
+        if (this.store?.error) {
+            const next = this.normalize(value);
+            this.pendingState = next;
+            await this.store.retry();
             this.state = next; this.primaryValid = true;
+            return this.state;
         }
-        return this.state;
+        return this.save(value);
     }
 
     captureNativeAsync(snapshot) {
@@ -92,7 +75,7 @@ class PlayoutRecovery {
         return Promise.resolve(this.state);
     }
 
-    flush() { return this.writePromise || Promise.resolve(this.state); }
+    flush() { return this.store?.flush() ?? Promise.resolve(this.state); }
 }
 
 module.exports = { PlayoutRecovery };

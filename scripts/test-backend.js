@@ -1,3 +1,4 @@
+const { flushPersistence, closePersistence } = require("../src/core/persistence/json-store");
 const assert = require("assert");
 const fs = require("fs");
 const os = require("os");
@@ -20,6 +21,7 @@ async function main() {
     try {
         const db = require("../src/database/database");
         db.initializeDatabase({ userDataPath: databaseUserData });
+        await flushPersistence();
         assert(fs.existsSync(databaseFile), "Banco deve ser gravado em userData, nao no executavel.");
 
         const mediaFolder = path.join(tempRoot, "media");
@@ -120,6 +122,7 @@ async function main() {
         assert.strictEqual(configuredExhibition.labels.INEDITO, "ESTREIA HOJE");
         assert.strictEqual(configuredExhibition.labels.ESTREIA, "ESTREIA");
         assert.strictEqual(configuredExhibition.backgroundEnabled, false);
+        await flushPersistence();
         assert.strictEqual(JSON.parse(fs.readFileSync(databaseFile, "utf8"))
             .settings.exhibitionStyle.gapPx, 22,
             "Identificação gráfica deve persistir no banco.");
@@ -132,8 +135,10 @@ async function main() {
         assert.strictEqual(sanitizedExhibition.color, "#ffffff");
         assert.strictEqual(sanitizedExhibition.labels.REPRISE, "REPRISE");
         db.updateExhibitionStyle(configuredExhibition);
+        await flushPersistence();
         // O arquivo .bak precisa conter a configuracao boa antes do teste de corrupção.
         db.updateExhibitionStyle(configuredExhibition);
+        await flushPersistence();
 
 
         const library = require("../src/core/library/library-categories");
@@ -164,7 +169,9 @@ async function main() {
 
         // Salvar segunda geracao: o backup mantem a versao anterior, agora
         // ja contendo a categoria personalizada.
+        await flushPersistence();
         library.saveLibraryCategories(library.getLibraryCategories());
+        await flushPersistence();
 
         // Configuracao danificada nunca pode apagar as abas da biblioteca.
         const categoriesFile = path.join(userData, "library-categories.json");
@@ -226,6 +233,7 @@ async function main() {
             duration: 30,
             plannedDurationSeconds: 30
         });
+        await flushPersistence();
         const finished = reports.finishPlayoutEntry(entry.id, "EXECUTADO", 30);
         assert.strictEqual(finished.ok, true);
         assert.strictEqual(finished.entry.status, "EXECUTADO");
@@ -248,7 +256,7 @@ async function main() {
 
         const customReportFolder =
             path.join(tempRoot, "xml-custom");
-        reports.setReportFolder(
+        await reports.setReportFolder(
             customReportFolder
         );
         await waitFor(() =>
@@ -261,6 +269,7 @@ async function main() {
             customReportFolder
         );
 
+        await flushPersistence();
         assert(fs.existsSync(`${databaseFile}.bak`), "Deve existir backup da geracao anterior.");
         const persisted = JSON.parse(fs.readFileSync(databaseFile, "utf8"));
         assert.strictEqual(persisted.timeline.length, 1, "Timeline nao deve se perder no disco.");
@@ -299,6 +308,7 @@ async function main() {
         console.log("✓ relatório XML configurável");
 
     } finally {
+        await closePersistence();
         fs.rmSync(tempRoot, { recursive: true, force: true });
     }
 }

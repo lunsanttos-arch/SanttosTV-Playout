@@ -1,5 +1,10 @@
 # Revisão de arquitetura com referências do GitHub — 15/10/2026
 
+> Atualização posterior à revisão: o isolamento de gravações foi implementado
+> com workers e confirmação durável, mantendo JSON. Consulte
+> [PERSISTENCIA-ISOLADA.md](PERSISTENCIA-ISOLADA.md). A extração do serviço PROGRAM,
+> os decks A/B e a avaliação de SQLite continuam sendo trabalhos distintos.
+
 ## Conclusão
 
 A base React/TypeScript + Node/Electron + FFmpeg + senders C++ é adequada ao

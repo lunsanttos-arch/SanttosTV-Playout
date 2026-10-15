@@ -1,3 +1,4 @@
+const { flushPersistence, closePersistence } = require("../src/core/persistence/json-store");
 "use strict";
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -9,8 +10,9 @@ const { SchedulingWebController } = require("../src/core/scheduling/web-controll
 (async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-controller-qa-"));
     const controller = new SchedulingWebController({ port: 0, distFolder: root,
-        getMedia: db.getMedia, getRundown: db.getDailyRundown, saveRundown: db.saveDailyRundown, getWeekly: db.getWeeklyRundown, saveWeekly: db.saveWeeklyRundown });
+        getMedia: db.getMedia, getRundown: db.getDailyRundown, saveRundown: db.saveDailyRundown, getWeekly: db.getWeeklyRundown, saveWeekly: db.saveWeeklyRundown, commit: flushPersistence });
     try {
+        await flushPersistence();
         db.initializeDatabase({ userDataPath: root, migrateLegacy: false });
         fs.writeFileSync(path.join(root, "controller.html"), "<!doctype html><title>Programação</title>");
         const first = db.saveDailyRundown({ date: "2026-10-13", expectedUpdatedAt: null, items: [
@@ -44,6 +46,7 @@ const { SchedulingWebController } = require("../src/core/scheduling/web-controll
             assert.equal(template.exists, true); assert.equal(template.items.length, 3);
             assert.equal(template.items[0].liveSlot, true); assert.equal(template.items[2].replacedPlaceholder, true);
         }
+        await flushPersistence();
         db.initializeDatabase({ userDataPath: root, migrateLegacy: false });
         const weekly = db.getWeeklyRundown(3);
         assert.equal(weekly.title, "Modelo 3"); assert.equal(weekly.startTime, "06:30"); assert.equal(weekly.items.length, 3);
@@ -77,5 +80,5 @@ const { SchedulingWebController } = require("../src/core/scheduling/web-controll
         assert.equal((await fetch(base + "/controller")).status, 200);
         assert.equal((await fetch(base + "/database/santtos-tv.json")).status, 404);
         console.log("CONTROLLER QA: APROVADO — autenticação, rascunho remoto, espaços vazios, substituição e conflito entre operadores.");
-    } finally { controller.stop(); fs.rmSync(root, { recursive: true, force: true }); }
+    } finally { controller.stop(); await closePersistence(); fs.rmSync(root, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

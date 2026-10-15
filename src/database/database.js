@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { openJsonStore } = require("../core/persistence/json-store");
+let databaseStore = null;
 const { DEFAULT_EXHIBITION_STYLE, normalizeExhibitionStyle } = require("../core/graphics/exhibition-overlay");
 
 const legacyDatabaseFolder = path.join(__dirname, "../../database");
@@ -112,30 +114,14 @@ function ensureDatabaseFolder() {
     }
 }
 
-function saveDatabase() {
-    ensureDatabaseFolder();
-
-    // Nunca sobrescrever o banco principal diretamente: uma queda de energia
-    // durante a escrita nao pode transformar a grade inteira em JSON parcial.
-    const temporaryFile = `${databaseFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
-    let descriptor;
-    try {
-        descriptor = fs.openSync(temporaryFile, "wx");
-        fs.writeFileSync(descriptor, JSON.stringify(data, null, 2), "utf8");
-        fs.fsyncSync(descriptor);
-        fs.closeSync(descriptor);
-        descriptor = undefined;
-
-        // Manter a geracao anterior para restauracao manual se necessario.
-        if (fs.existsSync(databaseFile)) {
-            fs.copyFileSync(databaseFile, `${databaseFile}.bak`);
-        }
-        fs.renameSync(temporaryFile, databaseFile);
-    } finally {
-        if (descriptor !== undefined) fs.closeSync(descriptor);
-        if (fs.existsSync(temporaryFile)) fs.rmSync(temporaryFile, { force: true });
-    }
+function writer() {
+    return databaseStore ??= openJsonStore(databaseFile, () => data);
 }
+function saveDatabase(parts, value) {
+    if (parts) writer().set(parts, value);
+    else writer().replace(data);
+}
+function flushDatabase() { return databaseStore?.flush() ?? Promise.resolve(); }
 
 function normalizeNumber(
     value,
@@ -628,6 +614,8 @@ function loadDatabase() {
 }
 
 function initializeDatabase(options = {}) {
+    if (databaseStore?.dirty) throw Error("Aguarde a gravação do banco antes de recarregar.");
+    databaseStore = null;
     if (options.userDataPath) {
         if (typeof options.userDataPath !== "string" ||
             !path.isAbsolute(options.userDataPath)) {
@@ -645,6 +633,7 @@ function initializeDatabase(options = {}) {
         }
     }
     loadDatabase();
+    writer();
 }
 
 function getSettings() {
@@ -655,7 +644,7 @@ function updateOutputSettings(output) {
     data.settings.output =
         normalizeOutputSettings(output);
 
-    saveDatabase();
+    saveDatabase(["settings", "output"], data.settings.output);
 
     return structuredClone(
         data.settings.output
@@ -666,7 +655,7 @@ function updateWatermarkStyle(style) {
     data.settings.watermarkStyle =
         normalizeWatermarkStyle(style);
 
-    saveDatabase();
+    saveDatabase(["settings", "watermarkStyle"], data.settings.watermarkStyle);
 
     return structuredClone(
         data.settings.watermarkStyle
@@ -677,7 +666,7 @@ function updateHashtagStyle(style) {
     data.settings.hashtagStyle =
         normalizeHashtagStyle(style);
 
-    saveDatabase();
+    saveDatabase(["settings", "hashtagStyle"], data.settings.hashtagStyle);
 
     return structuredClone(
         data.settings.hashtagStyle
@@ -688,7 +677,7 @@ function updateExhibitionStyle(style) {
     const previous = data.settings.exhibitionStyle;
     data.settings.exhibitionStyle = normalizeExhibitionStyle(style);
     try {
-        saveDatabase();
+        saveDatabase(["settings", "exhibitionStyle"], data.settings.exhibitionStyle);
     } catch (error) {
         data.settings.exhibitionStyle = previous;
         throw error;
@@ -710,7 +699,8 @@ function addLog(message, level = "info") {
         data.logs = data.logs.slice(0, 1000);
     }
 
-    saveDatabase();
+    try { saveDatabase(["logs"], data.logs); }
+    catch (error) { console.error("Registro operacional ainda não gravado:", error.message); }
 
     return log;
 }
@@ -945,7 +935,7 @@ function saveTimeline(timelineItems) {
         })
         .filter(Boolean);
 
-    saveDatabase();
+    saveDatabase(["timeline"], data.timeline);
 
     return getTimeline();
 }
@@ -1046,7 +1036,7 @@ function saveDailyRundown(rundown) {
         updatedAt: new Date(Math.max(Date.now(), Date.parse(data.dailyRundowns[date]?.updatedAt || "") + 1 || 0)).toISOString()
     };
 
-    saveDatabase();
+    saveDatabase(["dailyRundowns", date], data.dailyRundowns[date]);
     return getDailyRundown(date);
 }
 
@@ -1103,7 +1093,7 @@ function saveWeeklyRundown(weekday, rundown) {
     data.weeklyRundowns[key] = { title: normalizeText(rundown.title, "Modelo semanal", 120),
         startTime: normalizeRundownTime(rundown.startTime), items: normalizeRundownItems(rundown.items),
         updatedAt: new Date(Math.max(Date.now(), Date.parse(previous?.updatedAt || "") + 1 || 0)).toISOString() };
-    saveDatabase();
+    saveDatabase(["weeklyRundowns", key], data.weeklyRundowns[key]);
     return getWeeklyRundown(weekday);
 }
 
@@ -1216,7 +1206,7 @@ function addMedia(filePaths) {
     }
 
     if (importedItems.length > 0) {
-        saveDatabase();
+        writer().upsertMany(["media"], importedItems);
 
         addLog(
             `${importedItems.length} mídia(s) adicionada(s) à biblioteca.`
@@ -1252,7 +1242,8 @@ function removeMedia(mediaId) {
             entry.sourceMediaId !== mediaId
     );
 
-    saveDatabase();
+    writer().remove(["media"], mediaId);
+    saveDatabase(["timeline"], data.timeline);
 
     addLog(
         `Mídia removida da biblioteca: ${removedItem.name}`
@@ -1317,7 +1308,7 @@ function updateMediaMetadata(
         }
     );
 
-    saveDatabase();
+    writer().upsert(["media"], mediaItem);
 
     return {
         ...mediaItem
@@ -1326,6 +1317,7 @@ function updateMediaMetadata(
 
 module.exports = {
     initializeDatabase,
+    flushDatabase,
     getSettings,
     updateOutputSettings,
     updateWatermarkStyle,

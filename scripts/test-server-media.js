@@ -1,3 +1,4 @@
+const { flushPersistence, closePersistence } = require("../src/core/persistence/json-store");
 "use strict";
 
 const assert = require("node:assert/strict");
@@ -203,6 +204,7 @@ const {
             "SERVER MEDIA QA: APROVADO — cache local, prioridade do Input Web, resolução de playback e fallback sem servidor."
         );
     } finally {
+        await closePersistence();
         fs.rmSync(
             root,
             {

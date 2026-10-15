@@ -11,6 +11,7 @@ const {
 
 const path = require("path");
 const fs = require("fs");
+const { flushPersistence, closePersistence, persistenceStatus } = require("../core/persistence/json-store");
 const { fileURLToPath } = require("url");
 const { MEDIA_SCHEME, serveImportedVideo } = require("../core/media/media-protocol");
 const { preparePreviewProxy, cancelActivePreviews } = require("../core/media/preview-proxy");
@@ -61,6 +62,7 @@ let backendRecoveryTimer = null;
 const programMetrics = { frames: 0, audioSamples: 0, startedAt: Date.now() };
 let uiRecoveryTimer = null;
 let shuttingDown = false;
+let quitCompleted = false;
 const { RundownController } = require("../core/playout/rundown-controller");
 const { blackFrame, ProgramStandby } = require("../core/playout/program-standby");
 const { ProgramAudioRouter } = require("../core/audio/program-audio-router");
@@ -225,10 +227,30 @@ function isTrustedIpcSender(event) {
     );
 }
 
+const durableChannels = new Set([
+    "operation:save", "playout:apply-rundown", "playout:checkpoint",
+    "media:select", "media:import", "media:remove", "timeline:save",
+    "rundown:save", "rundown:weekly-save", "library-categories:save", "library-categories:select-folder",
+    "web-inputs:save", "web-inputs:remove", "server-media:set-settings", "server-media:select-root",
+    "settings:set-output", "settings:set-watermark-style", "settings:set-hashtag-style", "settings:set-exhibition-style",
+    "report:select-folder", "report:reset-folder", "report:playout-start", "report:playout-finish"
+]);
 function registerTrustedHandle(channel, listener) {
-    ipcMain.handle(channel, (event, ...args) => {
+    ipcMain.handle(channel, async (event, ...args) => {
         if (!isTrustedIpcSender(event)) throw new Error("Origem IPC nao autorizada.");
-        return listener(event, ...args);
+        if (shuttingDown && durableChannels.has(channel)) throw Error("O aplicativo está concluindo as gravações.");
+        let result;
+        try {
+            if (durableChannels.has(channel) && persistenceStatus().length) await flushPersistence({ retry: true });
+            result = await listener(event, ...args);
+            if (durableChannels.has(channel) && result?.ok !== false) await flushPersistence();
+            return result;
+        } catch (error) {
+            if (result && !Array.isArray(result) && Object.hasOwn(result, "ok")) {
+                return { ok: false, error: "Não foi possível confirmar a gravação: " + error.message };
+            }
+            throw error;
+        }
     });
 }
 
@@ -2491,7 +2513,7 @@ function redactDiagnostic(value) {
 function registerIpcHandlers() {
     registerTrustedHandle("operation:get", async () => ({ ok: true, settings: operationSettings.value,
         startupAvailable: process.platform === "win32" && app.isPackaged,
-        diagnostics: { metrics: { ...programMetrics, memory: process.memoryUsage() }, engine: playoutEngine.snapshot(), lastIssue: rundownController?.lastIssue, contingency: rundownController?.contingency,
+        diagnostics: { persistence: persistenceStatus(), metrics: { ...programMetrics, memory: process.memoryUsage() }, engine: playoutEngine.snapshot(), lastIssue: rundownController?.lastIssue, contingency: rundownController?.contingency,
             frameAgeMs: lastProgramFrameAt ? Math.max(0,programClock.nowMs()-lastProgramFrameAt) : null,
             ndiAudio: { connected: programAudioRouter.connected, bytes: programAudioRouter.bytes, droppedBytes: programAudioRouter.droppedBytes },
             transports: Object.fromEntries([...transportOutputs].map(([kind,out]) => [kind,{online:out.online,error:out.error}])) } }));
@@ -2641,6 +2663,7 @@ function registerIpcHandlers() {
             transports: Object.fromEntries([...transportOutputs].map(([kind, output]) => [kind, { online: output.online, error: output.error }])),
             playout: { ...playoutEngine.snapshot(), autonomous: Boolean(rundownController), currentItem: rundownController?.current },
             playoutError: playoutLastError || null,
+            persistenceError: persistenceStatus().length ? "Não foi possível salvar os dados. Verifique o espaço e o acesso ao disco antes de fechar o programa." : null,
             error: ndiLastError || null,
             devNullSink: ndiDevNullSink,
             preparedInput:
@@ -3324,7 +3347,7 @@ function registerIpcHandlers() {
             try {
                 return {
                     ok: true,
-                    folder: setReportFolder(
+                    folder: await setReportFolder(
                         result.filePaths[0]
                     )
                 };
@@ -3344,7 +3367,7 @@ function registerIpcHandlers() {
         "report:reset-folder",
         async () => ({
             ok: true,
-            folder: resetReportFolder()
+            folder: await resetReportFolder()
         })
     );
 
@@ -4218,7 +4241,7 @@ function startSystem() {
         migrateLegacy: !isTestBench
     });
     schedulingController = new SchedulingWebController({ distFolder: path.join(__dirname, "../../dist"),
-        getMedia, getCategories: getLibraryCategories, getRundown: getDailyRundown, saveRundown: saveDailyRundown, getWeekly: getWeeklyRundown, saveWeekly: saveWeeklyRundown,
+        getMedia, getCategories: getLibraryCategories, getRundown: getDailyRundown, saveRundown: saveDailyRundown, getWeekly: getWeeklyRundown, saveWeekly: saveWeeklyRundown, commit: options => flushPersistence(options),
         renderPdf: rundown => require("../core/scheduling/rundown-pdf").renderRundownPdf(BrowserWindow, rundown) });
     playoutRecovery = new PlayoutRecovery(app.getPath("userData"));
     recoveryTimer = setInterval(() => {
@@ -4304,7 +4327,7 @@ function startSystem() {
             }
         }
     }
-    dataBackups = new DataBackupService(app.getPath("userData"), app.getVersion());
+    dataBackups = new DataBackupService(app.getPath("userData"), app.getVersion(), () => flushPersistence());
     dataBackups.start();
     addLog("Sistema iniciado");
 
@@ -4374,8 +4397,9 @@ app.whenReady().then(() => {
 });
 
 app.on("before-quit", async event => {
-    if (shuttingDown) return;
+    if (quitCompleted) return;
     event.preventDefault();
+    if (shuttingDown) return;
     shuttingDown = true;
     const closingSnapshot = playoutEngine.snapshot();
     if (rundownController && ["PLAYING", "STARTING"].includes(closingSnapshot.state)) rundownController.pause();
@@ -4392,16 +4416,30 @@ app.on("before-quit", async event => {
     schedulingController?.stop();
     clearInterval(recoveryTimer);
     stopNativePlayback({ engineAction: "preserve" });
-    try { await playoutRecovery?.flush(); playoutRecovery?.captureNative(closingSnapshot); }
+    try { await playoutRecovery?.captureNativeAsync(closingSnapshot); await playoutRecovery?.flush(); }
     catch (error) { console.error("Falha ao salvar posição ao fechar:", error); }
     stopServerMediaHealthMonitor();
     cancelActivePreviews();
     rundownController?.closeReport("PULADO", { reason: "Aplicativo encerrado" });
-    closeOpenEntriesAsSkipped();
+    try { closeOpenEntriesAsSkipped(); } catch (error) { console.error("Falha ao concluir histórico:", error); }
     await listReportFiles().catch(error => console.error("Falha ao concluir relatório:", error));
     } catch (error) { console.error("Falha ao encerrar:", error); }
     finally {
-        stopNativePlayback(); stopNdiSender(); stopOmtSender(); app.quit();
+        // Keep the app alive until pending data is durable. Repeated quit events
+        // cannot bypass this barrier; discarding requires an explicit choice.
+        for (;;) {
+            try { await flushPersistence({ retry: true }); await closePersistence(); break; }
+            catch (error) {
+                const answer = await dialog.showMessageBox(mainWindow ?? undefined, {
+                    type: "error", title: "Dados ainda não foram salvos",
+                    message: "Não foi possível concluir a gravação dos dados.",
+                    detail: "Verifique o disco e tente novamente. Fechar sem salvar pode perder as últimas alterações.",
+                    buttons: ["Tentar novamente", "Fechar sem salvar"], defaultId: 0, cancelId: 0
+                });
+                if (answer.response === 1) break;
+            }
+        }
+        stopNativePlayback(); stopNdiSender(); stopOmtSender(); quitCompleted = true; app.quit();
     }
 });
 

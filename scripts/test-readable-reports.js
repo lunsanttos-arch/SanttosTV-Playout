@@ -1,3 +1,4 @@
+const { flushPersistence, closePersistence } = require("../src/core/persistence/json-store");
 "use strict";
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
@@ -9,6 +10,7 @@ const reports = require("../src/core/reporting/playout-report");
 (async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-readable-report-"));
     try {
+        await flushPersistence();
         reports.initializePlayoutReports({ userDataPath: root, documentsPath: root });
         const entry = reports.startPlayoutEntry({ id: "media-1", name: "006 AGENCIA EURO <teste>.mp4", path: "C:\\Filme.mp4", duration: 60 });
         const attemptedAt = Date.now();
@@ -18,6 +20,7 @@ const reports = require("../src/core/reporting/playout-report");
         await new Promise(resolve => setTimeout(resolve, 30));
         reports.markPlayoutEntryReady(entry.id); // Resume cannot change original entry time.
         reports.finishPlayoutEntry(entry.id, "EXECUTADO", 15);
+        await flushPersistence();
         const persisted = JSON.parse(fs.readFileSync(path.join(root, "reporting", "playout-report-state.json"), "utf8")).entries[0];
         assert(Date.parse(persisted.startedAt) >= attemptedAt + 20);
         assert(Date.parse(persisted.startedAt) <= firstReadyAt);
@@ -49,6 +52,7 @@ const reports = require("../src/core/reporting/playout-report");
         const xml = fs.readFileSync(htmlPath.replace(/\.html$/, ".xml"), "utf8");
         assert(xml.includes("PULADO_POR_ERRO") && xml.includes("<conteudo_seguinte>Vídeo seguinte</conteudo_seguinte>"));
         reports.startPlayoutEntry({ id: "crash", name: "Interrompido", path: "C:\\crash.mp4", duration: 30 });
+        await flushPersistence();
         reports.initializePlayoutReports({ userDataPath: root, documentsPath: root });
         await reports.listReportFiles();
         assert(fs.readFileSync(htmlPath, "utf8").includes("Não recuperado"));
@@ -56,9 +60,10 @@ const reports = require("../src/core/reporting/playout-report");
         const unavailable = path.join(root, "not-a-folder");
         fs.writeFileSync(unavailable, "file");
         fs.writeFileSync(path.join(root, "reporting", "playout-report-config.json"), JSON.stringify({ reportFolder: unavailable }));
+        await flushPersistence();
         reports.initializePlayoutReports({ userDataPath: root, documentsPath: root });
         assert.equal(reports.getReportFolder(), path.dirname(htmlPath));
         await reports.listReportFiles();
         console.log("REPORT QA: APROVADO — HTML legível, XLSX válido e compatibilidade XML.");
-    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    } finally { await closePersistence(); fs.rmSync(root, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

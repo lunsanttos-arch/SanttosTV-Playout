@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { openJsonStore } = require("../persistence/json-store");
 const { pipeline } = require("node:stream/promises");
 
 const DEFAULT_SETTINGS = Object.freeze({
@@ -77,6 +78,8 @@ class ServerMediaManager {
 
         this.loadSettings();
         this.loadIndex();
+        this.settingsStore ??= openJsonStore(this.settingsFile, () => this.settings);
+        this.indexStore ??= openJsonStore(this.indexFile, () => ({ version: 1, entries: [...this.index.values()] }));
         this.cleanupPartials();
     }
 
@@ -129,34 +132,8 @@ class ServerMediaManager {
 
     saveSettings() {
         if (!this.settingsFile) return;
-
-        fs.mkdirSync(
-            path.dirname(this.settingsFile),
-            { recursive: true }
-        );
-
-        const tmp =
-            this.settingsFile +
-            "." +
-            process.pid +
-            "." +
-            crypto.randomUUID() +
-            ".tmp";
-
-        fs.writeFileSync(
-            tmp,
-            JSON.stringify(
-                this.settings,
-                null,
-                2
-            ),
-            "utf8"
-        );
-
-        fs.renameSync(
-            tmp,
-            this.settingsFile
-        );
+        this.settingsStore ??= openJsonStore(this.settingsFile, () => this.settings);
+        this.settingsStore.replace(this.settings);
     }
 
     updateSettings(value) {
@@ -215,33 +192,8 @@ class ServerMediaManager {
 
     saveIndex() {
         if (!this.indexFile) return;
-
-        const tmp =
-            this.indexFile +
-            "." +
-            process.pid +
-            ".tmp";
-
-        fs.writeFileSync(
-            tmp,
-            JSON.stringify(
-                {
-                    version: 1,
-                    entries:
-                        Array.from(
-                            this.index.values()
-                        )
-                },
-                null,
-                2
-            ),
-            "utf8"
-        );
-
-        fs.renameSync(
-            tmp,
-            this.indexFile
-        );
+        this.indexStore ??= openJsonStore(this.indexFile, () => ({ version: 1, entries: [...this.index.values()] }));
+        this.indexStore.replace({ version: 1, entries: [...this.index.values()] });
     }
 
     cleanupPartials() {

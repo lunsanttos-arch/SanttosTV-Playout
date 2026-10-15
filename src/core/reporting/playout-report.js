@@ -1,6 +1,8 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { openJsonStore } = require("../persistence/json-store");
+let reportStore = null, configStore = null;
 const {contentLabel} = require("../media/content-label.mjs");
 
 let stateFile = "";
@@ -38,37 +40,22 @@ function readConfig() {
 }
 
 function saveConfig() {
-    ensureFolder(path.dirname(configFile));
-    const temporary =
-        `${configFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
-    try {
-        fs.writeFileSync(
-            temporary,
-            JSON.stringify(
-                { reportFolder },
-                null,
-                2
-            ),
-            "utf8"
-        );
-        if (fs.existsSync(configFile)) {
-            fs.copyFileSync(
-                configFile,
-                `${configFile}.bak`
-            );
-        }
-        fs.renameSync(temporary, configFile);
-    } finally {
-        if (fs.existsSync(temporary)) {
-            fs.rmSync(temporary, { force: true });
-        }
-    }
+    configStore ??= openJsonStore(configFile, () => ({ reportFolder }));
+    configStore.replace({ reportFolder });
+}
+function reportWriter() {
+    return reportStore ??= openJsonStore(stateFile, () => state);
+}
+async function flushReports() {
+    await Promise.all([reportStore?.flush(), configStore?.flush()]);
 }
 
 function initializePlayoutReports({
     userDataPath,
     documentsPath
 }) {
+    if (reportStore?.dirty || configStore?.dirty) throw Error("Aguarde a gravação dos relatórios antes de recarregar.");
+    reportStore = null; configStore = null;
     const stateFolder = path.join(
         userDataPath,
         "reporting"
@@ -146,6 +133,7 @@ function initializePlayoutReports({
         );
     }
 
+    reportWriter();
     const recoveredAt =
         new Date().toISOString();
     let recovered = false;
@@ -243,63 +231,10 @@ function initializePlayoutReports({
     };
 }
 
-function saveState() {
-    if (!stateFile) {
-        throw new Error(
-            "Relatórios de exibição ainda não foram inicializados."
-        );
-    }
-
-    ensureFolder(
-        path.dirname(stateFile)
-    );
-
-    const temporary =
-        `${stateFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
-
-    let handle;
-
-    try {
-        handle = fs.openSync(
-            temporary,
-            "wx"
-        );
-        fs.writeFileSync(
-            handle,
-            JSON.stringify(
-                state,
-                null,
-                2
-            ),
-            "utf8"
-        );
-        fs.fsyncSync(handle);
-        fs.closeSync(handle);
-        handle = undefined;
-
-        if (fs.existsSync(stateFile)) {
-            fs.copyFileSync(
-                stateFile,
-                `${stateFile}.bak`
-            );
-        }
-
-        fs.renameSync(
-            temporary,
-            stateFile
-        );
-    } finally {
-        if (handle !== undefined) {
-            fs.closeSync(handle);
-        }
-
-        if (fs.existsSync(temporary)) {
-            fs.rmSync(
-                temporary,
-                { force: true }
-            );
-        }
-    }
+function saveState(entry) {
+    if (!stateFile) throw Error("Relatórios de exibição ainda não foram inicializados.");
+    if (entry) reportWriter().upsert(["entries"], entry);
+    else reportWriter().replace(state);
 }
 
 function pad(value) {
@@ -425,32 +360,10 @@ async function exportDate(dateKey) {
         return;
     }
 
-    const rows =
-        state.entries
-            .filter(
-                (entry) =>
-                    entry.reportDate ===
-                        dateKey &&
-                    (
-                        entry.status ===
-                            "EXECUTADO" ||
-                        ["PULADO", "PULADO_POR_ERRO"].includes(entry.status)
-                    )
-            )
-            .sort(
-                (left, right) =>
-                    new Date(
-                        left.startedAt
-                    ).getTime() -
-                    new Date(
-                        right.startedAt
-                    ).getTime()
-            );
-
-    if (!rows.length) return;
+    await flushReports();
     const { Worker } = require("node:worker_threads");
     return new Promise((resolve, reject) => {
-        const worker = new Worker(path.join(__dirname, "report-export-worker.js"), { workerData: { dateKey, destination, rows } });
+        const worker = new Worker(path.join(__dirname, "report-export-worker.js"), { workerData: { dateKey, destination, stateFile } });
         let settled = false;
         const timeout = setTimeout(() => { if (!settled) { settled = true; void worker.terminate(); reject(Error("Exportação de relatório excedeu 60 segundos.")); } }, 60000);
         worker.once("message", result => { settled = true; clearTimeout(timeout); result.error ? reject(Error(result.error)) : resolve(result.filePath); });
@@ -648,7 +561,7 @@ function reexportAllDates() {
     }
 }
 
-function setReportFolder(folderPath) {
+async function setReportFolder(folderPath) {
     if (
         typeof folderPath !==
             "string" ||
@@ -664,7 +577,7 @@ function setReportFolder(folderPath) {
             folderPath.trim()
         );
 
-    ensureFolder(normalized);
+    await fs.promises.mkdir(normalized, { recursive: true });
     reportFolder = normalized;
     saveConfig();
     reexportAllDates();
@@ -672,10 +585,10 @@ function setReportFolder(folderPath) {
     return reportFolder;
 }
 
-function resetReportFolder() {
+async function resetReportFolder() {
     reportFolder =
         defaultReportFolder;
-    ensureFolder(reportFolder);
+    await fs.promises.mkdir(reportFolder, { recursive: true });
     saveConfig();
     reexportAllDates();
 
@@ -747,7 +660,7 @@ function startPlayoutEntry(media) {
     };
 
     state.entries.push(entry);
-    saveState();
+    saveState(entry);
 
     return {
         id: entry.id,
@@ -802,7 +715,7 @@ function finishPlayoutEntry(
     entry.nextContent = sanitizeText(details.nextContent, 512);
     entry.contingencyContent = sanitizeText(details.contingency, 512);
 
-    saveState();
+    saveState(entry);
     queueExport(
         entry.reportDate
     );
@@ -822,14 +735,14 @@ function markPlayoutEntryReady(id) {
     entry.attemptedAt = entry.startedAt;
     entry.startedAt = entry.actualStartedAt = new Date().toISOString();
     entry.reportDate = localDateKey(entry.startedAt);
-    // Persist together with finish/successor updates. No full-history disk write
-    // on the first PROGRAM frame; an abrupt interruption remains identifiable.
+    // Send just this occurrence to the writer; no history serialization on PROGRAM.
+    saveState(entry);
 }
 
 function updatePlayoutEntrySuccessor(id, content) {
     const entry = state.entries.find(item => item.id === id);
     if (!entry || entry.status !== "PULADO_POR_ERRO") return;
-    entry.nextContent = sanitizeText(content, 512); saveState(); queueExport(entry.reportDate);
+    entry.nextContent = sanitizeText(content, 512); saveState(entry); queueExport(entry.reportDate);
 }
 
 function closeOpenEntriesAsSkipped() {
@@ -870,11 +783,11 @@ function closeOpenEntriesAsSkipped() {
         datesToExport.add(
             entry.reportDate
         );
+        saveState(entry);
         changed = true;
     }
 
     if (changed) {
-        saveState();
 
         for (
             const dateKey
@@ -892,13 +805,15 @@ function getReportFolder() {
 }
 
 async function listReportFiles() {
+    await flushReports();
     await writeQueue;
-    return fs.readdirSync(reportFolder).filter(name => /^Relatorio_Exibicao_\d{4}-\d{2}-\d{2}\.html$/.test(name))
+    return (await fs.promises.readdir(reportFolder)).filter(name => /^Relatorio_Exibicao_\d{4}-\d{2}-\d{2}\.html$/.test(name))
         .sort().reverse().map(name => ({ date: name.slice(19, 29), name }));
 }
 
 module.exports = {
     initializePlayoutReports,
+    flushReports,
     startPlayoutEntry,
     finishPlayoutEntry,
     getPendingFailedReportIds: () => state.entries.filter(entry => entry.status === "PULADO_POR_ERRO" && !entry.nextContent).map(entry => entry.id),

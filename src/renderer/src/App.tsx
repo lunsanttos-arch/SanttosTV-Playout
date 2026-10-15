@@ -424,6 +424,7 @@ declare global {
                 };
                 serverMedia?: ServerMediaStatus;
                 playoutError?: string | null;
+                persistenceError?: string | null;
                 error?: string | null;
                 restarting?: boolean;
                 testBench?: boolean;
@@ -567,6 +568,7 @@ export default function App() {
         useState(false);
     const [ndiConfiguredEnabled, setNdiConfiguredEnabled] =
         useState(true);
+    const [persistenceError, setPersistenceError] = useState<string | null>(null);
     const [ndiError, setNdiError] = useState<string | null>(null);
     const [testBench, setTestBench] = useState(false);
     const [ndiTestMode, setNdiTestMode] = useState(false);
@@ -689,6 +691,7 @@ export default function App() {
                 setNdiDevNullSink(Boolean(status.devNullSink));
                 setAudioStatus(status.audio ?? { state: "IDLE" });
                 setNdiError(status.error ?? null);
+                setPersistenceError(status.persistenceError ?? null);
                 setNativePlaybackActive(Boolean(status.nativePlaybackActive));
                 setProgramClockKind(
                     status.programClock?.kind ?? "MONOTONIC"
@@ -912,6 +915,7 @@ export default function App() {
 
     return (
         <div className="app-shell">
+            {persistenceError && <div className="persistence-error" role="alert">{persistenceError}</div>}
             <header className="topbar">
                 <div className="brand">
                     <div className="brand-lockup">

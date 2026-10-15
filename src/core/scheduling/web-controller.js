@@ -6,8 +6,8 @@ const crypto = require("node:crypto");
 const os = require("node:os");
 
 class SchedulingWebController {
-    constructor({ distFolder, getMedia, getRundown, saveRundown, getCategories = () => [], getWeekly, saveWeekly, renderPdf, port = 8787 }) {
-        Object.assign(this, { distFolder, getMedia, getRundown, saveRundown, getCategories, getWeekly, saveWeekly, renderPdf, port });
+    constructor({ distFolder, getMedia, getRundown, saveRundown, getCategories = () => [], getWeekly, saveWeekly, renderPdf, commit = async () => {}, port = 8787 }) {
+        Object.assign(this, { distFolder, getMedia, getRundown, saveRundown, getCategories, getWeekly, saveWeekly, renderPdf, commit, port });
         this.server = null; this.sessions = new Map(); this.attempts = new Map();
         this.pin = "";
     }
@@ -71,7 +71,7 @@ class SchedulingWebController {
                 catch (error) { return send(400, { error: error.message }); }
             }
             if (req.method === "POST" && parsed.pathname === "/api/weekly" && this.saveWeekly) {
-                try { const body = await this.body(req); return send(200, { ok: true, rundown: this.saveWeekly(body.weekday, body.rundown) }); }
+                try { const body = await this.body(req); await this.commit({ retry: true }); const rundown = await this.saveWeekly(body.weekday, body.rundown); await this.commit(); return send(200, { ok: true, rundown }); }
                 catch (error) { return send(400, { error: error.message }); }
             }
             if (req.method === "POST" && parsed.pathname === "/api/rundown/html") {
@@ -94,7 +94,7 @@ class SchedulingWebController {
             if (req.method === "GET" && parsed.pathname === "/api/library-categories") return send(200, this.getCategories());
             if (req.method === "GET" && parsed.pathname === "/api/rundown") return send(200, this.getRundown(parsed.searchParams.get("date")));
             if (req.method === "POST" && parsed.pathname === "/api/rundown") {
-                try { return send(200, { ok: true, rundown: this.saveRundown(await this.body(req)) }); }
+                try { const body = await this.body(req); await this.commit({ retry: true }); const rundown = await this.saveRundown(body); await this.commit(); return send(200, { ok: true, rundown }); }
                 catch (error) { return send(400, { ok: false, error: error.message }); }
             }
             return send(404, { error: "Operação indisponível." });

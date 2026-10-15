@@ -1,3 +1,5 @@
+const { openJsonStore } = require("../persistence/json-store");
+let configStore = null;
 "use strict";
 
 const fs = require("fs");
@@ -187,57 +189,13 @@ function validateInput(input) {
 
 function saveConfig() {
     if (!configFile) return;
-
-    ensureFolder(
-        path.dirname(
-            configFile
-        )
-    );
-
-    const temporary =
-        `${configFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
-
-    try {
-        fs.writeFileSync(
-            temporary,
-            JSON.stringify(
-                { inputs },
-                null,
-                2
-            ),
-            "utf8"
-        );
-
-        if (
-            fs.existsSync(
-                configFile
-            )
-        ) {
-            fs.copyFileSync(
-                configFile,
-                `${configFile}.bak`
-            );
-        }
-
-        fs.renameSync(
-            temporary,
-            configFile
-        );
-    } finally {
-        if (
-            fs.existsSync(
-                temporary
-            )
-        ) {
-            fs.rmSync(
-                temporary,
-                { force: true }
-            );
-        }
-    }
+    configStore ??= openJsonStore(configFile, () => ({ inputs }));
+    configStore.replace({ inputs });
 }
 
 function initializeWebInputs(userDataPath) {
+    if (configStore?.dirty) throw Error("Aguarde a gravação da biblioteca antes de recarregar.");
+    configStore = null;
     configFile = path.join(
         userDataPath,
         "web-inputs.json"
@@ -280,6 +238,7 @@ function initializeWebInputs(userDataPath) {
         );
         inputs = [];
     }
+    configStore ??= openJsonStore(configFile, () => ({ inputs }));
 }
 
 function getWebInputs() {

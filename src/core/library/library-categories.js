@@ -1,3 +1,5 @@
+const { openJsonStore } = require("../persistence/json-store");
+let configStore = null;
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -70,8 +72,11 @@ function isUnavailableFolderError(error) {
 }
 
 function initializeLibraryCategories(userDataPath) {
+    if (configStore?.dirty) throw Error("Aguarde a gravação da biblioteca antes de recarregar.");
+    configStore = null;
     configFile = path.join(userDataPath, "library-categories.json");
     loadCategories();
+    configStore ??= openJsonStore(configFile, () => ({ categories }));
 }
 
 function normalizeCategory(value, index = 0) {
@@ -124,21 +129,8 @@ function loadCategories() {
 
 function saveConfig() {
     if (!configFile) return;
-    fs.mkdirSync(path.dirname(configFile), { recursive: true });
-    const temporaryFile = `${configFile}.${process.pid}.${crypto.randomUUID()}.tmp`;
-    let handle;
-    try {
-        handle = fs.openSync(temporaryFile, "wx");
-        fs.writeFileSync(handle, JSON.stringify({ categories }, null, 2), "utf8");
-        fs.fsyncSync(handle);
-        fs.closeSync(handle);
-        handle = undefined;
-        if (fs.existsSync(configFile)) fs.copyFileSync(configFile, `${configFile}.bak`);
-        fs.renameSync(temporaryFile, configFile);
-    } finally {
-        if (handle !== undefined) fs.closeSync(handle);
-        if (fs.existsSync(temporaryFile)) fs.rmSync(temporaryFile, { force: true });
-    }
+    configStore ??= openJsonStore(configFile, () => ({ categories }));
+    configStore.replace({ categories });
 }
 
 function getLibraryCategories() {
