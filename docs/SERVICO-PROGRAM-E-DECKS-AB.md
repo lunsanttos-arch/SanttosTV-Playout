@@ -179,3 +179,27 @@ atrasado por deck no pior caso. Em 1920x1080/59,94 fps: duas gerações,
 Atraso nesse contador significa intervalo superior a 1,5 vez o período nominal;
 não significa que houve descarte de quadros PROGRAM. Ambos usaram DEV NULL no
 Linux. A regressão `npm test` e o ensaio HLS real com falha de segmento passaram.
+
+## Fila auxiliar OMT
+
+OMT mantém no máximo um quadro escrito no pipe e um quadro pendente na
+aplicação. Enquanto o pipe está ocupado, um novo quadro substitui somente o
+pendente que ainda não foi enviado. Ao receber `drain`, o último pendente é
+enviado imediatamente, inclusive se PROGRAM não produzir outro quadro.
+Antes, o pipe acumulava vários quadros e descartava novos quadros ao ultrapassar
+um limite de bytes; isso conservava imagens antigas e aumentava a latência.
+O encerramento/reinício invalida pendências e listeners do sender anterior.
+NDI conserva seu próprio controle de fluxo e não aguarda OMT.
+
+O status OMT registra bytes em fila, quantidade pendente, esperas de escrita,
+maior espera e descartes OMT. A qualidade permanece alta. Uma saída cujo encoder
+ou receptor não acompanha o perfil pode continuar descartando quadros; a fila
+mais curta não aumenta a capacidade de codificação ou da rede.
+
+O teste funcional OMT usa Writable real com consumo lento e atrasos de 150 ms:
+verifica cadência normal sem descartes, fila limitada a um quadro no pipe,
+substituição pelo mais recente, envio ao escoar, contagem dos descartes e
+isolamento de encerramento. O runtime VMX/OMT com receptor físico depende da
+validação Windows. A gravação lado a lado enviada mostra OMT na Prévia do vMix
+e NDI no Programa; inverter os monitores fora do ar ajuda a distinguir envio
+OMT de atualização da Prévia no receptor.

@@ -31,6 +31,12 @@ class OmtOutput {
         this.videoFrames = 0;
         this.videoFramesDropped = 0;
         this.audioBytes = 0;
+        this.pendingVideoFrame = null;
+        this.videoBlocked = false;
+        this.videoDrainTarget = null;
+        this.videoDrainListener = null;
+        this.videoWriteWaits = 0;
+        this.maxVideoWaitMs = 0;
     }
 
     executablePath() {
@@ -97,6 +103,9 @@ class OmtOutput {
         const files =
             this.validateRuntime();
 
+        this.clearVideoQueue();
+        this.videoWriteWaits = 0;
+        this.maxVideoWaitMs = 0;
         this.stopping = false;
         this.error = "";
         this.online = false;
@@ -267,6 +276,7 @@ class OmtOutput {
                 this.error =
                     "Não foi possível iniciar OMT: " +
                     error.message;
+                this.clearVideoQueue();
                 this.process = null;
                 this.online = false;
                 this.audioReady = false;
@@ -286,6 +296,7 @@ class OmtOutput {
                     return;
                 }
 
+                this.clearVideoQueue();
                 this.process = null;
                 this.online = false;
                 this.audioReady = false;
@@ -458,32 +469,56 @@ class OmtOutput {
         const target =
             this.process.stdin;
 
-        if (allowDrop) {
-            // Quando existe outra saída principal (NDI), OMT é totalmente
-            // isolado: nunca deixamos atraso do VMX/rede segurar o PROGRAM.
-            const maxQueuedBytes =
-                Math.max(
-                    frame.length * 2,
-                    8 * 1024 * 1024
-                );
-
-            if (
-                target.writableLength >
-                maxQueuedBytes
-            ) {
-                this.videoFramesDropped += 1;
-                return true;
-            }
+        if (!allowDrop) {
+            this.videoFrames += 1;
+            return target.write(frame);
         }
 
-        this.videoFrames += 1;
+        if (this.videoBlocked) {
+            if (this.pendingVideoFrame) this.videoFramesDropped += 1;
+            this.pendingVideoFrame = frame;
+            return true;
+        }
+        this.sendVideoFrame(frame, target);
+        return true; // OMT pressure never blocks PROGRAM/NDI.
+    }
 
-        // Em modo OMT-only o retorno de write() vira o relógio de pressão do
-        // pipe. Assim o FFmpeg respeita a cadência que o sender OMT consegue
-        // consumir, em vez de decodificar o arquivo inteiro sem pacing.
-        return target.write(
-            frame
-        );
+    clearVideoQueue() {
+        if (this.videoDrainTarget && this.videoDrainListener) {
+            this.videoDrainTarget.off("drain", this.videoDrainListener);
+            this.videoDrainTarget.off("close", this.videoDrainListener);
+        }
+        this.pendingVideoFrame = null;
+        this.videoBlocked = false;
+        this.videoDrainTarget = null;
+        this.videoDrainListener = null;
+    }
+
+    sendVideoFrame(frame, target) {
+        if (target !== this.process?.stdin || target.destroyed || this.stopping) return;
+        try {
+            this.videoFrames += 1;
+            if (target.write(frame)) return;
+            this.videoBlocked = true;
+            this.videoWriteWaits += 1;
+            const started = performance.now();
+            this.videoDrainTarget = target;
+            const release = () => {
+                if (this.videoDrainTarget !== target) return;
+                const next = this.pendingVideoFrame;
+                this.maxVideoWaitMs = Math.max(this.maxVideoWaitMs, performance.now() - started);
+                this.clearVideoQueue();
+                // Close/restart invalidates the previous sender's pending frame.
+                if (next && this.canWriteVideo() && target === this.process?.stdin) this.sendVideoFrame(next, target);
+            };
+            this.videoDrainListener = release;
+            target.once("drain", release);
+            target.once("close", release);
+        } catch (error) {
+            this.clearVideoQueue();
+            this.error = "Canal de vídeo OMT: " + error.message;
+            this.emitState();
+        }
     }
 
     onceVideoDrain(callback) {
@@ -549,6 +584,7 @@ class OmtOutput {
 
     stop() {
         this.stopping = true;
+        this.clearVideoQueue();
 
         if (
             this.audioReconnectTimer
@@ -616,6 +652,10 @@ class OmtOutput {
                 this.videoFrames,
             videoFramesDropped:
                 this.videoFramesDropped,
+            queuedVideoBytes: this.process?.stdin?.writableLength || 0,
+            pendingVideoFrames: this.pendingVideoFrame ? 1 : 0,
+            videoWriteWaits: this.videoWriteWaits,
+            maxVideoWaitMs: this.maxVideoWaitMs,
             audioBytes:
                 this.audioBytes,
             error:

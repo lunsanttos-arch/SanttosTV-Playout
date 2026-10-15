@@ -113,9 +113,9 @@ assert(
         "videoFramesDropped"
     ) &&
     controller.includes(
-        "target.writableLength"
+        "queuedVideoBytes"
     ),
-    "Saída OMT deve ter buffer limitado e descartar apenas quadros OMT sob backpressure."
+    "Saída OMT deve informar descartes e bytes em fila; o teste funcional verifica os limites reais."
 );
 assert(
     controller.includes(
