@@ -28,7 +28,12 @@ let ready=false;for(let n=0;n<100;n++){try{if(!ws||ws.readyState!==WebSocket.OPE
 await evaluate(`window.santtosAPI.importMedia(${JSON.stringify([fixture])})`);let media;for(let n=0;n<100;n++){media=(await evaluate('window.santtosAPI.getMedia()'))[0];if(media?.duration>=6)break;await wait(100)}if(!media?.duration)throw Error('Fixture was not analyzed');
 // A compact raster keeps CI load separate from hardware production benchmarks.
 const settings=await evaluate('window.santtosAPI.getSettings()');await evaluate(`window.santtosAPI.saveOutputSettings(${JSON.stringify({...settings.output,resolution:process.env.SANTTOS_QA_RESOLUTION||'1280x720',fps:process.env.SANTTOS_QA_FPS||'25',ndi:{enabled:true,name:'Santtos QA DEV NULL'},omt:{enabled:false},srt:{enabled:false},rtmp:{enabled:false}})})`);
-ws.close();ws=null;await run('test-native-ab-service.cjs');
+ws.close();ws=null;
+if(process.argv.includes('--cadence-only')){
+ await run('test-native-cadence.cjs');await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});
+ console.log('60-second Full HD cadence/preview check passed.');return;
+}
+await run('test-native-ab-service.cjs');
 if(process.argv.includes('--inputs-only')){
  await run('test-input-web-handoff.cjs',{SANTTOS_QA_GRAPHICS:'1'});
  await run('test-input-web-handoff.cjs',{SANTTOS_QA_STALL:'1'});

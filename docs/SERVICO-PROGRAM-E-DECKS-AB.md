@@ -97,11 +97,12 @@ adiantados pela pipe de monitor; descartar o JPEG mais antigo quando a fila
 chegava a quatro removia justamente os quadros que o relógio ainda exibiria.
 O próximo JPEG ficava continuamente à frente da posição de vídeo entregue.
 
-A fila agora preserva os JPEGs futuros em ordem e pausa a leitura da pipe ao
-atingir oito quadros, retomando à medida que PROGRAM os consome. Uma leitura
-já em andamento pode completar mais JPEGs no mesmo chunk. Não se acumula uma
-fila ilimitada e não se descarta um quadro futuro necessário ao monitor.
-O status de deck também expõe contadores de quadros entregues e de preview.
+A primeira correção preservou JPEGs futuros e pausava a pipe ao atingir oito
+quadros. A revisão seguinte identificou que essa pausa podia bloquear as
+outras saídas do mesmo FFmpeg. A implementação atual sempre drena JPEG;
+retém até 64 quadros/8 MiB, preservando os mais próximos do relógio e descartando
+novos previews excedentes. PROGRAM nunca espera o monitor consumir JPEG.
+O status informa também descartes e bytes de preview, além da cadência de vídeo.
 
 Além disso, o preload confirma uma mensagem de monitor uma única vez por
 conexão, mesmo sem componente React inscrito. Antes, montar/desmontar o
@@ -151,3 +152,30 @@ do proxy da aplicação. Portanto, renovar links não garante que a origem autor
 a reprodução. O relatório agora identifica explicitamente a recusa do Dailymotion,
 em vez de apresentar apenas o endereço local redigido e um erro genérico do FFmpeg.
 Nenhum token assinado foi incorporado ao código, à documentação ou aos testes.
+
+## Controle de fluxo da saída nativa
+
+O pipe NDI agora devolve seu estado de escrita ao pacer. Quando está cheio,
+o quadro já aceito permanece no pipe e PROGRAM aguarda `drain` antes de
+avançar para o próximo, mantendo o áudio preso ao mesmo avanço de quadros.
+Uma fila de três quadros deixou de ser motivo para matar e reiniciar o sender.
+Erros reais de escrita ainda acionam a recuperação do sender. O standby não
+injeta quadros/áudio adicionais enquanto o PROGRAM aguarda o pipe nativo.
+
+Os diagnósticos incluem esperas do pipe NDI, sua maior duração, bytes em fila,
+quadros atrasados e maior intervalo de entrega por deck. Isso distingue atraso
+do decoder, bloqueio de saída e descarte exclusivamente de monitor.
+
+Novos ensaios: rajada de 12 MB de JPEG antes do vídeo, com 50 quadros PROGRAM
+entregues e memória limitada; pipe nativo simulado com atrasos repetidos de
+150 ms, preservando ordem e fila de um quadro; ensaio Electron de 60 s em
+Full HD com movimento real no canvas e corte de loop A/B. Esses ensaios não
+substituem medir o receptor físico Windows do usuário.
+
+Resultados dos ensaios de 60 s: em 1920x1080/29,97 fps houve duas gerações,
+115 amostras diferentes do canvas, intervalo máximo de 70,1 ms e um quadro
+atrasado por deck no pior caso. Em 1920x1080/59,94 fps: duas gerações,
+115 amostras diferentes, máximo de 34,1 ms e dois quadros atrasados por deck.
+Atraso nesse contador significa intervalo superior a 1,5 vez o período nominal;
+não significa que houve descarte de quadros PROGRAM. Ambos usaram DEV NULL no
+Linux. A regressão `npm test` e o ensaio HLS real com falha de segmento passaram.

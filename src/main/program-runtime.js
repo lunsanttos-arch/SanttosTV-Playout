@@ -334,14 +334,16 @@ function onPlayoutFault(message) {
     if (!rundownController?.opening) void rundownController?.fault(message).catch(error => console.error("Contingência:", error.message));
 }
 
+const { VideoPipeWriter } = require('../core/ndi/video-pipe-writer');
+const videoPipeWriter = new VideoPipeWriter({
+    onWritable: () => activeDeck?.pacer.resume(),
+    onError: (_error, sink) => { if (ndiProcess?.stdin === sink) ndiProcess.kill(); }
+});
 function writeNativeProgramFrame(frame) {
     programMetrics.frames += 1;
-    const sink = ndiReady ? ndiProcess?.stdin : null;
-    if (sink && !sink.destroyed) {
-        if (sink.writableLength > frame.length * 3) { ndiProcess?.kill(); }
-        else sink.write(frame, error => { if (error) ndiProcess?.kill(); });
-    }
+    const writable = videoPipeWriter.write(ndiReady ? ndiProcess?.stdin : null, frame);
     if (omtOutput?.canWriteVideo()) omtOutput.writeVideo(frame, { allowDrop: true });
+    return writable;
 }
 function nativeOverlay(item, position = 0, overrides = {}) {
     let outPoint = Number(item.outPoint) > 0 ? Number(item.outPoint) : Number(item.duration) || null;
@@ -1285,7 +1287,7 @@ async function createDecoderDeck(item, position, overlayState, signal) {
             onFrame: frame => { if (activeDeck !== deck) return;
                 if (deck.delivered > 0) programMetrics.maxFrameGapMs = Math.max(programMetrics.maxFrameGapMs || 0, programClock.nowMs() - lastProgramFrameAt);
                 lastProgramFrame = frame; lastFrameGeneration = playoutEngine.generation;
-                lastProgramFrameAt = programClock.nowMs(); writeNativeProgramFrame(frame); for (const output of transportOutputs.values()) output.writeVideo(frame); },
+                lastProgramFrameAt = programClock.nowMs(); const writable = writeNativeProgramFrame(frame); for (const output of transportOutputs.values()) output.writeVideo(frame); return writable; },
             onPreview: sendProgramPreviewFrame,
             createAudio: pcmStream => new NdiAudioSource({ pcmStream, pipePath: '', ffmpegPath: resolveFfmpegPath(), filePath,
                 sampleRate: profile.sampleRate, channels: profile.channels, onPcmData: sendProgramAudioPcm }).start(),
@@ -1386,7 +1388,7 @@ function redactDiagnostic(value) {
 function registerIpcHandlers() {
     registerTrustedHandle("operation:get", async () => ({ ok: true, settings: operationSettings.value,
         startupAvailable: process.platform === "win32" && app.isPackaged,
-        diagnostics: { persistence: persistenceStatus(), metrics: { ...programMetrics, memory: process.memoryUsage() }, engine: playoutEngine.snapshot(), lastIssue: rundownController?.lastIssue, contingency: rundownController?.contingency,
+        diagnostics: { persistence: persistenceStatus(), metrics: { ...programMetrics, ndiVideo: videoPipeWriter.snapshot(), memory: process.memoryUsage() }, engine: playoutEngine.snapshot(), lastIssue: rundownController?.lastIssue, contingency: rundownController?.contingency,
             frameAgeMs: lastProgramFrameAt ? Math.max(0,programClock.nowMs()-lastProgramFrameAt) : null,
             ndiAudio: { connected: programAudioRouter.connected, bytes: programAudioRouter.bytes, droppedBytes: programAudioRouter.droppedBytes },
             transports: Object.fromEntries([...transportOutputs].map(([kind,out]) => [kind,{online:out.online,error:out.error}])) } }));
@@ -3167,7 +3169,7 @@ function startSystem() {
         });
         rundownController.pendingFailures.push(...getPendingFailedReportIds());
         programStandby = new ProgramStandby({ getProfile: () => activeOutputProfile,
-            isPlaying: () => nativePlaybackActive && lastFrameGeneration === playoutEngine.generation && programClock.nowMs() - lastProgramFrameAt < 1000,
+            isPlaying: () => videoPipeWriter.blocked || (nativePlaybackActive && lastFrameGeneration === playoutEngine.generation && programClock.nowMs() - lastProgramFrameAt < 1000),
             getFrame: () => playoutEngine.snapshot().state !== "IDLE" && lastProgramFrame?.length === activeOutputProfile.frameSize ? lastProgramFrame : null,
             onFrame: frame => { writeNativeProgramFrame(frame); for (const output of transportOutputs.values()) output.writeVideo(frame); },
             onAudio: sendProgramAudioPcm });

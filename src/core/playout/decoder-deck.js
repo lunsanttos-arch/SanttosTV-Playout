@@ -12,7 +12,7 @@ class DecoderDeck {
         onFrame, onPreview, createAudio, onFirst, onFinish, signal, timeoutMs = 12000 }) {
         Object.assign(this, { profile, graphics, source, requireAudio, duration, remote, onFrame, onPreview, createAudio, onFirst, onFinish });
         this.active = false; this.stopped = false; this.decoded = 0; this.delivered = 0; this.audioBytes = 0;
-        this.stderr = ""; this.previews = []; this.previewIndex = 0; this.readyState = false;
+        this.stderr = ""; this.previews = []; this.previewBytes = 0; this.previewDrops = 0; this.previewIndex = 0; this.readyState = false;
         this.ready = new Promise((resolve, reject) => { this.resolveReady = resolve; this.rejectReady = reject; });
         this.child = spawn(executable, args, { windowsHide: true, stdio: ["pipe", "pipe", "pipe", "pipe", "pipe"] });
         graphics.attach(this.child);
@@ -26,11 +26,11 @@ class DecoderDeck {
         this.child.stdio[4].on("data", chunk => { this.audioBytes += chunk.length; this.checkReady(); });
         this.child.stdio[4].on("error", error => this.fail(error));
         const parser = new JpegFrameParser(frame => {
-            this.previews.push({ index: ++this.previewIndex, frame });
-            // JPEG can run ahead of rawvideo because FFmpeg writes separate pipes.
-            // Keep the earliest future frames: dropping them on every new JPEG
-            // can leave the delivery clock permanently chasing an empty preview.
-            if (this.previews.length >= 8) this.child.stdio[3].pause();
+            const index = ++this.previewIndex;
+            // Always drain JPEG: pausing this pipe can block every FFmpeg output,
+            // including PROGRAM. Preserve earliest future frames within a budget.
+            if (this.previews.length >= 64 || this.previewBytes + frame.length > 8 * 1024 * 1024) { this.previewDrops++; return; }
+            this.previews.push({ index, frame }); this.previewBytes += frame.length;
         });
         this.child.stdio[3].on("data", chunk => parser.write(chunk));
         this.child.stdio[3].on("error", error => this.fail(error));
@@ -71,7 +71,7 @@ class DecoderDeck {
     deliver(frame) {
         if (!this.active || this.stopped) return false;
         if (!this.delivered) { this.onFirst(); this.deadline?.start(); this.resolveFirst(); }
-        this.onFrame(frame);
+        const writable = this.onFrame(frame);
         if (this.clock) this.clock.advance();
         else {
             const { sampleRate, fpsD, fpsN, channels } = this.profile;
@@ -81,10 +81,9 @@ class DecoderDeck {
         this.delivered++;
         let latest;
         const ratio = this.profile.fpsN / this.profile.fpsD > 30 ? 2 : 1;
-        while (this.previews.length && this.previews[0].index <= Math.ceil(this.delivered / ratio)) latest = this.previews.shift().frame;
+        while (this.previews.length && this.previews[0].index <= Math.ceil(this.delivered / ratio)) { latest = this.previews.shift().frame; this.previewBytes -= latest.length; }
         if (latest) this.onPreview(latest);
-        if (this.previews.length < 8) this.child.stdio[3].resume();
-        return true;
+        return writable !== false;
     }
     fail(error) {
         if (this.stopped) return;
@@ -104,6 +103,7 @@ class DecoderDeck {
         this.rejectFirst?.(Error("Deck cancelado."));
         this.signal?.removeEventListener("abort", this.abort);
         if (!this.readyState) this.rejectReady(Error("Deck cancelado antes de ficar pronto."));
+        this.previews = []; this.previewBytes = 0;
         this.pacer.stop(); this.assembler.stop(); this.clock?.stop(); this.silence?.destroy(); this.audioSource?.stop();
         this.graphics.stop(); this.source.cleanup();
         for (const pipe of [this.child.stdout, this.child.stdio[3], this.child.stdio[4]]) pipe.resume();
@@ -112,6 +112,6 @@ class DecoderDeck {
         timer.unref(); this.child.once("close", () => clearTimeout(timer));
     }
     snapshot() { return { pid: this.child.pid, ready: this.readyState && !this.stopped, active: this.active, decodedFrames: this.decoded,
-        deliveredFrames: this.delivered, previewFrames: this.previewIndex, bufferedPreviewFrames: this.previews.length, nextPreviewFrame: this.previews[0]?.index || null, bufferedFrames: this.pacer.queue.length, bufferedAudioBytes: this.clock?.buffered || 0, hasAudio: this.requireAudio, error: this.error || null }; }
+        pacing: this.pacer.snapshot(), deliveredFrames: this.delivered, previewFrames: this.previewIndex, bufferedPreviewFrames: this.previews.length, bufferedPreviewBytes: this.previewBytes, droppedPreviewFrames: this.previewDrops, nextPreviewFrame: this.previews[0]?.index || null, bufferedFrames: this.pacer.queue.length, bufferedAudioBytes: this.clock?.buffered || 0, hasAudio: this.requireAudio, error: this.error || null }; }
 }
 module.exports = { DecoderDeck };

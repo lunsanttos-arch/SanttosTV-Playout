@@ -11,6 +11,7 @@ class FramePacer {
         this.reserve = Math.max(2, Math.min(memoryFrames - 1, Math.ceil(reserveMs / this.period)));
         this.limit = Math.max(this.reserve + 1, Math.min(memoryFrames, this.reserve * 2));
         this.queue = []; this.timer = null; this.next = 0;
+        this.deliveries = 0; this.lateFrames = 0; this.maxGapMs = 0; this.lastDeliveryAt = 0;
         this.blocked = false; this.stopped = false; this.ended = false;
         this.finished = new Promise(resolve => { this.resolveFinished = resolve; });
     }
@@ -28,6 +29,13 @@ class FramePacer {
             this.timer = null;
             if (this.stopped || this.blocked) return;
             const frame = this.queue.shift();
+            const deliveredAt = performance.now();
+            if (this.lastDeliveryAt) {
+                const gap = deliveredAt - this.lastDeliveryAt;
+                this.maxGapMs = Math.max(this.maxGapMs, gap);
+                if (gap > this.period * 1.5) this.lateFrames++;
+            }
+            this.lastDeliveryAt = deliveredAt; this.deliveries++;
             this.blocked = this.onFrame(frame) === false;
             this.next = Math.max(this.next + this.period, performance.now() + this.period / 2);
             if (!this.blocked && this.queue.length < this.reserve) this.source.resume();
@@ -46,6 +54,7 @@ class FramePacer {
         else { if (!this.next) this.next = performance.now(); this.schedule(); }
         return this.finished;
     }
+    snapshot() { return { delivered: this.deliveries, lateFrames: this.lateFrames, maxGapMs: this.maxGapMs, blocked: this.blocked, queuedFrames: this.queue.length }; }
     stop() {
         this.stopped = true; clearTimeout(this.timer); this.timer = null;
         this.queue = []; this.resolveFinished();

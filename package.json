@@ -53,7 +53,7 @@
     "test:live-graphics": "node scripts/test-live-graphics.js",
     "test:rundown-blocks": "node scripts/test-rundown-blocks.js",
     "test:data-backup": "node scripts/test-data-backup.js",
-    "test:rundown-controller": "node scripts/test-rundown-controller.js && node scripts/test-rundown-resilience.js && node scripts/test-deck-preparer.js && node scripts/test-decoder-deck.js && node scripts/test-program-service.js && node scripts/test-monitor-delivery.js",
+    "test:rundown-controller": "node scripts/test-rundown-controller.js && node scripts/test-rundown-resilience.js && node scripts/test-deck-preparer.js && node scripts/test-decoder-deck.js && node scripts/test-program-service.js && node scripts/test-monitor-delivery.js && node scripts/test-preview-isolation.js && node scripts/test-video-pipe-writer.js",
     "test:watchdog": "node scripts/test-process-watchdog.js",
     "test:diagnostics": "node scripts/test-diagnostic-redaction.js",
     "burn-in": "node scripts/burn-in-program.cjs",
