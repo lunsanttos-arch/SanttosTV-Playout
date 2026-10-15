@@ -431,7 +431,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                 <label><span>Data</span><StyledDatePicker value={date} onChange={setDate} /></label>
                 <div className="opec-title-area">
                     <label className="opec-title-field"><span>Nome da programação</span><input value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={120} /></label>
-                    <div className="opec-title-actions">
+                    <div className="opec-title-actions" role="group" aria-label="Modelos semanais e importação">
                     <button disabled={loading} onClick={() => { setModalError(""); setModelAction("save"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Criar modelo semanal</button>
                     <button disabled={loading} onClick={() => { setModalError(""); setModelAction("import"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Importar programação</button>
                     </div>

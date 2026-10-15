@@ -57,7 +57,8 @@
 }
 
 .opec-meta-row label,
-.opec-summary {
+.opec-summary,
+.opec-title-actions {
     min-width: 0;
     padding: 9px 10px;
     background: #151515;
@@ -460,7 +461,7 @@
 .opec-shell .opec-block-tools input[type="number"] { padding: 3px 7px; font-size: 11px; font-variant-numeric: tabular-nums; }
 .opec-title-area { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
 .opec-title-area .opec-title-field { flex: 1 1 180px; min-width: 0; }
-.opec-title-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.opec-title-actions { display: flex; align-items: center; align-self: stretch; flex-wrap: wrap; gap: 6px; }
 .opec-title-actions button { min-height: 32px; padding: 6px 10px; font-size: 12px; }
 @media (max-width: 680px) { .opec-title-area { grid-column: 1 / -1; } }
 
