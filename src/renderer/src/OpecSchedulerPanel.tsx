@@ -1,3 +1,4 @@
+import { useTextEditingDragGuard } from "./useTextEditingDragGuard";
 import { useEffect, useMemo, useReducer, useRef, useState, type DragEvent } from "react";
 import { FilmBlockEditor, type MediaItem, type RundownItem } from "./App";
 import { splitContentName, contentLabel } from "../../core/media/content-label.mjs";
@@ -80,6 +81,7 @@ function SlotMinutes({ seconds, onChange }: { seconds: number; onChange: (second
 
 
 export default function OpecSchedulerPanel({ media, onApply, remote = false }: Props) {
+    const textDragGuard = useTextEditingDragGuard();
     const [date, setDate] = useState(todayKey());
     const [version, setVersion] = useState<string | null>(null);
     const [draft, dispatchDraft] = useReducer(rundownDraftReducer, { items: [], history: [], meta: { title: "Programação diária", startTime: "00:00" } });
@@ -373,7 +375,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
     }
 
     return (
-        <section className="opec-shell">
+        <section className="opec-shell" {...textDragGuard.handlers}>
             <header className="opec-header">
                 <div>
                     <div className="panel-title">PROGRAMAÇÃO</div>
@@ -467,7 +469,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                             {insertionSlot(item.rundownItemId)}
                             <article
                                 className={`opec-rundown-item ${item.placeholder && !item.liveSlot ? "opec-pending-item" : ""} ${draggedId === item.rundownItemId ? "dragging" : ""} ${dropIntent?.mode === "replace" && dropIntent.itemId === item.rundownItemId ? "is-replace-target" : ""}`}
-                                draggable
+                                draggable={!textDragGuard.editing}
                                 onDragStart={event => {
                                     if ((event.target as HTMLElement).closest("input, select, button")) { event.preventDefault(); return; }
                                     event.dataTransfer.setData("application/x-santtos-rundown", item.rundownItemId);
@@ -540,7 +542,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                     <div className="opec-library-list">
                         {filteredMedia.length === 0 && <div className="opec-empty">Nenhuma mídia nesta pasta.</div>}
                         {filteredMedia.map((item) => (
-                            <article key={item.id} className="opec-library-item" draggable
+                            <article key={item.id} className="opec-library-item" draggable={!textDragGuard.editing}
                                 onDragStart={event => {
                                     if ((event.target as HTMLElement).closest("button")) { event.preventDefault(); return; }
                                     event.dataTransfer.setData("application/x-santtos-media", item.id);

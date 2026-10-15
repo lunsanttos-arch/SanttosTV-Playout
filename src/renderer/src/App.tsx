@@ -1,3 +1,4 @@
+import { useTextEditingDragGuard } from "./useTextEditingDragGuard";
 import {
     useEffect,
     useMemo,
@@ -1181,6 +1182,7 @@ function PlayoutPanel({
     rundownApplyRequest,
     onScheduleSummary
 }: PlayoutPanelProps) {
+    const textDragGuard = useTextEditingDragGuard();
     const videoRef =
         useRef<HTMLVideoElement | null>(null);
     const nativeOutputEnabled = !testBench || ndiTestMode;
@@ -3589,7 +3591,7 @@ function PlayoutPanel({
     }
 
     return (
-        <div className="playout-operation-layout">
+        <div className="playout-operation-layout" {...textDragGuard.handlers}>
             <div className="program-column">
                 <section className="panel program-card">
                     <div className="program-header">
@@ -4115,7 +4117,7 @@ function PlayoutPanel({
                                     return (
                                         <div
                                             key={item.id}
-                                            draggable={!isCurrent}
+                                            draggable={!isCurrent && !textDragGuard.editing}
                                             className={`timeline-item ${
                                                 isCurrent
                                                     ? "active"
