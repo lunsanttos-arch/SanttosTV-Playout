@@ -88,7 +88,7 @@ function resolveHttpIdentity(
     };
 }
 
-function describeRemoteInputError(stderr) {
+function describeRemoteInputError(stderr, { provider = "" } = {}) {
     const message =
         String(stderr ?? "")
             .replace(/\s+/g, " ")
@@ -99,6 +99,7 @@ function describeRemoteInputError(stderr) {
             message
         )
     ) {
+        if (provider === "dailymotion") return "Dailymotion HTTP 403: a origem recusou a transmissão após a renovação do endereço. Verifique a disponibilidade e as restrições da transmissão na origem.";
         return (
             "HTTP 403: o servidor recusou o Input. " +
             "Esse endereço pode exigir Referer/User-Agent de navegador " +
@@ -150,6 +151,10 @@ function remoteInputArgs(
     ];
 
     if (isHttpInput(url)) {
+        // Internal tuner/proxy URLs must stay on this machine. Inheriting an
+        // external http_proxy can turn a healthy loopback endpoint into a 403.
+        const hostname = new URL(url).hostname.toLowerCase();
+        if (["127.0.0.1", "localhost", "[::1]"].includes(hostname)) args.push("-http_proxy", "");
         const identity =
             resolveHttpIdentity(
                 url,

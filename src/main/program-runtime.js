@@ -1229,6 +1229,9 @@ async function createDecoderDeck(item, position, overlayState, signal) {
         "-dn",
         "-pix_fmt",
         profile.ffmpegPixelFormat,
+        // Raw frames need no frame-threaded encoder queue. A fixed single
+        // output thread avoids auto-sized lookahead/CPU bursts between decks.
+        "-threads:v", "1",
         "-f",
         "rawvideo",
         "pipe:1"
@@ -1249,6 +1252,7 @@ async function createDecoderDeck(item, position, overlayState, signal) {
         "-dn",
         "-c:v",
         "mjpeg",
+        "-threads:v", "1",
         "-q:v",
         "5",
         "-f",
@@ -1289,7 +1293,7 @@ async function createDecoderDeck(item, position, overlayState, signal) {
                 if (activeDeck !== deck) return;
                 activeDeck = null; ffmpegProcess = null; activeGraphics = null; audioSource = null; nativePlaybackActive = false;
                 audioOutputStatus = 'IDLE'; serverMedia.setRealtimePriority(false);
-                if (error) { onPlayoutFault(redactDiagnostic(error.message)); return; }
+                if (error) { onPlayoutFault(describeRemoteInputError(redactDiagnostic(error.message), { provider: source.resolved?.provider })); return; }
                 const ended = playoutEngine.complete();
                 mainWindow?.webContents.send('playout:native-ended', { ...ended, autonomous: true });
                 queueMicrotask(() => void rundownController?.ended(ended).catch(error => console.error('Avanço:', error.message)));
@@ -1305,7 +1309,7 @@ async function createDecoderDeck(item, position, overlayState, signal) {
             console.warn('Ponte VLC não entregou vídeo; tentando FFmpeg direto.');
             return createDecoderDeck(item, position, { ...overlayState, inputEngine: 'ffmpeg', __inputFallbackAttempted: true }, signal);
         }
-        throw isRemoteInput ? Error(redactDiagnostic(error.message)) : error;
+        throw isRemoteInput ? Error(describeRemoteInputError(redactDiagnostic(error.message), { provider: source.resolved?.provider })) : error;
     }
 }
 async function startNativePlayback(filePath, startSeconds = 0, hashtag = '', overlayState = {}) {

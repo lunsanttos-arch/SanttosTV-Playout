@@ -113,3 +113,41 @@ A regressão nativa agora exige pelo menos cinco mensagens de preview em
 1,2 s e três imagens diferentes no canvas, além dos testes anteriores de
 PROGRAM, áudio, corte preparado e recuperação. O teste de preload cobre
 recebimento antes da montagem, múltiplos inscritos e fechamento/reabertura.
+
+## Recuperação de pré-carga e reserva de quadros
+
+Uma pré-carga que falha não é mais reutilizada como resultado definitivo no
+corte. O preparador tenta abrir a fonte novamente uma vez, incluindo o caso
+em que um decoder ficou pronto e morreu antes de entrar no ar. Cancelamentos
+por nova programação continuam sendo cancelamentos; não disparam reconexão.
+Uma fonte que também falha na nova abertura segue para a contingência e o
+relatório registra a falha definitiva. O timer de preparo não cria uma sequência
+ilimitada de processos para uma fonte indisponível.
+
+Entradas remotas só ficam prontas depois de acumular a reserva de vídeo do
+pacer (alvo de 250 ms, limitado pelo orçamento de memória/duração) e o PCM
+correspondente. Antes, a primeira imagem e uma fração de áudio já liberavam
+a ativação, mesmo com o buffer de jitter vazio. Arquivos locais usam alvo de
+80 ms de reserva no pacer, em vez do mínimo de dois quadros.
+
+Os encoders rawvideo e MJPEG agora usam explicitamente uma thread por saída;
+a decodificação e os filtros mantêm seus limites próprios. Isso evita filas de
+codificação dimensionadas automaticamente por número de CPUs durante A/B.
+O roteiro de QA aceita `SANTTOS_QA_RESOLUTION` e `SANTTOS_QA_FPS`, permitindo
+ensaiar o raster de produção além do perfil compacto. `--inputs-only` executa
+os testes de decks/preview e handoff HLS real, incluindo falha de segmento.
+
+Um teste de regressão também reproduz HTTP 403 ao abrir `127.0.0.1` com um
+`http_proxy` externo herdado pelo FFmpeg. As URLs estritamente de loopback
+(`127.0.0.1`, `localhost` e `[::1]`) agora recebem `-http_proxy ""`, mantendo
+as conexões internas no próprio PC. URLs públicas continuam usando sua rota
+normal de proxy; autenticação e recusas reais da origem não são contornadas.
+O teste usa apenas servidores locais: um fornece mídia e outro simula um proxy
+que recusa requisições. Confirma a recusa anterior e a decodificação após a correção.
+
+Na verificação da transmissão Dailymotion `x9xwtpy`, os metadados responderam
+HTTP 200, mas a URL recém-renovada do CDN respondeu HTTP 403, inclusive através
+do proxy da aplicação. Portanto, renovar links não garante que a origem autorize
+a reprodução. O relatório agora identifica explicitamente a recusa do Dailymotion,
+em vez de apresentar apenas o endereço local redigido e um erro genérico do FFmpeg.
+Nenhum token assinado foi incorporado ao código, à documentação ou aos testes.

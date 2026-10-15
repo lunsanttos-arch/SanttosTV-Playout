@@ -18,7 +18,7 @@ class DecoderDeck {
         graphics.attach(this.child);
         this.clock = requireAudio ? new VideoClockedPcm(this.child.stdio[4], profile) : null;
         this.clock?.output.on("error", error => this.fail(error));
-        this.pacer = new FramePacer({ profile, source: this.child.stdout, reserveMs: remote ? 250 : 0, onFrame: frame => this.deliver(frame) });
+        this.pacer = new FramePacer({ profile, source: this.child.stdout, reserveMs: remote ? 250 : 80, onFrame: frame => this.deliver(frame) });
         this.pacer.blocked = true; // PREROLL holds decoded frames and PCM until the atomic CUT.
         this.assembler = new FixedFrameAssembler(profile.frameSize, frame => { this.decoded++; this.pacer.push(frame); this.checkReady(); });
         this.child.stdout.on("data", chunk => this.assembler.push(chunk));
@@ -53,8 +53,10 @@ class DecoderDeck {
         if (signal?.aborted) this.abort();
     }
     checkReady() {
-        const audioBudget = Math.floor(this.profile.sampleRate * this.profile.fpsD / this.profile.fpsN) * this.profile.channels * 4;
-        if (this.stopped || this.readyState || !this.decoded || (this.requireAudio && this.audioBytes < audioBudget)) return;
+        const clipFrames = Number.isFinite(this.duration) ? Math.max(1, Math.ceil(this.duration * this.profile.fpsN / this.profile.fpsD)) : Infinity;
+        const readyFrames = this.remote ? Math.min(this.pacer.reserve, clipFrames) : 1;
+        const audioBudget = Math.floor(readyFrames * this.profile.sampleRate * this.profile.fpsD / this.profile.fpsN) * this.profile.channels * 4;
+        if (this.stopped || this.readyState || this.decoded < readyFrames || (this.requireAudio && this.audioBytes < audioBudget)) return;
         this.readyState = true; clearTimeout(this.timeout); this.resolveReady(this);
     }
     activate() {

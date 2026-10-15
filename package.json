@@ -19,7 +19,7 @@
     "test:testbench": "node scripts/test-testbench.js",
     "test:media-stream": "node scripts/test-media-stream.js",
     "test:proxy": "node scripts/test-preview-proxy.js",
-    "test:web-input": "node scripts/test-web-input-playback.js",
+    "test:web-input": "node scripts/test-web-input-playback.js && node scripts/test-loopback-input.js",
     "test:vlc-input": "node scripts/test-vlc-input-bridge.js",
     "test:exhibition-output": "node scripts/test-exhibition-output.js",
     "test:timeline-forecast": "node scripts/test-timeline-forecast.js",

@@ -27,8 +27,15 @@ launch();
 let ready=false;for(let n=0;n<100;n++){try{if(!ws||ws.readyState!==WebSocket.OPEN)await connect();ready=await evaluate('Boolean(window.santtosAPI)');if(ready)break}catch{}await wait(200)}if(!ready)throw Error('Electron did not initialize');
 await evaluate(`window.santtosAPI.importMedia(${JSON.stringify([fixture])})`);let media;for(let n=0;n<100;n++){media=(await evaluate('window.santtosAPI.getMedia()'))[0];if(media?.duration>=6)break;await wait(100)}if(!media?.duration)throw Error('Fixture was not analyzed');
 // A compact raster keeps CI load separate from hardware production benchmarks.
-const settings=await evaluate('window.santtosAPI.getSettings()');await evaluate(`window.santtosAPI.saveOutputSettings(${JSON.stringify({...settings.output,resolution:'1280x720',fps:'25',ndi:{enabled:true,name:'Santtos QA DEV NULL'},omt:{enabled:false},srt:{enabled:false},rtmp:{enabled:false}})})`);
-ws.close();ws=null;await run('test-native-ab-service.cjs');await run('test-opec-live-slots.cjs');await run('test-opec-models.cjs',{SANTTOS_QA_OUTPUT:logs});await run('test-opec-auto-advance.cjs');
+const settings=await evaluate('window.santtosAPI.getSettings()');await evaluate(`window.santtosAPI.saveOutputSettings(${JSON.stringify({...settings.output,resolution:process.env.SANTTOS_QA_RESOLUTION||'1280x720',fps:process.env.SANTTOS_QA_FPS||'25',ndi:{enabled:true,name:'Santtos QA DEV NULL'},omt:{enabled:false},srt:{enabled:false},rtmp:{enabled:false}})})`);
+ws.close();ws=null;await run('test-native-ab-service.cjs');
+if(process.argv.includes('--inputs-only')){
+ await run('test-input-web-handoff.cjs',{SANTTOS_QA_GRAPHICS:'1'});
+ await run('test-input-web-handoff.cjs',{SANTTOS_QA_STALL:'1'});
+ await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});
+ console.log('Focused Full HD input/deck/preview integration passed.');return;
+}
+await run('test-opec-live-slots.cjs');await run('test-opec-models.cjs',{SANTTOS_QA_OUTPUT:logs});await run('test-opec-auto-advance.cjs');
 await run('test-program-autonomy.cjs',{SANTTOS_QA_USERDATA:path.join(config,'santtos-tv-playout')});
 await run('test-native-persistence.cjs',{SANTTOS_QA_USERDATA:path.join(config,'santtos-tv-playout')});
 await run('test-native-service-recovery.cjs',{SANTTOS_QA_USERDATA:path.join(config,'santtos-tv-playout')});

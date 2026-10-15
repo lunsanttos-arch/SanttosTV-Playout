@@ -174,6 +174,9 @@ async function main() {
         "O resolver deve recuperar o ID mesmo de um M3U8 assinado já vencido."
     );
 
+    assert.match(describeRemoteInputError("FFmpeg HTTP error 403 Forbidden at loopback", { provider: "dailymotion" }), /Dailymotion HTTP 403.*origem.*renovação/);
+    assert.match(describeRemoteInputError("O Input não entregou vídeo", { provider: "dailymotion" }), /não entregou vídeo/);
+
     let metadataRequestUrl = "";
     const renewed =
         await resolveDailymotionInput(

@@ -18,10 +18,20 @@ class DeckPreparer {
         candidate.promise.catch(() => {}); return candidate.promise;
     }
     async take(item, position, overlay) {
+        const hadPreparation = this.candidate?.key === this.key(item, position, overlay);
         const promise = this.prepare(item, position, overlay), candidate = this.candidate;
-        const deck = await promise;
-        if (this.candidate !== candidate) throw Error("CUT cancelado por nova programação.");
-        this.candidate = null; return deck;
+        try {
+            const deck = await promise;
+            if (this.candidate !== candidate) throw Error("CUT cancelado por nova programação.");
+            if (deck.stopped) throw Error(deck.error || "Decoder preparado encerrou antes do CUT.");
+            this.candidate = null; return deck;
+        } catch (error) {
+            // A speculative failure is not yet an on-air failure. Reopen once at
+            // CUT; never reuse its rejected promise/dead decoder or retry a cancel.
+            if (!hadPreparation || this.candidate !== candidate || candidate.controller.signal.aborted) throw error;
+            this.cancel();
+            return this.take(item, position, overlay);
+        }
     }
     cancel() {
         ++this.generation;
