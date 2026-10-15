@@ -499,10 +499,13 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                             value={item.notes}
                                             onChange={(e) => patchItem(item.rundownItemId, { notes: e.currentTarget.value })}
                                         />
-                                        <button className="opec-row-add" title="Adicionar Conteúdo a definir abaixo" aria-label="Adicionar Conteúdo a definir abaixo"
-                                            onClick={() => addPlaceholder(item.rundownItemId)}>+ A definir</button>
-                                        <button className="opec-row-add" title="Adicionar material abaixo" aria-label="Adicionar material abaixo"
-                                            onClick={() => { setMaterialSearch(""); setMaterialTarget(item.rundownItemId); }}>+ Material</button>
+                                        <div className="opec-row-actions" role="group" aria-label="Ações do item">
+                                            <button className="opec-row-add" title="Adicionar Conteúdo a definir abaixo" aria-label="Adicionar Conteúdo a definir abaixo"
+                                                onClick={() => addPlaceholder(item.rundownItemId)}>+ A definir</button>
+                                            <button className="opec-row-add" title="Adicionar material abaixo" aria-label="Adicionar material abaixo"
+                                                onClick={() => { setMaterialSearch(""); setMaterialTarget(item.rundownItemId); }}>+ Material</button>
+                                            <button className="opec-remove" title="Remover da programação" aria-label="Remover da programação" onClick={() => removeItem(item.rundownItemId)}>×</button>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="opec-block-tools">
@@ -516,7 +519,6 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                     {!remote && !item.placeholder && item.replacedPlaceholder && <button
                                         disabled={clipDuration(item) < 1} onClick={() => { setSplitError(""); setEditingFilm({ ...item, id: item.rundownItemId }); }}>Dividir em blocos</button>}
                                 </div>
-                                <button className="opec-remove" title="Remover da programação" aria-label="Remover da programação" onClick={() => removeItem(item.rundownItemId)}>×</button>
                             </article>
                             </div>
                         ))}

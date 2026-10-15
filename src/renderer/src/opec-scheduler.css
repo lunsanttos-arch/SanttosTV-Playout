@@ -377,7 +377,7 @@
 .opec-item-fields input, .opec-item-fields select { height: 32px; font-size: 12px; }
 
 /* Compact OPEC rows: name, identification and observation only. */
-.opec-rundown-item { grid-template-columns: 26px 70px minmax(0, 1fr) 28px; padding: 7px 8px; gap: 8px; }
+.opec-rundown-item { grid-template-columns: 26px 70px minmax(0, 1fr); padding: 7px 8px; gap: 8px; }
 .opec-order { display: flex; align-items: center; justify-content: center; gap: 3px; font-size: 12px; }
 .opec-drag-handle { font-size: 15px; }
 .opec-item-main { gap: 4px; }
@@ -398,15 +398,7 @@
 .opec-block-tools label { display: flex; align-items: center; gap: 5px; }
 .opec-block-tools input { width: 76px; min-width: 0; height: 26px; }
 .opec-block-tools button { min-height: 26px; padding: 3px 8px; font-size: 11px; }
-.opec-rundown-item .opec-remove {
-    grid-column: 4;
-    grid-row: 1 / span 2;
-    place-self: center;
-    display: grid;
-    place-items: center;
-    padding: 0;
-    line-height: 1;
-}
+
 
 .opec-block-tools button[hidden] { display: none; }
 
@@ -475,11 +467,29 @@
 
 .opec-shell button.opec-remove { color: var(--st-danger, #ff647c); }
 
-.opec-item-fields { grid-template-columns: minmax(76px, .6fr) minmax(100px, 1fr) auto auto; }
-.opec-item-fields button.opec-row-add { height: 26px; padding: 3px 7px; font-size: 11px; white-space: nowrap; }
+.opec-item-fields { grid-template-columns: minmax(76px, .6fr) minmax(100px, 1fr) auto; align-items: center; }
+.opec-row-actions { display: flex; align-items: center; gap: 6px; }
+.opec-row-actions button, .opec-block-tools button {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 26px;
+    min-height: 26px;
+    padding: 0 7px;
+    border-radius: 6px;
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+}
+.opec-row-actions .opec-remove { width: 26px; flex: 0 0 26px; padding: 0; }
+.opec-item-main .opec-item-fields input { box-sizing: border-box; border-radius: 6px; }
 .opec-material-search { width: 100%; height: 36px; padding: 6px 10px; }
 .opec-material-results { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; margin-top: 12px; }
 .opec-material-results button { display: flex; justify-content: space-between; align-items: center; text-align: left; gap: 12px; padding: 8px 10px; }
 .opec-material-results strong { min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
 .opec-material-results span { flex-shrink: 0; color: var(--st-muted, #9292a6); font-size: 11px; }
-@media (max-width: 680px) { .opec-item-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@media (max-width: 680px) {
+    .opec-item-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .opec-row-actions { grid-column: 1 / -1; justify-self: end; }
+}
