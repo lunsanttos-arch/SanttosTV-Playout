@@ -1657,9 +1657,9 @@ async function startNativePlayback(
         "warning",
         "-stdin",
         "-fflags",
-        "+genpts+discardcorrupt",
+        isRemoteInput ? "+genpts+discardcorrupt" : "+genpts",
         "-err_detect",
-        "ignore_err",
+        isRemoteInput ? "ignore_err" : "explode",
         "-probesize",
         isRemoteInput || warmedUdp
             ? "1000000"
@@ -1669,6 +1669,8 @@ async function startNativePlayback(
             ? "500000"
             : "10000000"
     ];
+
+    if (!isRemoteInput) args.push("-xerror");
 
     if (
         normalizedStartSeconds > 0 &&
@@ -2161,10 +2163,18 @@ async function startNativePlayback(
         }
 
         if (ffmpegProcess === processRef) {
+            // A demuxer may exit successfully even when the file ended before its
+            // registered OUT. Do not report a truncated occurrence as fully aired.
+            const shownSeconds = Math.max(0, playoutEngine.snapshot().positionSeconds - normalizedStartSeconds);
+            const prematureFileEnd = !isRemoteInput && code === 0 && !signal && clipRemainingSeconds !== null &&
+                clipRemainingSeconds - shownSeconds > Math.max(.75, 3 * profile.fpsD / profile.fpsN);
+            if (prematureFileEnd) {
+                startupStderr += `\nArquivo incompleto ou corrompido: terminou ${(clipRemainingSeconds - shownSeconds).toFixed(2)} segundos antes do OUT previsto.`;
+            }
             activeWarmInputTuner?.stop();
             activeWarmInputTuner = null;
             ffmpegProcess = null;
-            if (code === 0 && !signal) {
+            if (code === 0 && !signal && !prematureFileEnd) {
                 nativePlaybackActive = false;
                 if (audioSource) {
                     audioSource.stop();

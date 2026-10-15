@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useReducer, useRef, useState, type DragEvent } from "react";
 import { FilmBlockEditor, type MediaItem, type RundownItem } from "./App";
+import { splitContentName, contentLabel } from "../../core/media/content-label.mjs";
 import { normalizeExhibitionType } from "./exhibition";
 import { buildPlannedSchedule } from "./timeline-forecast";
 import "./opec-scheduler.css";
@@ -97,6 +98,13 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
     const [dropIntent, setDropIntent] = useState<DropIntent | null>(null);
     const [splitError, setSplitError] = useState("");
     const [editingFilm, setEditingFilm] = useState<RundownItem | null>(null);
+    const [materialTarget, setMaterialTarget] = useState<string | null>(null);
+    const [materialSearch, setMaterialSearch] = useState("");
+    const materialMatches = useMemo(() => {
+        const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        const query = normalize(materialSearch.trim());
+        return query ? media.filter(item => normalize(item.name).includes(query)).slice(0, 100) : [];
+    }, [media, materialSearch]);
     const [importOpen, setImportOpen] = useState(false);
     const [importKind, setImportKind] = useState<"weekday" | "date">("weekday");
     const [weekday, setWeekday] = useState(() => new Date(`${todayKey()}T12:00:00`).getDay());
@@ -166,7 +174,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                 replacedPlaceholder: false,
                 rundownItemId: `${sourceMediaId}-${Date.now()}-${Math.random().toString(16).slice(2)}`,
                 sourceMediaId,
-                blockLabel: mediaItem.blockLabel ?? "",
+                blockLabel: mediaItem.blockLabel || splitContentName(mediaItem.name).code,
                 exhibitionType: normalizeExhibitionType(mediaItem.exhibitionType),
                 watermark: Boolean(mediaItem.watermark),
                 hashtag: mediaItem.hashtag ?? "",
@@ -180,6 +188,24 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
             return copy;
         });
         setStatus("");
+    }
+
+    function addPlaceholder(afterId?: string) {
+        setItems(current => {
+            const slot: RundownItem = { id: "placeholder", sourceMediaId: "", rundownItemId: `slot-${Date.now()}-${Math.random()}`,
+                placeholder: true, name: "", path: "", extension: "VAZIO", fileSize: 0, duration: 1800, outPoint: 1800,
+                notes: "", width: null, height: null, fps: null, videoCodec: null, audioCodec: null, thumbnail: null,
+                status: "placeholder", createdAt: new Date().toISOString() };
+            const index = afterId ? current.findIndex(item => item.rundownItemId === afterId) : -1;
+            const copy = [...current]; copy.splice(index >= 0 ? index + 1 : copy.length, 0, slot); return copy;
+        });
+    }
+
+    function chooseMaterial(source: MediaItem) {
+        const index = items.findIndex(item => item.rundownItemId === materialTarget);
+        if (index < 0) { setMaterialTarget(null); return; }
+        addItem(source, items[index + 1]?.rundownItemId);
+        setMaterialTarget(null); setMaterialSearch("");
     }
 
     function supportedDrag(event: DragEvent) {
@@ -214,7 +240,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                 const target = items.find(item => item.rundownItemId === intent.itemId);
                 if (target) patchItem(target.rundownItemId, { ...source, sourceMediaId: source.id, placeholder: false,
                     liveSlot: false, replacedPlaceholder: target.placeholder || target.replacedPlaceholder === true,
-                    blockLabel: target.blockLabel || "", notes: target.notes || "", inPoint: clipIn(source), outPoint: clipOut(source) });
+                    blockLabel: target.blockLabel || splitContentName(source.name).code, notes: target.notes || "", inPoint: clipIn(source), outPoint: clipOut(source) });
             } else addItem(source, intent.beforeId ?? undefined);
         } else {
             const id = event.dataTransfer.getData("application/x-santtos-rundown") || draggedId;
@@ -368,6 +394,18 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                 </div>
             </header>
 
+            {materialTarget && <div className="opec-modal-backdrop" onKeyDown={event => { if (event.key === "Escape") setMaterialTarget(null); }}>
+                <section className="opec-modal" role="dialog" aria-modal="true" aria-label="Adicionar material abaixo">
+                    <h2>Adicionar material abaixo</h2>
+                    <input className="opec-material-search" autoFocus aria-label="Pesquisar em toda a biblioteca" placeholder="Pesquisar em toda a biblioteca..."
+                        value={materialSearch} onChange={event => setMaterialSearch(event.currentTarget.value)} />
+                    <div className="opec-material-results">
+                        {materialMatches.map(item => <button key={item.id} title={item.path} onClick={() => chooseMaterial(item)}><strong>{item.name}</strong><span>{formatDuration(clipDuration(item))}</span></button>)}
+                        {!materialSearch.trim() ? <p>Digite o nome ou código do material.</p> : !materialMatches.length && <p>Nenhum material encontrado.</p>}
+                    </div>
+                    <div className="opec-modal-actions"><button onClick={() => setMaterialTarget(null)}>Cancelar</button></div>
+                </section>
+            </div>}
             {importOpen && <div className="opec-modal-backdrop" onKeyDown={event => { if (event.key === "Escape" && !loading) setImportOpen(false); }}>
                 <section className="opec-modal" role="dialog" aria-modal="true" aria-label={modelAction === "save" ? "Criar modelo semanal" : "Importar programação"}>
                     <h2>{modelAction === "save" ? "Modelo semanal" : "Importar programação"}</h2>
@@ -415,10 +453,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                         <span>{items.length} item(ns)</span>
                     </div>
 
-                    <button onClick={() => setItems(current => [...current, { id: "placeholder", sourceMediaId: "", rundownItemId: `slot-${Date.now()}-${Math.random()}`,
-                        placeholder: true, name: "", path: "", extension: "VAZIO", fileSize: 0, duration: 1800, outPoint: 1800,
-                        notes: "", width: null, height: null, fps: null, videoCodec: null, audioCodec: null, thumbnail: null,
-                        status: "placeholder", createdAt: new Date().toISOString() }])}>+ Conteúdo a definir</button>
+                    <button onClick={() => addPlaceholder()}>+ Conteúdo a definir</button>
                     <div className="opec-rundown-list"
                         onDragOver={event => previewDrop(event, { mode: "insert", beforeId: null })}
                         onDragLeave={event => {
@@ -450,7 +485,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                 <div className="opec-item-main">
                                     {item.placeholder && <span className="opec-pending-label">{item.liveSlot ? "AO VIVO · AVANÇO MANUAL" : "A DEFINIR"}</span>}
                                     {item.placeholder ? <input className="opec-placeholder-name" aria-label="Nome do espaço" placeholder="Conteúdo a definir" value={item.name}
-                                        onChange={event => patchItem(item.rundownItemId, { name: event.currentTarget.value })} /> : <strong title={item.name}>{item.name}</strong>}
+                                        onChange={event => patchItem(item.rundownItemId, { name: event.currentTarget.value })} /> : <strong title={item.name}>{contentLabel(item).name}</strong>}
                                     <div className="opec-item-fields">
                                         <input
                                             placeholder="Identificação"
@@ -464,6 +499,10 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                             value={item.notes}
                                             onChange={(e) => patchItem(item.rundownItemId, { notes: e.currentTarget.value })}
                                         />
+                                        <button className="opec-row-add" title="Adicionar Conteúdo a definir abaixo" aria-label="Adicionar Conteúdo a definir abaixo"
+                                            onClick={() => addPlaceholder(item.rundownItemId)}>+ A definir</button>
+                                        <button className="opec-row-add" title="Adicionar material abaixo" aria-label="Adicionar material abaixo"
+                                            onClick={() => { setMaterialSearch(""); setMaterialTarget(item.rundownItemId); }}>+ Material</button>
                                     </div>
                                 </div>
                                 <div className="opec-block-tools">

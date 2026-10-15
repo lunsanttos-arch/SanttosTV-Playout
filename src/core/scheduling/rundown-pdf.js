@@ -1,4 +1,5 @@
 "use strict";
+const {contentLabel} = require("../media/content-label.mjs");
 const escape = value => String(value ?? "").replace(/[&<>"']/g, character => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 function clock(seconds) {
     if (seconds === null) return "—";
@@ -15,6 +16,7 @@ function rundownPrintHtml(rundown) {
     const [hours, minutes] = rundown.startTime.split(":").map(Number);
     let next = hours * 3600 + minutes * 60, total = 0;
     const rows = rundown.items.map(item => {
+        const label = contentLabel(item);
         const start = next;
         const input = Math.max(0, Number(item.inPoint) || 0);
         const duration = item.duration === null || item.duration === undefined ? null : Number(item.duration);
@@ -25,7 +27,7 @@ function rundownPrintHtml(rundown) {
         if (total !== null) total = length === null ? null : total + length;
         const state = item.liveSlot ? "Ao vivo · avanço manual" : item.placeholder ? "Conteúdo a definir" : "";
         const kind = item.liveSlot ? "live" : item.placeholder ? "pending" : item.notes ? "marked" : "";
-        return `<tr class="${kind}"><td class="time">${clock(start)}</td><td class="number">${escape(item.blockLabel)}</td><td class="material"><strong>${escape(item.name || (item.liveSlot ? "Ao Vivo" : "Conteúdo a definir"))}</strong>${state ? `<small class="badge">${state}</small>` : ""}</td><td class="time duration">${durationClock(length)}</td><td class="notes">${escape(item.notes)}</td></tr>`;
+        return `<tr class="${kind}"><td class="time">${clock(start)}</td><td class="number">${escape(label.code)}</td><td class="material"><strong>${escape(label.name || "Conteúdo a definir")}</strong>${state ? `<small class="badge">${state}</small>` : ""}</td><td class="time duration">${durationClock(length)}</td><td class="notes">${escape(item.notes)}</td></tr>`;
 
     }).join("");
     const date = rundown.date.split("-").reverse().join("/");
@@ -34,7 +36,7 @@ function rundownPrintHtml(rundown) {
         @media(max-width:750px){body{padding:12px}.sheet{padding:20px 16px}.meta{grid-template-columns:1fr 1fr}table{min-width:720px}}
         @page{size:A4;margin:12mm 10mm 15mm}
         @media print{body{padding:0;background:white;font-size:10px}.sheet{padding:0;max-width:none;box-shadow:none;border-radius:0}.brand{font-size:20px}h1{font-size:17px;margin:14px 0 12px}.meta{grid-template-columns:1.2fr 1fr 1fr 1fr;padding:10px 0 12px;gap:8px}.meta strong{font-size:11px}.table-wrap{overflow:visible}table{min-width:0}td{padding:4px 5px;line-height:1.3}.material{font-size:9px}.time,.number,.notes{font-size:8px}th{padding:7px 5px;font-size:8px}*{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-        </style></head><body><main class="sheet"><header><div class="masthead"><div class="brand">SanTTos<small>BROADCAST SUITE</small></div><div class="document-kind">ROTEIRO<br>DE PROGRAMAÇÃO</div></div><h1>${escape(rundown.title || "Programação diária")}</h1><div class="meta"><div><span>DIA</span><strong>${date}</strong></div><div><span>ABERTURA</span><strong>${rundown.startTime}:00</strong></div><div><span>TÉRMINO PREVISTO</span><strong>${clock(next)}</strong></div><div><span>ITENS / DURAÇÃO</span><strong>${rundown.items.length} / ${durationClock(total)}</strong></div></div></header><p class="caption">Horários programados · Número corresponde à identificação informada no roteiro.</p><div class="table-wrap"><table><colgroup><col style="width:12%"><col style="width:12%"><col style="width:37%"><col style="width:13%"><col style="width:26%"></colgroup><thead><tr><th>Hora</th><th>Número</th><th>Material</th><th>Duração</th><th>Observação</th></tr></thead><tbody>${rows}</tbody></table></div><p class="endnote">Conteúdos a definir e entradas ao vivo permanecem identificados. O horário real pode variar durante a operação.</p></main></body></html>`;
+        </style></head><body><main class="sheet"><header><div class="masthead"><div class="brand">SanTTos<small>BROADCAST SUITE</small></div><div class="document-kind">ROTEIRO<br>DE PROGRAMAÇÃO</div></div><h1>${escape(rundown.title || "Programação diária")}</h1><div class="meta"><div><span>DIA</span><strong>${date}</strong></div><div><span>ABERTURA</span><strong>${rundown.startTime}:00</strong></div><div><span>TÉRMINO PREVISTO</span><strong>${clock(next)}</strong></div><div><span>ITENS / DURAÇÃO</span><strong>${rundown.items.length} / ${durationClock(total)}</strong></div></div></header><p class="caption">Horários programados · Código e nome separados a partir do material.</p><div class="table-wrap"><table><colgroup><col style="width:12%"><col style="width:12%"><col style="width:37%"><col style="width:13%"><col style="width:26%"></colgroup><thead><tr><th>Hora</th><th>Código</th><th>Nome</th><th>Duração</th><th>Observação</th></tr></thead><tbody>${rows}</tbody></table></div><p class="endnote">Conteúdos a definir e entradas ao vivo permanecem identificados. O horário real pode variar durante a operação.</p></main></body></html>`;
 
 }
 async function renderRundownPdf(BrowserWindow, rundown) {

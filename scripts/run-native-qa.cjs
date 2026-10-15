@@ -30,6 +30,7 @@ await evaluate(`window.santtosAPI.importMedia(${JSON.stringify([fixture])})`);le
 const settings=await evaluate('window.santtosAPI.getSettings()');await evaluate(`window.santtosAPI.saveOutputSettings(${JSON.stringify({...settings.output,resolution:'1280x720',fps:'25',ndi:{enabled:true,name:'Santtos QA DEV NULL'},omt:{enabled:false},srt:{enabled:false},rtmp:{enabled:false}})})`);
 ws.close();ws=null;await run('test-opec-live-slots.cjs');await run('test-opec-models.cjs',{SANTTOS_QA_OUTPUT:logs});await run('test-opec-auto-advance.cjs');
 await run('test-program-autonomy.cjs',{SANTTOS_QA_USERDATA:path.join(config,'santtos-tv-playout')});
+await run('test-corrupt-contingency.cjs',{SANTTOS_QA_USERDATA:path.join(config,'santtos-tv-playout'),SANTTOS_QA_ELECTRON_PID:String(appChild.pid)});
 if(process.argv.includes('--live')){await run('test-input-web-handoff.cjs',{SANTTOS_QA_GRAPHICS:'1'});await run('test-input-web-handoff.cjs',{SANTTOS_QA_STALL:'1'});}
 await connect();const item={...media,id:'burn-in-smoke',sourceMediaId:media.id,inPoint:0,outPoint:40,loop:true,freezeEnd:false};await evaluate(`window.santtosAPI.applyNativeRundown(${JSON.stringify([item])})`);await evaluate(`window.santtosAPI.playNdiFile(${JSON.stringify(media.path)},0,'',${JSON.stringify({itemId:item.id,inPointSeconds:0,outPointSeconds:40,loop:true})})`);
 ws.close();ws=null;await run('burn-in-program.cjs',{},['--smoke-seconds','5','--output',path.join(logs,'collector-smoke')]);

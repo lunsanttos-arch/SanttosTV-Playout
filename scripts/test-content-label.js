@@ -1,0 +1,15 @@
+'use strict';
+const assert = require('node:assert/strict');
+const { splitContentName, contentLabel } = require('../src/core/media/content-label.mjs');
+assert.deepEqual(splitContentName('006 AGENCIA EURO.mp4'), {code:'006',name:'AGENCIA EURO'});
+assert.deepEqual(splitContentName('006 AGENCIA EURO'), {code:'006',name:'AGENCIA EURO'});
+assert.deepEqual(splitContentName('011 - TSE COISA DE PELE 30.mp4'), {code:'011',name:'TSE COISA DE PELE 30'});
+assert.deepEqual(splitContentName('513-22PL_VT_FED05.mp4'), {code:'513-22PL',name:'VT_FED05'});
+assert.deepEqual(splitContentName('ABLOST_ABERTURA SERIE LOST.mp4'), {code:'ABLOST',name:'ABERTURA SERIE LOST'});
+assert.deepEqual(splitContentName('C:\\Midias\\001 PREFIXO.mp4'), {code:'001',name:'PREFIXO'});
+assert.deepEqual(contentLabel({name:'FB_231.mp4',blockLabel:'420'}), {code:'420',name:'FB_231'});
+assert.deepEqual(splitContentName('Chamada 001.mp4'), {code:'',name:'Chamada 001'});
+assert.deepEqual(splitContentName('Filme sem código.mp4'), {code:'',name:'Filme sem código'});
+assert.deepEqual(contentLabel({placeholder:true,name:'Filme a definir',blockLabel:'Lacuna'}), {code:'Lacuna',name:'Filme a definir'});
+assert.deepEqual(contentLabel({fileName:'006 AGENCIA EURO.mp4'}), {code:'006',name:'AGENCIA EURO'});
+console.log('CONTENT LABEL: supplied numeric-space format, leading zeros, separator variants, compound code, Windows paths and unchanged uncoded names passed');

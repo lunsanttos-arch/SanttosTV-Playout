@@ -56,7 +56,7 @@ O campo de minutos permite apagar e redigitar o valor, inclusive fracionado. Ao 
 
 ## Roteiros, modelos semanais e importação
 
-**PDF do roteiro** e **HTML do roteiro**, ao lado de **Atualizar programação**, exportam o conteúdo que está na tela, inclusive alterações ainda não salvas. O layout usa hora, número/identificação, material, duração e observação. O PDF é A4, com cabeçalho da tabela repetido e páginas numeradas; o HTML é independente, abre no navegador e também pode ser impresso. Horários são previstos a partir da hora inicial e das durações dos cortes; depois de uma duração desconhecida, o horário aparece como indefinido.
+**PDF do roteiro** e **HTML do roteiro**, ao lado de **Atualizar programação**, exportam o conteúdo que está na tela, inclusive alterações ainda não salvas. O layout usa hora, código, nome, duração e observação. O PDF é A4, com cabeçalho da tabela repetido e páginas numeradas; o HTML é independente, abre no navegador e também pode ser impresso. Horários são previstos a partir da hora inicial e das durações dos cortes; depois de uma duração desconhecida, o horário aparece como indefinido.
 
 Ao arrastar um material da biblioteca, o centro de um bloco fica roxo com **Substituir Item**. Entre os blocos, aparece uma barra roxa fina **Incluir Item**, abrindo espaço com animação e empurrando os seguintes para baixo. Soltar executa a ação indicada, sem janela de confirmação. A substituição preserva a identificação e a observação do espaço. É possível incluir também antes do primeiro item ou ao final. Arrastar um item do próprio roteiro apenas o reordena. Sair da lista ou cancelar o arraste limpa a indicação; **Desfazer** reverte a alteração.
 
@@ -66,3 +66,12 @@ Em **Importar programação**, escolha um modelo semanal ou **Programação de o
 
 
 O início por `npm start` ou `npm run dev` compila automaticamente a interface usada pelo controlador web antes de abrir o aplicativo. Depois de atualizar o código, feche o Santtos, execute `git pull origin main` e `npm start`, e atualize a página do navegador. Os botões de modelo semanal e importação ficam ao lado do nome da programação; campos e botões usam o mesmo tema no aplicativo e no navegador.
+
+
+## Código do arquivo, inserções no roteiro e conteúdo corrompido
+
+O roteiro (HTML/PDF) e o relatório (HTML/XLSX/XML) separam **Código** e **Nome**. Por exemplo, `006 AGENCIA EURO.mp4` gera código `006` e nome `AGENCIA EURO`, mantendo os zeros à esquerda. O nome e o caminho originais permanecem no registro de auditoria; o XML mantém também o campo `arquivo`. Identificadores de blocos continuam disponíveis no relatório. Nomes sem prefixo reconhecido permanecem inteiros, retirando apenas a extensão de mídia.
+
+Cada bloco da Programação oferece **+ A definir** e **+ Material**, para inserir logo abaixo dele. O segundo abre um único campo de pesquisa em toda a biblioteca, inclusive materiais de pastas diferentes da selecionada. Digite para mostrar os resultados e selecione o arquivo. As duas inserções podem ser desfeitas.
+
+A contingência trata falhas de abertura, erros de decodificação de arquivos, término antes do OUT registrado e ausência de novos quadros. Arquivos locais usam decodificação estrita para interromper erros de mídia; transmissões web continuam tolerando erros transitórios de pacotes. O limite sem quadros é configurável em Operação (8 segundos por padrão). Ao detectar a falha, o motor avança uma única vez para o próximo item e registra **PULADO POR ERRO**, motivo, duração efetivamente exibida e conteúdo seguinte. Pausa, retenção por FRZ no OUT e espaços ao vivo manuais não são considerados travamentos. Se não houver um próximo item válido, aplica-se a contingência configurada ou a saída preta.

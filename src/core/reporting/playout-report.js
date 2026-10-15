@@ -1,6 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const {contentLabel} = require("../media/content-label.mjs");
 
 let stateFile = "";
 let configFile = "";
@@ -465,8 +466,8 @@ async function writeReportSnapshot({ dateKey, destination, rows }) {
 
     ensureFolder(destination);
 
-    const headers = ["Data", "Arquivo", "Bloco", "Entrada", "Saída", "Previsto", "Exibido", "Status", "Caminho", "Motivo", "Conteúdo seguinte", "Contingência"];
-    const values = rows.map(entry => [localDateLabel(entry.startedAt), entry.fileName, entry.blockLabel || "",
+    const headers = ["Data", "Código", "Nome", "Bloco", "Entrada", "Saída", "Previsto", "Exibido", "Status", "Caminho", "Motivo", "Conteúdo seguinte", "Contingência"];
+    const values = rows.map(entry => [localDateLabel(entry.startedAt), contentLabel(entry).code, contentLabel(entry).name, entry.blockLabel || "",
         localTimeLabel(entry.startedAt), entry.endedAt ? localTimeLabel(entry.endedAt) : "",
         formatDuration(entry.plannedDurationSeconds), entry.playedSecondsUnknown ? "Não recuperado" : formatDuration(entry.playedSeconds), entry.status.replaceAll("_", " "), entry.filePath || "", entry.errorReason || "", entry.nextContent || "", entry.contingencyContent || ""]);
     const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Relatório ${xmlEscape(dateKey)}</title>
@@ -511,6 +512,8 @@ async function writeReportSnapshot({ dateKey, destination, rows }) {
                 "arquivo",
                 entry.fileName
             ),
+            xmlTag("codigo", contentLabel(entry).code),
+            xmlTag("nome", contentLabel(entry).name),
             xmlTag(
                 "bloco",
                 entry.blockLabel || ""
@@ -706,6 +709,8 @@ function startPlayoutEntry(media) {
                     media?.path
                 )
             ),
+        contentCode: contentLabel(media).code,
+        contentName: contentLabel(media).name,
         filePath:
             sanitizeText(
                 media?.path

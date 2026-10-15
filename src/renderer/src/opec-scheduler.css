@@ -465,3 +465,12 @@
 @media (max-width: 680px) { .opec-title-area { grid-column: 1 / -1; } }
 
 .opec-shell button.opec-remove { color: var(--st-danger, #ff647c); }
+
+.opec-item-fields { grid-template-columns: minmax(76px, .6fr) minmax(100px, 1fr) auto auto; }
+.opec-item-fields button.opec-row-add { height: 26px; padding: 3px 7px; font-size: 11px; white-space: nowrap; }
+.opec-material-search { width: 100%; height: 36px; padding: 6px 10px; }
+.opec-material-results { display: flex; flex-direction: column; gap: 6px; max-height: 50vh; overflow: auto; margin-top: 12px; }
+.opec-material-results button { display: flex; justify-content: space-between; align-items: center; text-align: left; gap: 12px; padding: 8px 10px; }
+.opec-material-results strong { min-width: 0; overflow-wrap: anywhere; font-size: 12px; }
+.opec-material-results span { flex-shrink: 0; color: var(--st-muted, #9292a6); font-size: 11px; }
+@media (max-width: 680px) { .opec-item-fields { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
