@@ -6,7 +6,7 @@ const path = require("node:path");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
 const { startWarmInputTuner } = require("../src/core/playout/warm-input-tuner");
-const ffmpegPath = require("ffmpeg-static");
+const ffmpegPath = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffmpeg");
 
 async function main() {
     const folder = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-live-qa-"));

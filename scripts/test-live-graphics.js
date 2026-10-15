@@ -4,7 +4,7 @@ const fs = require("node:fs"), os = require("node:os"), path = require("node:pat
 const { spawn, execFileSync } = require("node:child_process");
 const { LiveGraphics, filterPath } = require("../src/core/playout/live-graphics");
 const { FixedFrameAssembler } = require("../src/core/ndi/frame-aligner");
-const ffmpeg = process.env.FFMPEG_BIN || require("ffmpeg-static");
+const ffmpeg = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffmpeg");
 const font = ["C:/Windows/Fonts/arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"].find(fs.existsSync);
 assert(font, "A readable test font is required");
 const profiles = [[320,180,25],[640,360,30000/1001],[1280,720,60]];

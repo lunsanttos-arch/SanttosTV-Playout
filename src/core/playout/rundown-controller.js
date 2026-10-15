@@ -46,7 +46,7 @@ class RundownController {
         }catch(error){if(token!==this.epoch)return {ok:false,canceled:true};this.opening=false;return this.fail(error.message,token);}
     }
     ready(snapshot) {
-        if(snapshot.itemId!==this.current?.id)return;
+        if(snapshot.itemId!==this.current?.id||snapshot.generation!==this.snapshot().generation)return;
         if(this.report)try{this.reportReady?.(this.report)}catch(error){this.lastIssue="Relatório: "+error.message}
         const name=this.current.name||this.current.path;
         for(const id of this.pendingFailures.splice(0))try{this.reportSuccessor?.(id,name)}catch{}
@@ -61,7 +61,7 @@ class RundownController {
         return this.advance("completed",this.epoch);
     }
     async fault(message,snapshot=this.snapshot()) {
-        if(!this.current||snapshot.itemId!==this.current.id)return;
+        if(!this.current||snapshot.itemId!==this.current.id||snapshot.generation!==this.snapshot().generation)return;
         if(this.opening){this.pendingFault=message;return;}
         return this.fail(message,this.epoch);
     }
@@ -77,6 +77,9 @@ class RundownController {
         const source={...(items[index]||this.current),...(this.flags.get(this.current?.id)||{})};
         if(reason==="skipped")this.closeReport("PULADO",{reason:"Avanço manual"});
         let next=reason==="completed"&&source?.loop?source:items[index+1];
+        // The filler is outside the timeline (index -1). Its failure must not
+        // interpret index + 1 as the first clip and retry the entire failed queue.
+        if(reason==="error"&&this.current?.isContingency)next=null;
         // Contingency never loops a corrupt clip and does not wrap a failed queue.
         if(!next && reason==="error" && !this.current?.isContingency) {
             const filler=this.getContingency?.();

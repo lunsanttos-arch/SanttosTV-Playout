@@ -1,5 +1,10 @@
 # SanTTos Playout — arquitetura de motor 1.0
 
+> Este documento descreve o plano de migração original; as fases abaixo não
+> representam, por si, o estado atual de implementação. Consulte a
+> [revisão de 15/10/2026](REVISAO-ARQUITETURA-GITHUB-2026-10-15.md) para a
+> comparação com projetos externos, proteções existentes e trabalho pendente.
+
 Este documento registra a migração do motor atual para uma arquitetura de playout broadcast sem interromper a operação existente.
 
 ## Princípios

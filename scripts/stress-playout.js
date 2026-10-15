@@ -3,7 +3,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { spawn } = require("child_process");
-const ffmpegStatic = process.env.FFMPEG_BIN || require("ffmpeg-static");
+const ffmpegStatic = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffmpeg");
 
 const profiles = {
     smoke: {
@@ -49,7 +49,7 @@ if (!profile) {
 }
 
 if (!ffmpegStatic || !fs.existsSync(ffmpegStatic)) {
-    console.error("FFmpeg do ffmpeg-static não foi encontrado.");
+    console.error("Runtime FFmpeg não foi encontrado.");
     process.exit(2);
 }
 

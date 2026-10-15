@@ -6,8 +6,8 @@ const path = require("node:path");
 const net = require("node:net");
 const { spawn, execFileSync } = require("node:child_process");
 const { TransportOutput, transportUrl } = require("../src/core/playout/transport-output");
-const ffmpeg = process.env.FFMPEG_BIN || require("ffmpeg-static");
-const ffprobe = process.env.FFPROBE_BIN || require("@derhuerst/ffprobe-static").path;
+const ffmpeg = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffmpeg");
+const ffprobe = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffprobe");
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function freePort() {
     const server = net.createServer();

@@ -10,7 +10,7 @@ const wait=ms=>new Promise(r=>setTimeout(r,ms));
 const initial=await evaluate('window.santtosAPI.getNdiStatus()');assert(initial.devNullSink&&!initial.testBench,'Use an isolated DEV NULL profile');
 const backup=await evaluate('window.santtosAPI.getTimeline()'),settings=await evaluate('window.santtosAPI.getSettings()');
 const folder=fs.mkdtempSync(path.join(os.tmpdir(),'santtos-native-gc-'));const logo=path.join(folder,'logo.png');
-execFileSync(process.env.FFMPEG_BIN||require('ffmpeg-static'),['-v','error','-f','lavfi','-i','color=white:s=32x32','-frames:v','1','-threads','1','-y',logo]);
+execFileSync(require('../src/core/media/runtime-paths').resolveMediaRuntime('ffmpeg'),['-v','error','-f','lavfi','-i','color=white:s=32x32','-frames:v','1','-threads','1','-y',logo]);
 try{
 await evaluate(`(async()=>{await window.santtosAPI.stopNdiFile();const url='https://encode.ontvbrasil.com.br/PortoAlegre24hs/video.m3u8';await window.santtosAPI.saveWebInput({id:'graphics-live-qa',name:'Graphics live QA',url,protocol:'hls',durationSeconds:60,engine:'ffmpeg'});await window.santtosAPI.saveTimeline([{id:'graphics-functional-qa',inputId:'graphics-live-qa',sourceMediaId:'graphics-live-qa',sourceType:'input',path:url,name:'Graphics live QA',inputProtocol:'hls',inputTimingMode:'duration',inputEngine:'ffmpeg',duration:60,inPoint:0,outPoint:60,watermark:false,hashtag:'',loop:false,freezeEnd:false}]);await window.santtosAPI.savePlayoutCheckpoint({itemId:'graphics-functional-qa',positionSeconds:0,playing:false});})()`);
 await send('Page.reload');await wait(700);

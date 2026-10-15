@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
-const ffmpegStatic = require("ffmpeg-static");
+const ffmpegStatic = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffmpeg");
 const {
     getExhibitionOverlay,
     buildExhibitionDrawtext,

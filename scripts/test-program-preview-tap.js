@@ -5,7 +5,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
-const ffmpeg = require("ffmpeg-static");
+const ffmpeg = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffmpeg");
 const {
     JpegFrameParser
 } = require("../src/core/playout/program-preview-tap");

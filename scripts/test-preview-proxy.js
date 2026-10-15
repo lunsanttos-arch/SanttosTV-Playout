@@ -5,10 +5,8 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
-const ffmpeg = require("ffmpeg-static");
-const ffprobeModule = require("@derhuerst/ffprobe-static");
-const ffprobe = typeof ffprobeModule === "string"
-    ? ffprobeModule : (ffprobeModule.path || ffprobeModule.default);
+const ffmpeg = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffmpeg");
+const ffprobe = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffprobe");
 const { preparePreviewProxy } = require("../src/core/media/preview-proxy");
 const { buildMediaUrl, serveImportedVideo } =
     require("../src/core/media/media-protocol");

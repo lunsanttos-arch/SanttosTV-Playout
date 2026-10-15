@@ -7,7 +7,7 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const net = require("node:net");
 const { execFileSync } = require("node:child_process");
-const ffmpeg = require("ffmpeg-static");
+const ffmpeg = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffmpeg");
 const { NdiAudioSource } = require("../src/core/audio/ndi-audio-source");
 
 async function main() {

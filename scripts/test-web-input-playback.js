@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
-const ffmpegStatic = require("ffmpeg-static");
+const ffmpegStatic = require("../src/core/media/runtime-paths").resolveMediaRuntime("ffmpeg");
 const {
     isRemoteInputUrl,
     isHlsInput,
@@ -27,7 +27,7 @@ const {
 
 function ffmpegPath() {
     if (typeof ffmpegStatic !== "string" || !ffmpegStatic) {
-        throw new Error("ffmpeg-static indisponível.");
+        throw new Error("Runtime FFmpeg indisponível.");
     }
     return ffmpegStatic.replace("app.asar", "app.asar.unpacked");
 }
