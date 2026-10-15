@@ -59,6 +59,15 @@ async function connect(port, page) {
         assert((await call("playout:apply-rundown", [items])).ok);
         const started = await call("ndi:play-file", [media.path, 0, "", { itemId: items[0].id, inPointSeconds: 0, outPointSeconds: 10 }]);
         assert.equal(started.playout?.state, "PLAYING", JSON.stringify(started));
+        await renderer.evaluate(`window.__monitorQA = {frames:0}; window.__monitorQA.off = window.santtosAPI.onProgramPreviewFrame(() => window.__monitorQA.frames++);`);
+        const images = [];
+        for (let n=0;n<8;n++) {
+            await wait(150);
+            images.push(await renderer.evaluate(`document.querySelector('.program-native-preview-canvas')?.toDataURL()`));
+        }
+        const previews = await renderer.evaluate(`window.__monitorQA.off(); window.__monitorQA.frames`);
+        assert(previews >= 5, `Preview stalled while audio/PROGRAM continues: ${previews} frames in 1.2 s; ${JSON.stringify((await call("ndi:status")).decks)}`);
+        assert(new Set(images.filter(Boolean)).size >= 3, "PROGRAM canvas must show actual changing video, not a repeated frozen image");
         await renderer.send("Page.setWebLifecycleState", { state: "frozen" }); frozen = true;
         let prepared;
         for (let n = 0; n < 100; n++) {

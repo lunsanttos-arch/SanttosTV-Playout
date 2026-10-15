@@ -27,7 +27,10 @@ class DecoderDeck {
         this.child.stdio[4].on("error", error => this.fail(error));
         const parser = new JpegFrameParser(frame => {
             this.previews.push({ index: ++this.previewIndex, frame });
-            if (this.previews.length > 4) this.previews.shift();
+            // JPEG can run ahead of rawvideo because FFmpeg writes separate pipes.
+            // Keep the earliest future frames: dropping them on every new JPEG
+            // can leave the delivery clock permanently chasing an empty preview.
+            if (this.previews.length >= 8) this.child.stdio[3].pause();
         });
         this.child.stdio[3].on("data", chunk => parser.write(chunk));
         this.child.stdio[3].on("error", error => this.fail(error));
@@ -78,6 +81,7 @@ class DecoderDeck {
         const ratio = this.profile.fpsN / this.profile.fpsD > 30 ? 2 : 1;
         while (this.previews.length && this.previews[0].index <= Math.ceil(this.delivered / ratio)) latest = this.previews.shift().frame;
         if (latest) this.onPreview(latest);
+        if (this.previews.length < 8) this.child.stdio[3].resume();
         return true;
     }
     fail(error) {
@@ -106,6 +110,6 @@ class DecoderDeck {
         timer.unref(); this.child.once("close", () => clearTimeout(timer));
     }
     snapshot() { return { pid: this.child.pid, ready: this.readyState && !this.stopped, active: this.active, decodedFrames: this.decoded,
-        bufferedFrames: this.pacer.queue.length, bufferedAudioBytes: this.clock?.buffered || 0, hasAudio: this.requireAudio, error: this.error || null }; }
+        deliveredFrames: this.delivered, previewFrames: this.previewIndex, bufferedPreviewFrames: this.previews.length, nextPreviewFrame: this.previews[0]?.index || null, bufferedFrames: this.pacer.queue.length, bufferedAudioBytes: this.clock?.buffered || 0, hasAudio: this.requireAudio, error: this.error || null }; }
 }
 module.exports = { DecoderDeck };

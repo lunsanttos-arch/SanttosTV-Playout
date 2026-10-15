@@ -87,3 +87,29 @@ até a recuperação; isolamento de processos não equivale a redundância de sa
 Esses ensaios Linux validam o funcionamento e os limites testados. A homologação
 Windows com receptores físicos NDI/OMT e ensaios contínuos reais de 24/72 horas
 continuam necessários antes de certificar operação profissional ininterrupta.
+
+## Correção do monitor após a extração
+
+O ensaio inicial de isolamento contava quadros de PROGRAM, mas não verificava
+movimento no canvas. Um teste adicional reproduziu zero mensagens de preview
+em 1,2 s enquanto PROGRAM avançava normalmente. FFmpeg pode escrever JPEGs
+adiantados pela pipe de monitor; descartar o JPEG mais antigo quando a fila
+chegava a quatro removia justamente os quadros que o relógio ainda exibiria.
+O próximo JPEG ficava continuamente à frente da posição de vídeo entregue.
+
+A fila agora preserva os JPEGs futuros em ordem e pausa a leitura da pipe ao
+atingir oito quadros, retomando à medida que PROGRAM os consome. Uma leitura
+já em andamento pode completar mais JPEGs no mesmo chunk. Não se acumula uma
+fila ilimitada e não se descarta um quadro futuro necessário ao monitor.
+O status de deck também expõe contadores de quadros entregues e de preview.
+
+Além disso, o preload confirma uma mensagem de monitor uma única vez por
+conexão, mesmo sem componente React inscrito. Antes, montar/desmontar o
+monitor podia deixar um crédito retido, e múltiplos inscritos confirmavam a
+mesma mensagem mais de uma vez. A interface congelada continua sem confirmar,
+preservando o limite de mensagens em trânsito.
+
+A regressão nativa agora exige pelo menos cinco mensagens de preview em
+1,2 s e três imagens diferentes no canvas, além dos testes anteriores de
+PROGRAM, áudio, corte preparado e recuperação. O teste de preload cobre
+recebimento antes da montagem, múltiplos inscritos e fechamento/reabertura.

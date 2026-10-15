@@ -4,6 +4,13 @@ const {
     webUtils
 } = require("electron");
 
+// Acknowledge transport delivery even when the React monitor is not mounted.
+// Credits belong to the renderer connection, not to individual UI subscribers.
+// A frozen renderer still cannot ACK, so bounded backpressure is preserved.
+for (const channel of ["playout:preview-frame", "playout:audio-pcm"]) {
+    ipcRenderer.on(channel, () => ipcRenderer.send("program:monitor-ack", channel));
+}
+
 // Sandboxed preload: Node modules from project files are intentionally unavailable.
 const buildMediaUrl = (filePath) =>
     typeof filePath === "string" && filePath.length <= 4096
@@ -343,9 +350,7 @@ contextBridge.exposeInMainWorld(
                 return () => {};
             }
 
-            const listener = (_event, payload) => {
-                try { callback(payload); } finally { ipcRenderer.send("program:monitor-ack", "playout:audio-pcm"); }
-            };
+            const listener = (_event, payload) => callback(payload);
 
             ipcRenderer.on(
                 "playout:audio-pcm",
@@ -384,9 +389,7 @@ contextBridge.exposeInMainWorld(
                 return () => {};
             }
 
-            const listener = (_event, payload) => {
-                try { callback(payload); } finally { ipcRenderer.send("program:monitor-ack", "playout:preview-frame"); }
-            };
+            const listener = (_event, payload) => callback(payload);
 
             ipcRenderer.on(
                 "playout:preview-frame",
