@@ -203,3 +203,39 @@ isolamento de encerramento. O runtime VMX/OMT com receptor físico depende da
 validação Windows. A gravação lado a lado enviada mostra OMT na Prévia do vMix
 e NDI no Programa; inverter os monitores fora do ar ajuda a distinguir envio
 OMT de atualização da Prévia no receptor.
+
+## Configuração das saídas durante reprodução e SRT Listener
+
+Salvar as configurações de NDI, OMT, SRT e RTMP não exige mais parar PROGRAM.
+Mudanças de ativação, nome e destino reiniciam somente a saída afetada; a
+ocorrência, o decoder e sua posição continuam os mesmos. Uma falha ao iniciar
+NDI também não encerra o decoder de PROGRAM. NDI e OMT usam assinaturas
+separadas para que mudar uma saída não reinicie a outra.
+
+Resolução, FPS, varredura, proporção, formato de pixels e PCM são diferentes:
+uma mudança salva durante reprodução/pausa fica pendente para o próximo corte
+ou STOP. O deck seguinte é preparado com o perfil desejado. No corte, as saídas
+são reconfiguradas para esse perfil antes do primeiro quadro novo. O raster
+atual continua válido até lá, inclusive se for necessário reconectar uma saída.
+O painel informa que há um perfil pendente; nomes e destinos já são aplicados.
+
+No SRT Caller é necessário IP do receptor e porta. No Listener somente porta:
+o sender escuta em `0.0.0.0`, e o vMix Caller conecta ao IP do PC do Santtos.
+O painel não exibe campo de IP no modo Listener. Modos dos dois lados devem
+ser opostos; a descrição do painel explica a configuração correspondente no
+vMix. URLs inválidas e senhas SRT inválidas são rejeitadas antes de salvar.
+
+O encoder de transporte fornece inicialmente até oito quadros e o PCM
+correspondente e aguarda a abertura da conexão. Antes, continuar enchendo os
+pipes enquanto o Listener esperava um receptor provocava estouro da fila e
+reinícios periódicos. A fila inicial e a quantidade de pacotes de vídeo no
+FFmpeg agora são limitadas; o anúncio de abertura do muxer libera o fluxo, e
+progresso real confirma a saída online. A espera por um receptor não precisa
+reiniciar o encoder ou a reprodução.
+
+Validação: receptor FFmpeg real recebeu H.264/AAC de Caller e de Listener;
+Listener permaneceu oito segundos sem receptor com o mesmo PID e conectou
+depois. No Electron real, alternar NDI, trocar seu nome e iniciar/parar SRT
+preservou PID/generation/posição do decoder. O perfil técnico pendente entrou
+somente no corte A/B seguinte. NDI/OMT físicos e o vMix Windows ainda precisam
+de conferência no computador de transmissão.

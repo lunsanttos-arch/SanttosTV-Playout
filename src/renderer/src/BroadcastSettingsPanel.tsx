@@ -305,7 +305,9 @@ export default function BroadcastSettingsPanel({
             }
 
             setOutput(result.output);
-            setStatus("Configurações de saída salvas.");
+            setStatus(result.pendingProfile
+                ? "Saídas atualizadas. O novo perfil de vídeo/áudio será aplicado no próximo corte ou ao parar."
+                : "Saídas atualizadas com a reprodução mantida.");
         } catch (error) {
             console.error(error);
             setStatus(
@@ -752,7 +754,9 @@ function OutputTab({
             </SettingsCard>
             <SettingsCard
                 title="SRT"
-                description="Saída do PROGRAM com o perfil do sistema."
+                description={output.srt.mode === "listener"
+                    ? "No vMix, use SRT Caller para conectar ao IP deste computador e à porta abaixo."
+                    : "No vMix, use SRT Listener na mesma porta. Para o mesmo PC, use 127.0.0.1."}
             >
                 <ToggleField
                     label="Ativar SRT"
@@ -772,20 +776,21 @@ function OutputTab({
                     ]}
                     onChange={(value) =>
                         patchSrt({
-                            mode:
-                                value as OutputSettings["srt"]["mode"]
+                            mode: value as OutputSettings["srt"]["mode"],
+                            host: value === "listener" && output.srt.host === "127.0.0.1" ? "0.0.0.0"
+                                : value !== "listener" && output.srt.host === "0.0.0.0" ? "127.0.0.1" : output.srt.host
                         })
                     }
                 />
 
                 <div className="settings-two-columns">
-                    <TextField
-                        label="Host / IP"
+                    {output.srt.mode !== "listener" && <TextField
+                        label="IP do receptor"
                         value={output.srt.host}
                         onChange={(host) =>
                             patchSrt({ host })
                         }
-                    />
+                    />}
                     <NumberSetting
                         label="Porta"
                         value={output.srt.port}

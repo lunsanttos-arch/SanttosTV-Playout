@@ -128,10 +128,23 @@ function profileSignature(profile) {
     ].join("|");
 }
 
+function mediaProfileSignature(profile) {
+    return [profile.resolution, profile.fpsExpression, profile.scanMode, profile.aspectRatio,
+        profile.ndiPixelFormat, profile.sampleRate, profile.channels].join("|");
+}
+function mergeOutputRoutes(active, desired) {
+    return { ...active, ndiEnabled: desired.ndiEnabled, sourceName: desired.sourceName,
+        omtEnabled: desired.omtEnabled, omtName: desired.omtName, omtQuality: desired.omtQuality };
+}
+function destinationSignature(profile, kind) {
+    return [mediaProfileSignature(profile), kind === 'ndi' ? profile.ndiEnabled : profile.omtEnabled,
+        kind === 'ndi' ? profile.sourceName : profile.omtName, kind === 'omt' ? profile.omtQuality : ''].join('|');
+}
+
 module.exports = {
     FPS_RATIONALS,
     PIXEL_FORMATS,
     parseResolution,
     outputProfile,
-    profileSignature
+    profileSignature, mediaProfileSignature, mergeOutputRoutes, destinationSignature
 };

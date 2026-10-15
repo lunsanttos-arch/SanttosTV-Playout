@@ -47,7 +47,7 @@
     "test:warm-input": "node scripts/test-warm-input-tuner.js",
     "test:controller": "node scripts/test-scheduling-controller.js",
     "test:reports": "node scripts/test-readable-reports.js",
-    "test:transports": "node scripts/test-transport-output.js",
+    "test:transports": "node scripts/test-transport-output.js && node scripts/test-srt-listener.js",
     "test:frame-pacer": "node scripts/test-frame-pacer.js",
     "test:input-deadline": "node scripts/test-input-deadline.js",
     "test:live-graphics": "node scripts/test-live-graphics.js",

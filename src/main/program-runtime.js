@@ -80,7 +80,7 @@ const { JpegFrameParser } = require("../core/playout/program-preview-tap");
 const { videoFilterInput } = require("../core/playout/ffmpeg-stream-map");
 const {
     outputProfile,
-    profileSignature
+    profileSignature, mediaProfileSignature, mergeOutputRoutes, destinationSignature
 } = require("../core/playout/output-profile");
 const { configureTestBench } = require("./testbench");
 
@@ -957,12 +957,13 @@ function sendProgramAudioPcm(
 }
 
 function stopNativePlayback({ engineAction = "stop", cancelPendingStart = true } = {}) {
-    if (cancelPendingStart) { nativeStartGeneration++; clearTimeout(backendRecoveryTimer); backendRecoveryTimer = null; }
+    if (cancelPendingStart) { nativeStartGeneration++; pendingCut = null; clearTimeout(backendRecoveryTimer); backendRecoveryTimer = null; }
     activeDeck?.stop(); activeDeck = null; ffmpegProcess = null; activeGraphics = null; audioSource = null;
     nativePlaybackActive = false; audioOutputStatus = "IDLE"; sendProgramAudioReset();
     if (engineAction === "pause") playoutEngine.pause();
     if (engineAction === "stop") { playoutEngine.stop(); lastProgramFrame = null; lastFrameGeneration = -1; serverMedia.clearActive(); sendProgramPreviewReset(); }
     if (engineAction !== "preserve") { decks.cancel(); inputPrebuffer.cancel(); warmTask = null; serverMedia.setRealtimePriority(false); }
+    if (engineAction === "stop" && !shuttingDown && nativeOutputAllowed) applyOutputProfile(configuredOutputProfile());
     return playoutEngine.snapshot();
 }
 
@@ -1024,7 +1025,7 @@ function ensureTransportOutputs(ffmpegPath, profile = activeOutputProfile) {
                 } }).start();
             output.signature = signature;
             transportOutputs.set(kind, output);
-        } catch (error) { console.error(`Saída ${kind.toUpperCase()}:`, error.message); }
+        } catch (error) { playoutLastError = `Saída ${kind.toUpperCase()}: ${redactDiagnostic(error.message)}`; console.error(playoutLastError); }
     }
 }
 
@@ -1105,7 +1106,7 @@ async function resolveDeckSource(item, position, overlay, signal) {
 }
 async function createDecoderDeck(item, position, overlayState, signal) {
     const source = await resolveDeckSource(item, position, overlayState, signal);
-    const profile = configuredOutputProfile(), filePath = item.path, isRemoteInput = source.remote;
+    const profile = desiredOutputProfile(), filePath = item.path, isRemoteInput = source.remote;
     let graphics;
     try {
         const preparedLogo = await logoAsset(getSettings().watermarkStyle, profile);
@@ -1334,7 +1335,7 @@ async function startNativePlayback(filePath, startSeconds = 0, hashtag = '', ove
     const fromPid = activeDeck?.child.pid || lastCut?.toPid || null, previousFrameAt = lastProgramFrameAt;
     stopNativePlayback({ engineAction: 'preserve', cancelPendingStart: false });
     activeSlot = activeSlot === 'A' ? 'B' : 'A'; activeDeck = deck; ffmpegProcess = deck.child; activeGraphics = deck.graphics;
-    nativePlaybackActive = true; playoutLastError = ''; activeOutputProfile = configuredOutputProfile();
+    nativePlaybackActive = true; playoutLastError = ''; applyOutputProfile(deck.profile);
     lastCut = { prepared, fromPid, toPid: deck.child.pid, previousFrameAt, gapMs: null };
     programMetrics.maxFrameGapMs = 0;
     playoutEngine.start({ filePath, itemId: item.id, inPointSeconds: overlay.inPointSeconds || 0,
@@ -1920,40 +1921,16 @@ function registerIpcHandlers() {
         "settings:set-output",
         async (_event, output) => {
             try {
-                const engineState =
-                    playoutEngine.snapshot().state;
-                if (
-                    pendingCut !== null || engineState === "PLAYING" || engineState === "STARTING" ||
-                    engineState === "PAUSED"
-                ) {
-                    return {
-                        ok: false,
-                        error:
-                            "Pare o PROGRAM antes de alterar o perfil técnico das saídas."
-                    };
-                }
-
-                const saved =
-                    updateOutputSettings(output);
-
-                // O sender carrega resolução/FPS/scan/pixel/audio/nome
-                // na inicialização. Aplicar o perfil salvo imediatamente.
-                if (nativeOutputAllowed) {
-                    restartNdiSenderForProfile();
-                    restartOmtSenderForProfile();
-                    ensureTransportOutputs(resolveFfmpegPath());
-                }
-
+                if (output?.srt?.enabled) transportUrl(output.srt, "srt");
+                if (output?.rtmp?.enabled) transportUrl(output.rtmp, "rtmp");
+                const saved = updateOutputSettings(output);
+                if (nativeOutputAllowed) applyOutputProfile(configuredOutputProfile());
                 return {
                     ok: true,
                     output: saved,
                     profile:
                         configuredOutputProfile(),
-                    restarting:
-                        Boolean(
-                            configuredOutputProfile()
-                                .ndiEnabled
-                        )
+                    pendingProfile: mediaProfileSignature(activeOutputProfile) !== mediaProfileSignature(desiredOutputProfile())
                 };
             } catch (error) {
                 console.error(
@@ -2486,7 +2463,7 @@ function registerIpcHandlers() {
     );
 }
 
-function configuredOutputProfile() {
+function desiredOutputProfile() {
     const profile = outputProfile(
         getSettings().output
     );
@@ -2500,6 +2477,25 @@ function configuredOutputProfile() {
     }
 
     return profile;
+}
+
+function configuredOutputProfile() {
+    const desired = desiredOutputProfile();
+    const state = playoutEngine.snapshot().state;
+    return nativePlaybackActive || pendingCut !== null || state === "PAUSED"
+        ? mergeOutputRoutes(activeOutputProfile, desired) : desired;
+}
+function applyOutputProfile(profile) {
+    const previous = activeOutputProfile;
+    const ndiChanged = destinationSignature(previous, 'ndi') !== destinationSignature(profile, 'ndi');
+    const omtChanged = destinationSignature(previous, 'omt') !== destinationSignature(profile, 'omt');
+    activeOutputProfile = profile; activeOutputSignature = profileSignature(profile);
+    if (mediaProfileSignature(previous) !== mediaProfileSignature(profile)) { lastProgramFrame = null; lastFrameGeneration = -1; }
+    if (ndiChanged) restartNdiSenderForProfile();
+    else if (profile.ndiEnabled && !ndiProcess) startNdiSender();
+    if (omtChanged) restartOmtSenderForProfile();
+    else if (profile.omtEnabled && !omtOutput) startOmtSender();
+    ensureTransportOutputs(resolveFfmpegPath(), profile);
 }
 
 function resolveOmtRuntimeFolder() {
@@ -3003,7 +2999,6 @@ function startNdiSender() {
             error
         );
 
-        stopNativePlayback();
         ndiReady = false;
         ndiProcess = null;
         scheduleNdiRestart();
@@ -3012,7 +3007,8 @@ function startNdiSender() {
 
 function stopNdiSender({
     permanent = true,
-    engineAction = "stop"
+    engineAction = "stop",
+    stopProgram = true
 } = {}) {
     ndiStopping = permanent;
 
@@ -3021,9 +3017,7 @@ function stopNdiSender({
         ndiRestartTimer = null;
     }
 
-    stopNativePlayback({
-        engineAction
-    });
+    if (stopProgram) stopNativePlayback({ engineAction });
 
     ndiFrameBusy = false;
     ndiReady = false;
@@ -3047,7 +3041,7 @@ function stopNdiSender({
 function restartNdiSenderForProfile() {
     stopNdiSender({
         permanent: false,
-        engineAction: "stop"
+        stopProgram: false
     });
     ndiStopping = false;
     startNdiSender();

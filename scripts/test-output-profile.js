@@ -65,3 +65,14 @@ assert.notEqual(
 console.log(
     "OUTPUT PROFILE QA: APROVADO — resolução, FPS, scan, DAR, pixel format e PCM."
 );
+
+const {mediaProfileSignature,mergeOutputRoutes,destinationSignature}=require('../src/core/playout/output-profile');
+const oldProfile=outputProfile({resolution:'1920x1080',fps:'60',ndi:{enabled:true,name:'Old'},omt:{enabled:false}});
+const newProfile=outputProfile({resolution:'1280x720',fps:'25',ndi:{enabled:false,name:'New'},omt:{enabled:true}});
+const hot=mergeOutputRoutes(oldProfile,newProfile);
+assert.equal(mediaProfileSignature(hot),mediaProfileSignature(oldProfile));
+assert.notEqual(mediaProfileSignature(hot),mediaProfileSignature(newProfile));
+assert.equal(hot.frameSize,oldProfile.frameSize);assert.equal(hot.ndiEnabled,false);assert.equal(hot.omtEnabled,true);assert.equal(hot.sourceName,'New');
+assert.notEqual(destinationSignature(hot,'ndi'),destinationSignature(oldProfile,'ndi'));
+assert.equal(destinationSignature(mergeOutputRoutes(oldProfile,outputProfile({ndi:{enabled:true,name:'Old'},omt:{enabled:true}})),'ndi'),destinationSignature(oldProfile,'ndi'),'Changing OMT must not restart NDI');
+console.log('OUTPUT ROUTING: destinations update independently while current media raster is preserved until CUT passed');

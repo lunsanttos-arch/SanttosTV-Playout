@@ -29,6 +29,10 @@ await evaluate(`window.santtosAPI.importMedia(${JSON.stringify([fixture])})`);le
 // A compact raster keeps CI load separate from hardware production benchmarks.
 const settings=await evaluate('window.santtosAPI.getSettings()');await evaluate(`window.santtosAPI.saveOutputSettings(${JSON.stringify({...settings.output,resolution:process.env.SANTTOS_QA_RESOLUTION||'1280x720',fps:process.env.SANTTOS_QA_FPS||'25',ndi:{enabled:true,name:'Santtos QA DEV NULL'},omt:{enabled:false},srt:{enabled:false},rtmp:{enabled:false}})})`);
 ws.close();ws=null;
+if(process.argv.includes('--outputs-only')){
+ await run('test-native-live-outputs.cjs');await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});
+ console.log('Live output settings integration passed.');return;
+}
 if(process.argv.includes('--cadence-only')){
  await run('test-native-cadence.cjs');await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});
  console.log('60-second Full HD cadence/preview check passed.');return;
@@ -52,6 +56,6 @@ await connect();const before=(await evaluate('window.santtosAPI.getNdiStatus()')
 await evaluate('window.santtosAPI.pauseNdiFile()');const paused=(await evaluate('window.santtosAPI.getNdiStatus()')).playout;await reboot();const restoredPause=await stateIs('PAUSED',item.id);assert(Math.abs(restoredPause.positionSeconds-paused.positionSeconds)<0.2);console.log('Normal close/reopen resumes occurrence and position; paused occurrence stays paused');
 const freezeQueue=[{...item,id:'restart-frz',outPoint:2,loop:false,freezeEnd:true},{...item,id:'restart-last',inPoint:2,outPoint:4,loop:false,freezeEnd:false}];await evaluate(`window.santtosAPI.applyNativeRundown(${JSON.stringify(freezeQueue)})`);await evaluate(`window.santtosAPI.playNdiFile(${JSON.stringify(media.path)},0,'',${JSON.stringify({itemId:'restart-frz',inPointSeconds:0,outPointSeconds:2,freezeEnd:true})})`);await stateIs('ENDED','restart-frz');await reboot();await stateIs('ENDED','restart-frz');console.log('FRZ remains held after restart');
 await evaluate('window.santtosAPI.advanceNativeRundown()');await stateIs('IDLE','restart-last');await reboot();await stateIs('ENDED','restart-last');assert((await evaluate('window.santtosAPI.getPlayoutRecovery()')).rundownFinished);console.log('Completed grade stays completed after restart');
-ws.close();ws=null;await run('test-native-srt-only.cjs');await connect();
+ws.close();ws=null;await run('test-native-live-outputs.cjs');await run('test-native-srt-only.cjs');await connect();
 await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});console.log('Electron functional QA passed; collector smoke is not 24/72-hour certification.');
 })().catch(error=>{console.error(error.message);process.exitCode=1}).finally(async()=>{ws?.close();await wait(1000);for(const child of children){if(child.exitCode===null&&child.signalCode===null){try{process.kill(-child.pid,'SIGTERM')}catch{}}}fs.rmSync(folder,{recursive:true,force:true})});
