@@ -1,0 +1,23 @@
+{
+  "studyDate": "2026-10-16",
+  "platform": "linux",
+  "node": "v24.19.0",
+  "ffmpeg": "ffmpeg version 7.1.5-0+deb13u1 Copyright (c) 2000-2026 the FFmpeg developers",
+  "application": {
+    "simulatedBackend": {
+      "ok": false,
+      "error": "Não foi possível confirmar a gravação: ENOSPC (simulado)"
+    },
+    "observedMessage": "Programação aplicada ao Playout.",
+    "incorrectSuccessReproduced": true
+  },
+  "media": {
+    "fixtureSeconds": 6,
+    "corruptedBytes": 4096,
+    "corruptionAtFileFraction": 0.65,
+    "currentCheckAccepted": true,
+    "fullDecodeExit": 183,
+    "incompleteQualityCheckReproduced": true
+  },
+  "scope": "Actual application callback with a mocked failed backend; actual decode check on generated temporary media. No physical Windows receiver, no user data or product behavior changed."
+}

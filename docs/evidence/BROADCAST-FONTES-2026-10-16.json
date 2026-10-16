@@ -1,0 +1,463 @@
+{
+  "studyDate": "2026-10-16",
+  "baselineCommit": "34228cba3f3e8373b43c7b423b3c2f6eead1e546",
+  "selectedSourcesCount": 38,
+  "interpretation": "Consultation metadata is provenance, not certification or an independent benchmark. Mutable URLs can change. Reported issues are not automatically confirmed library defects. Original full third-party documents are not distributed here.",
+  "dependencyAudit": {
+    "full": {
+      "info": 0,
+      "low": 0,
+      "moderate": 8,
+      "high": 0,
+      "critical": 0,
+      "total": 8
+    },
+    "production": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 0,
+      "critical": 0,
+      "total": 0
+    },
+    "fullTreeDirectAdvisory": {
+      "package": "sprintf-js",
+      "url": "https://github.com/advisories/GHSA-hp3w-g68c-fv3c",
+      "severity": "moderate",
+      "note": "Eight affected package entries in one transitive dependency chain; production-only exclusion does not exempt Electron from runtime review."
+    }
+  },
+  "sources": [
+    {
+      "id": "S1",
+      "title": "EBU R37-2007 — sincronismo áudio/vídeo",
+      "url": "https://tech.ebu.ch/docs/r/r037.pdf",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://tech.ebu.ch/docs/r/r037.pdf",
+      "httpStatus": 200,
+      "responseSha256": "045d5619b9c14d9139ec7c9434c271c77602bae74aee8bd3c557656364024f93",
+      "kind": "recommendation-or-standard"
+    },
+    {
+      "id": "S2",
+      "title": "EBU R128-2023 — loudness e true peak",
+      "url": "https://tech.ebu.ch/docs/r/r128.pdf",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://tech.ebu.ch/docs/r/r128.pdf",
+      "httpStatus": 200,
+      "responseSha256": "4292cd2396e4cb386c3a6c1412cb4370fc108ef50956e78a24fbd8657ce2ca28",
+      "kind": "recommendation-or-standard"
+    },
+    {
+      "id": "S3",
+      "title": "ITU-R BS.1770 — medição de loudness e pico",
+      "url": "https://www.itu.int/rec/R-REC-BS.1770/en",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://www.itu.int/rec/R-REC-BS.1770/en",
+      "httpStatus": 200,
+      "responseSha256": "8888027267c0aa83b66c3ae1e9e946938efb46e8ff2335ce9e032a499db390dc",
+      "kind": "recommendation-or-standard"
+    },
+    {
+      "id": "S4",
+      "title": "EBU R143 v3, março de 2025 — segurança para fornecedores de mídia",
+      "url": "https://tech.ebu.ch/docs/r/r143.pdf",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://tech.ebu.ch/docs/r/r143.pdf",
+      "httpStatus": 200,
+      "responseSha256": "e410822dea34e3e0e7cf2363a1ea6a8be5008e9f646664b7653f4ec33e4104ae",
+      "kind": "recommendation-or-standard"
+    },
+    {
+      "id": "S5",
+      "title": "EBU R148-2018 — testes mínimos de segurança de equipamentos de mídia",
+      "url": "https://tech.ebu.ch/docs/r/r148.pdf",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://tech.ebu.ch/docs/r/r148.pdf",
+      "httpStatus": 200,
+      "responseSha256": "069a4e2b7e43a9bda57a0ab3bd66bdf634b9ce8f5918d10f9a7ec357ac19d379",
+      "kind": "recommendation-or-standard"
+    },
+    {
+      "id": "S6",
+      "title": "Electron — Security",
+      "url": "https://www.electronjs.org/docs/latest/tutorial/security",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://www.electronjs.org/docs/latest/tutorial/security",
+      "httpStatus": 200,
+      "responseSha256": "5aa3bbfcce526fc1010c75b915a5445a60f068b939a0ce83746ba1ca3e039640",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S7",
+      "title": "NDI SDK — Sending",
+      "url": "https://docs.ndi.video/all/developing-with-ndi/sdk/ndi-send",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://docs.ndi.video/all/developing-with-ndi/sdk/ndi-send",
+      "httpStatus": 200,
+      "responseSha256": "c27b227562008a2164f9ec2683005b399c9b3e2500a001dfc4b563b7e7e72354",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S8",
+      "title": "NDI — Time, Timecode, and Sync",
+      "url": "https://docs.ndi.video/all/getting-started/white-paper/time-timecode-and-sync-for-ndi.md",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://docs.ndi.video/all/getting-started/white-paper/time-timecode-and-sync-for-ndi.md",
+      "httpStatus": 200,
+      "responseSha256": "5922d7eb2b509af3adc79dfcc1e4bbf7d7860466683b80b1fe84053db0443458",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S9",
+      "title": "NDI High Bandwidth — tabela SpeedHQ2",
+      "url": "https://docs.ndi.video/all/getting-started/white-paper/bandwidth/ndi-high-bandwidth-based-on-speedhq2-8bit-4-2-2.md",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://docs.ndi.video/all/getting-started/white-paper/bandwidth/ndi-high-bandwidth-based-on-speedhq2-8bit-4-2-2.md",
+      "httpStatus": 200,
+      "responseSha256": "0b6b0d1bbe7a9f0cc8f3d149ba6e917e1861669be49e7e532b941d0f0aa650ef",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S10",
+      "title": "libomt.h — contrato de timestamp",
+      "url": "https://github.com/openmediatransport/libomt/blob/master/libomt.h",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://raw.githubusercontent.com/openmediatransport/libomt/master/libomt.h",
+      "httpStatus": 200,
+      "responseSha256": "8972616b0a70de3275924192fcec2b16866e375cf822e3cc59a47e457affc525",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S11",
+      "title": "SRT — estatísticas da API",
+      "url": "https://github.com/Haivision/srt/blob/master/docs/API/statistics.md",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://raw.githubusercontent.com/Haivision/srt/master/docs/API/statistics.md",
+      "httpStatus": 200,
+      "responseSha256": "62f0f9449f38706e2dd7198f115947d96d24e1ae1f72230abf0cfbecc1c2c651",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S12",
+      "title": "FFmpeg — filtros de análise, áudio e vídeo",
+      "url": "https://ffmpeg.org/ffmpeg-filters.html",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://ffmpeg.org/ffmpeg-filters.html",
+      "httpStatus": 200,
+      "responseSha256": "31986ff8cfeed7a4980c303ad7e6b89dcbcab5ac9030cce0b9b423fbc14e1fa9",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S13",
+      "title": "FFmpeg — licenciamento e distribuição",
+      "url": "https://ffmpeg.org/legal.html",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://ffmpeg.org/legal.html",
+      "httpStatus": 200,
+      "responseSha256": "cd51dc25f9e3200b1e3953aee036f499ed51f01f7ba30563873186cb3f870eda",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S14",
+      "title": "NIST SP 800-218 — Secure Software Development Framework",
+      "url": "https://csrc.nist.gov/pubs/sp/800/218/final",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://csrc.nist.gov/pubs/sp/800/218/final",
+      "httpStatus": 200,
+      "responseSha256": "2302fc01045268ccfb5d55e88c25e23b6ba2d338ade236dba2f8b991d451d50c",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S15",
+      "title": "ffplayout — README da branch principal",
+      "url": "https://github.com/ffplayout/ffplayout/blob/main/README.md",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://raw.githubusercontent.com/ffplayout/ffplayout/main/README.md",
+      "httpStatus": 200,
+      "responseSha256": "c227d67b1d546a4c4d394435a1c026ce1ee89ce0c830747c27fe7a7c41c3253b",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S16",
+      "title": "ffplayout — erros de live ingest e teste com rede adversa",
+      "url": "https://github.com/ffplayout/ffplayout/blob/main/docs/ingest_error.md",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://raw.githubusercontent.com/ffplayout/ffplayout/main/docs/ingest_error.md",
+      "httpStatus": 200,
+      "responseSha256": "916ee8cba4daae36fa375f7e31fbaad8d73fff5ffb6473f4da7e85a1c2cf17b3",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S17",
+      "title": "Sofie — documentação do sistema",
+      "url": "https://sofie-automation.github.io/sofie-core/",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://sofie-automation.github.io/sofie-core/",
+      "httpStatus": 200,
+      "responseSha256": "e03f0a2d65a456f50058c8fe1fbfd0c24e9b31bfe7664a3c3c30b4fafd65bf10",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S18",
+      "title": "Liquidsoap 2.3.3 — fontes e infalibilidade",
+      "url": "https://www.liquidsoap.info/doc-2.3.3/sources.html",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://www.liquidsoap.info/doc-2.3.3/sources.html",
+      "httpStatus": 200,
+      "responseSha256": "69ce1b7ef1e308953268bf2074c8fd82f6782df578bd7272d960059bcefd4902",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S19",
+      "title": "CasparCG Server — projeto",
+      "url": "https://github.com/CasparCG/server",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://api.github.com/repos/CasparCG/server",
+      "httpStatus": 200,
+      "responseSha256": "ac7c81f04feb903f73424a5754640622c0263e33334d46465091f2fd2820e1a5",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S20",
+      "title": "Cinegy Air 26.2 — controle",
+      "url": "https://open.cinegy.com/products/air/26.2/air/",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://open.cinegy.com/products/air/26.2/air/",
+      "httpStatus": 200,
+      "responseSha256": "8486350f5e4b9142887f3aa846cf6529cd131705ace3cfca7ad64410676701a3",
+      "kind": "vendor-documentation"
+    },
+    {
+      "id": "S21",
+      "title": "Cinegy Air 26.2 — Playout",
+      "url": "https://open.cinegy.com/products/air/26.2/playout/",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://open.cinegy.com/products/air/26.2/playout/",
+      "httpStatus": 200,
+      "responseSha256": "0f25b6728bb5c816d05387ecb4b1722e733cf40761465d7a8b8a9d0477951939",
+      "kind": "vendor-documentation"
+    },
+    {
+      "id": "S22",
+      "title": "Cinegy Air 26.2 — recomendações de sistema",
+      "url": "https://open.cinegy.com/products/air/26.2/system-recommendations/",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://open.cinegy.com/products/air/26.2/system-recommendations/",
+      "httpStatus": 200,
+      "responseSha256": "ed59c78af73cf9a9a21a0d089a70ffbfc73ad1e174ed63395cfad1cac826a448",
+      "kind": "vendor-documentation"
+    },
+    {
+      "id": "S23",
+      "title": "Pebble — automação e redundância",
+      "url": "https://www.pebble.tv/solutions/automation/",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://www.pebble.tv/solutions/automation/",
+      "httpStatus": 200,
+      "responseSha256": "12a0f60861d7657c8592ed81d2c3952866917b628eb061b7aa8b718cada1cb78",
+      "kind": "vendor-documentation"
+    },
+    {
+      "id": "S24",
+      "title": "PlayBox Neo — AirBox Neo-20, brochura 2022",
+      "url": "https://playboxneo.com/sites/default/files/2022-10/AirBoxNeo_10_22.pdf",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://playboxneo.com/sites/default/files/2022-10/AirBoxNeo_10_22.pdf",
+      "httpStatus": 200,
+      "responseSha256": "5372b0287691538b061d481a10cf60809f74d99db3950db3d1355630eff92df3",
+      "kind": "vendor-documentation"
+    },
+    {
+      "id": "S25",
+      "title": "ffplayout #986 — ingest e retorno do áudio; relato e discussão",
+      "url": "https://github.com/ffplayout/ffplayout/issues/986",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://api.github.com/repos/ffplayout/ffplayout/issues/986",
+      "httpStatus": 200,
+      "responseSha256": "98230054a27d74bca545a5dee689615f204ef3cda63bc1b8b62bd71eba1975e4",
+      "kind": "user-report",
+      "observedState": "open",
+      "issueCreatedAt": "2026-10-02T02:03:20Z",
+      "issueClosedAt": null,
+      "commentsConsulted": {
+        "url": "https://api.github.com/repos/ffplayout/ffplayout/issues/986/comments?per_page=20",
+        "httpStatus": 200,
+        "responseSha256": "ff90967ae7649a1fdc6af1f905cca6d89f425144696fbf322d3c5d2d98a20fd7"
+      }
+    },
+    {
+      "id": "S26",
+      "title": "ffplayout #875 — pedido de horário específico",
+      "url": "https://github.com/ffplayout/ffplayout/issues/875",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://api.github.com/repos/ffplayout/ffplayout/issues/875",
+      "httpStatus": 200,
+      "responseSha256": "819da1cfc99655cac0bba59797cdd908a3e6e6722123853b9e6cccd01b43e4d9",
+      "kind": "user-report",
+      "observedState": "closed",
+      "issueCreatedAt": "2025-01-12T01:50:03Z",
+      "issueClosedAt": "2026-09-23T16:28:47Z",
+      "commentsConsulted": {
+        "url": "https://api.github.com/repos/ffplayout/ffplayout/issues/875/comments?per_page=20",
+        "httpStatus": 200,
+        "responseSha256": "f1e42b3539b3fd3485b572c29c27d268a484bcbd61e5680b754df8ab220dd067"
+      }
+    },
+    {
+      "id": "S27",
+      "title": "ffplayout #494 — biblioteca grande",
+      "url": "https://github.com/ffplayout/ffplayout/issues/494",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://api.github.com/repos/ffplayout/ffplayout/issues/494",
+      "httpStatus": 200,
+      "responseSha256": "4e9fa5e1b287087b0339dcbe5deb6df0396f245aed0903292b9f93cee5704fb4",
+      "kind": "user-report",
+      "observedState": "closed",
+      "issueCreatedAt": "2024-01-17T17:07:57Z",
+      "issueClosedAt": "2026-09-23T16:30:51Z"
+    },
+    {
+      "id": "S28",
+      "title": "CasparCG #1369 — RTMP e áudio atrasado",
+      "url": "https://github.com/CasparCG/server/issues/1369",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://api.github.com/repos/CasparCG/server/issues/1369",
+      "httpStatus": 200,
+      "responseSha256": "bdb3eeb99b5c6e57f33346f47c153a338dc982407536a5672b076be716a6478a",
+      "kind": "user-report",
+      "observedState": "open",
+      "issueCreatedAt": "2021-02-12T15:54:25Z",
+      "issueClosedAt": null
+    },
+    {
+      "id": "S29",
+      "title": "Sofie #1124 — eventos antigos após retorno do gateway",
+      "url": "https://github.com/Sofie-Automation/sofie-core/issues/1124",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://api.github.com/repos/Sofie-Automation/sofie-core/issues/1124",
+      "httpStatus": 200,
+      "responseSha256": "b5491a7335f4301903b23170d3ab930ccfcdb4dd34ec0cc06f4c6b625c2b4723",
+      "kind": "user-report",
+      "observedState": "open",
+      "issueCreatedAt": "2024-01-16T11:04:25Z",
+      "issueClosedAt": null
+    },
+    {
+      "id": "S30",
+      "title": "DistroAV #1386 — inicialização e timestamps",
+      "url": "https://github.com/DistroAV/DistroAV/issues/1386",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://api.github.com/repos/DistroAV/DistroAV/issues/1386",
+      "httpStatus": 200,
+      "responseSha256": "2de799cbbbcf541a90ab2bcb3e4cc6f1802b6e3ec30ff65341b601a5613414a2",
+      "kind": "user-report",
+      "observedState": "open",
+      "issueCreatedAt": "2025-12-23T22:00:53Z",
+      "issueClosedAt": null,
+      "commentsConsulted": {
+        "url": "https://api.github.com/repos/DistroAV/DistroAV/issues/1386/comments?per_page=20",
+        "httpStatus": 200,
+        "responseSha256": "c57d45c2fae7b46ad29ea21dbe833753f3be622d100e7e8c53492e05bf266560"
+      }
+    },
+    {
+      "id": "S31",
+      "title": "DistroAV #1502 — stutter e métricas no receptor",
+      "url": "https://github.com/DistroAV/DistroAV/issues/1502",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://api.github.com/repos/DistroAV/DistroAV/issues/1502",
+      "httpStatus": 200,
+      "responseSha256": "3a1fd06fbd26c50bdd64505bdd51b9a59cac5570a61b6ba054071e58e36b7003",
+      "kind": "user-report",
+      "observedState": "closed",
+      "issueCreatedAt": "2026-10-07T19:42:57Z",
+      "issueClosedAt": "2026-10-13T17:02:34Z",
+      "commentsConsulted": {
+        "url": "https://api.github.com/repos/DistroAV/DistroAV/issues/1502/comments?per_page=20",
+        "httpStatus": 200,
+        "responseSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+      }
+    },
+    {
+      "id": "S32",
+      "title": "DistroAV #742 — evolução do atraso de áudio",
+      "url": "https://github.com/DistroAV/DistroAV/issues/742",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://api.github.com/search/issues?q=repo%3ADistroAV/DistroAV%20is%3Aissue%20sync&per_page=12",
+      "httpStatus": 200,
+      "responseSha256": "6021716e820c4c6031a7f24925c3a263f77c7396393f603a5aba66b1c6da876d",
+      "kind": "user-report",
+      "observedState": "open",
+      "issueCreatedAt": "2022-06-20T20:38:41Z"
+    },
+    {
+      "id": "S33",
+      "title": "vMix — Choppy audio",
+      "url": "https://forums.vmix.com/posts/t32181-Choppy-audio",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://forums.vmix.com/posts/t32181-Choppy-audio",
+      "httpStatus": 200,
+      "responseSha256": "6a6dee5570f785c856ec27a50a366caadb85dc7db70230745499a5c6ced4c3dc",
+      "kind": "user-report"
+    },
+    {
+      "id": "S34",
+      "title": "vMix — OMT Bandwith?",
+      "url": "https://forums.vmix.com/posts/t33524-OMT-Bandwith",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://forums.vmix.com/posts/t33524-OMT-Bandwith",
+      "httpStatus": 200,
+      "responseSha256": "14b18d22081e5be60d94cdb7c72fb40458cdc68660c1c8387815abcdf0f5af5e",
+      "kind": "user-report"
+    },
+    {
+      "id": "S35",
+      "title": "libomt #3 — descoberta e uso do contador retornado",
+      "url": "https://github.com/openmediatransport/libomt/issues/3",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://api.github.com/repos/openmediatransport/libomt/issues/3",
+      "httpStatus": 200,
+      "responseSha256": "eee3b896654ecbb3e3da7fa65b5aaf96854b7936979de8ddf00477a194639690",
+      "kind": "user-report",
+      "observedState": "closed",
+      "issueCreatedAt": "2025-11-19T19:43:24Z",
+      "issueClosedAt": "2025-11-20T00:43:37Z",
+      "commentsConsulted": {
+        "url": "https://api.github.com/repos/openmediatransport/libomt/issues/3/comments?per_page=20",
+        "httpStatus": 200,
+        "responseSha256": "59e6abefb576509736ed7f1b274e953348abab726ddb132c10ca4b13d9fee8d2"
+      }
+    },
+    {
+      "id": "S36",
+      "title": "SET — Perspectivas para o controle de loudness na televisão brasileira, apresentação histórica",
+      "url": "https://set.org.br/wp-content/uploads/2018/10/2010-Loudness-Brasil.pdf",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://set.org.br/wp-content/uploads/2018/10/2010-Loudness-Brasil.pdf",
+      "httpStatus": 200,
+      "responseSha256": "bab19104e21dd684e757667e3b52c8dba122cf3ca9957a23b19c34f064ef602a",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S37",
+      "title": "libomt — wrapper e requisitos de build",
+      "url": "https://github.com/openmediatransport/libomt/blob/master/README.md",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://raw.githubusercontent.com/openmediatransport/libomt/master/README.md",
+      "httpStatus": 200,
+      "responseSha256": "e98e082ce449fec73b4f270e0acc80f22c93353a3992bfc86eecc971962aca5a",
+      "kind": "technical-documentation"
+    },
+    {
+      "id": "S38",
+      "title": "SRT — criptografia",
+      "url": "https://github.com/Haivision/srt/blob/master/docs/features/encryption.md",
+      "accessedOn": "2026-10-16",
+      "consultedUrl": "https://raw.githubusercontent.com/Haivision/srt/master/docs/features/encryption.md",
+      "httpStatus": 200,
+      "responseSha256": "0f734779093bfdbceeb89d0a12d8a4eb96c38e19f60c4383932b849df52373aa",
+      "kind": "technical-documentation"
+    }
+  ]
+}
