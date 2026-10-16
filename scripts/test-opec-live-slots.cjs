@@ -14,7 +14,7 @@ const assert = require('node:assert/strict');
         const status = await evaluate('window.santtosAPI.getNdiStatus()');
         assert(status.devNullSink && !status.testBench, 'Requires disposable DEV NULL profile');
         await evaluate('window.santtosAPI.stopNdiFile()');
-        await evaluate(`(async()=>{const d=new Date();const date=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');const old=await window.santtosAPI.getDailyRundown(date);await window.santtosAPI.saveDailyRundown({date,expectedUpdatedAt:old.updatedAt,items:[]})})()`);
+        await evaluate(`(async()=>{const d=new Date();const date=[d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-');const old=await window.santtosAPI.getDailyRundown(date);await window.santtosAPI.saveDailyRundown({date,expectedUpdatedAt:old.updatedAt,startTime:[String(d.getHours()).padStart(2,'0'),String(d.getMinutes()).padStart(2,'0')].join(':'),items:[]})})()`);
         await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Programação')).click()`);
         await wait(300);
         await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('+ Conteúdo a definir')).click()`);

@@ -25,7 +25,7 @@ contextBridge.exposeInMainWorld(
         exportDiagnostics: () => ipcRenderer.invoke("operation:diagnostics"),
         advanceNativeRundown: () => ipcRenderer.invoke("playout:next"),
         updateNativeItemFlags: (id, flags) => ipcRenderer.invoke("playout:flags", id, flags),
-        applyNativeRundown: items => ipcRenderer.invoke("playout:apply-rundown", items),
+        applyNativeRundown: (items, context) => ipcRenderer.invoke("playout:apply-rundown", items, context),
         getDataBackupStatus: () => ipcRenderer.invoke("backup:status"),
         saveDataBackupSettings: settings => ipcRenderer.invoke("backup:settings", settings),
         chooseDataBackupFolder: () => ipcRenderer.invoke("backup:folder"),

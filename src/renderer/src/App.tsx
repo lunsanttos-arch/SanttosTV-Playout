@@ -33,6 +33,9 @@ export interface MediaItem {
     isContingency?: boolean;
     replacedPlaceholder?: boolean;
     programmedStartTime?: string;
+    scheduleDate?: string;
+    programmedStartAt?: string;
+    effectiveStartAt?: string;
     sourceType?: "file" | "input";
     inputId?: string;
     inputProtocol?: string;
@@ -225,7 +228,7 @@ declare global {
 
             advanceNativeRundown: () => Promise<{ ok: boolean; error?: string; item?: MediaItem }>;
             updateNativeItemFlags: (id: string, flags: { loop?: boolean; freezeEnd?: boolean }) => Promise<{ ok: boolean }>;
-            applyNativeRundown: (items: MediaItem[]) => Promise<{ ok: boolean; timeline: MediaItem[]; playout: NativePlayoutStatus }>;
+            applyNativeRundown: (items: MediaItem[], context?: {date: string; expectedUpdatedAt?: string | null; expectedStartAt?: string | null}) => Promise<{ ok: boolean; message?: string; deltaSeconds?: number; timeline: MediaItem[]; playout: NativePlayoutStatus }>;
             onNativeRundownChanged: (callback: (payload: { timeline: MediaItem[]; playout: NativePlayoutStatus }) => void) => () => void;
 
             getDataBackupStatus: () => Promise<import("./DataBackupSettingsTab").BackupStatus>;
@@ -254,12 +257,16 @@ declare global {
             ) => Promise<RemoveResult>;
             getWeeklyRundown: (weekday: number) => Promise<{ title: string; startTime: string; items: RundownItem[]; updatedAt?: string | null; exists: boolean; missingItems?: number }>;
             saveWeeklyRundown: (weekday: number, rundown: { title: string; startTime: string; items: RundownItem[]; expectedUpdatedAt?: string | null }) => Promise<{ ok: boolean; error?: string }>;
-            exportRundownHtml: (rundown: { date: string; title: string; startTime: string; items: RundownItem[] }) => Promise<{ ok: boolean; canceled?: boolean; error?: string }>;
-            exportRundownPdf: (rundown: { date: string; title: string; startTime: string; items: RundownItem[] }) => Promise<{ ok: boolean; canceled?: boolean; error?: string }>;
+            exportRundownHtml: (rundown: { date: string; title: string; startTime: string; startAt?: string | null; items: RundownItem[] }) => Promise<{ ok: boolean; canceled?: boolean; error?: string }>;
+            exportRundownPdf: (rundown: { date: string; title: string; startTime: string; startAt?: string | null; items: RundownItem[] }) => Promise<{ ok: boolean; canceled?: boolean; error?: string }>;
             getDailyRundown: (date: string) => Promise<{
                 date: string;
                 title: string;
                 startTime: string;
+                startAt?: string | null;
+                endAt?: string | null;
+                previousDate?: string | null;
+                previousUpdatedAt?: string | null;
                 items: RundownItem[];
                 missingItems?: number;
                 updatedAt?: string | null;
@@ -269,6 +276,10 @@ declare global {
                 date: string;
                 title: string;
                 startTime: string;
+                startAt?: string | null;
+                endAt?: string | null;
+                previousDate?: string | null;
+                previousUpdatedAt?: string | null;
                 items: RundownItem[];
             }) => Promise<{
                 ok: boolean;
@@ -276,6 +287,11 @@ declare global {
                     date: string;
                     title: string;
                     startTime: string;
+                    startAt?: string | null;
+                    endAt?: string | null;
+                    previousDate?: string | null;
+                    previousUpdatedAt?: string | null;
+                    updatedAt?: string | null;
                     items: RundownItem[];
                 };
                 error?: string;
@@ -1012,13 +1028,14 @@ export default function App() {
                     {activePanel === "scheduler" && (
                         <OpecSchedulerPanel
                             media={media}
-                            onApply={(items, startTime) => {
-                                setRundownApplyRequest({
-                                    key: Date.now(),
-                                    items: items as MediaItem[],
-                                    startTime: startTime || "00:00"
-                                });
-                                setActivePanel("playout");
+                            onApply={async (items, startTime, context) => {
+                                if (!testBench || ndiTestMode) {
+                                    const result = await window.santtosAPI.applyNativeRundown(items, context);
+                                    // Keep the alignment result visible before the master leaves this tab.
+                                    return result.message || "Programação aplicada ao Playout.";
+                                }
+                                setRundownApplyRequest({ key:Date.now(), items, startTime });
+                                return "Programação aplicada ao Playout de teste.";
                             }}
                         />
                     )}
@@ -1495,7 +1512,7 @@ function PlayoutPanel({
             current
                 .map((entry): MediaItem | null => {
                     if (
-                        entry.sourceType === "input"
+                        entry.sourceType === "input" || entry.placeholder
                     ) {
                         return entry;
                     }
@@ -1512,6 +1529,7 @@ function PlayoutPanel({
 
                     return {
                         ...source,
+                        scheduleDate:entry.scheduleDate, programmedStartAt:entry.programmedStartAt, effectiveStartAt:entry.effectiveStartAt,
                         id: entry.id,
                         sourceMediaId: sourceId,
                         programmedStartTime:

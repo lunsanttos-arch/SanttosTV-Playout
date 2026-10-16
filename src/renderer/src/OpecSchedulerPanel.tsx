@@ -1,3 +1,4 @@
+import { clipSeconds, scheduleBounds } from "../../core/scheduling/broadcast-schedule.mjs";
 import { useTextEditingDragGuard } from "./useTextEditingDragGuard";
 import { useEffect, useMemo, useReducer, useRef, useState, type DragEvent } from "react";
 import { FilmBlockEditor, type MediaItem, type RundownItem } from "./App";
@@ -19,6 +20,10 @@ interface DailyRundown {
     date: string;
     title: string;
     startTime: string;
+    startAt?: string | null;
+    endAt?: string | null;
+    previousDate?: string | null;
+    previousUpdatedAt?: string | null;
     items: RundownItem[];
     updatedAt?: string | null;
     missingItems?: number;
@@ -29,8 +34,9 @@ interface Props {
     remote?: boolean;
     onApply: (
         items: MediaItem[],
-        startTime: string
-    ) => void;
+        startTime: string,
+        context: {date: string; expectedUpdatedAt?: string | null; expectedStartAt?: string | null}
+    ) => Promise<string> | void;
 }
 
 function todayKey() {
@@ -83,6 +89,7 @@ function SlotMinutes({ seconds, onChange }: { seconds: number; onChange: (second
 export default function OpecSchedulerPanel({ media, onApply, remote = false }: Props) {
     const textDragGuard = useTextEditingDragGuard();
     const [date, setDate] = useState(todayKey());
+    const [boundary, setBoundary] = useState<DailyRundown | null>(null);
     const [version, setVersion] = useState<string | null>(null);
     const [draft, dispatchDraft] = useReducer(rundownDraftReducer, { items: [], history: [], meta: { title: "Programação diária", startTime: "00:00" } });
     const title = draft.meta?.title ?? "Programação diária", startTime = draft.meta?.startTime ?? "00:00";
@@ -134,6 +141,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
             .then((rundown: DailyRundown) => {
                 if (cancelled) return;
                 setVersion(rundown.updatedAt ?? null);
+                setBoundary(rundown);
                 loadItems(Array.isArray(rundown.items) ? rundown.items : [], { title: rundown.title || "Programação diária", startTime: rundown.startTime || "00:00" });
             })
             .catch((error: unknown) => {
@@ -167,6 +175,17 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
         ), [items, startTime]
     );
     const totalDuration = scheduleTimes.totalSeconds;
+    const absoluteStart = boundary?.date === date && boundary.previousDate
+        ? boundary.startAt ?? null : scheduleBounds(date, startTime, []).startAt;
+    const absoluteTimes = new Map<string, string | null>();
+    let endMs: number | null = absoluteStart ? Date.parse(absoluteStart) : null;
+    for (const item of items) {
+        absoluteTimes.set(item.rundownItemId, endMs === null ? null : new Date(endMs).toISOString());
+        const seconds = clipSeconds(item);
+        endMs = endMs === null || seconds === null ? null : endMs + seconds*1000;
+    }
+    const formatDateTime = (value: string | number | null) => value === null ? "Sem previsão" : new Date(value).toLocaleString("pt-BR");
+
 
     function addItem(mediaItem: MediaItem, beforeId?: string) {
         const sourceMediaId = mediaItem.sourceMediaId ?? mediaItem.id;
@@ -266,7 +285,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
     async function exportRoteiro(format: "pdf" | "html") {
         setLoading(true);
         try {
-            const result = await (format === "pdf" ? window.santtosAPI.exportRundownPdf : window.santtosAPI.exportRundownHtml)({ date, title, startTime, items });
+            const result = await (format === "pdf" ? window.santtosAPI.exportRundownPdf : window.santtosAPI.exportRundownHtml)({ date, title, startTime, startAt:absoluteStart, items });
             if (!result.ok) throw Error(result.error || "Não foi possível exportar o roteiro.");
             if (!result.canceled) setStatus(`Roteiro exportado em ${format.toUpperCase()}.`);
         } catch (error) { setStatus(error instanceof Error ? error.message : "Não foi possível exportar o roteiro."); }
@@ -348,6 +367,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
             }
             const saved: DailyRundown = result.rundown;
             setVersion(saved.updatedAt ?? null);
+            setBoundary(saved);
             dispatchDraft({ type: "normalize", items: saved.items ?? [] });
             if (showMessage) setStatus("Programação salva.");
             return saved;
@@ -363,15 +383,15 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
         try {
             if (items.some(item => item.placeholder && !item.liveSlot)) { setStatus("Substitua os conteúdos a definir antes de aplicar a programação."); return; }
             const saved = await saveRundown(false);
-            onApply(
-                saved.items,
-                saved.startTime || "00:00"
-            );
-            setStatus("Programação aplicada ao Playout.");
+            setLoading(true);
+            const message = await onApply(saved.items, saved.startTime || "00:00", {
+                date:saved.date, expectedUpdatedAt:saved.updatedAt, expectedStartAt:saved.startAt
+            });
+            setStatus(message || "Programação aplicada ao Playout.");
         } catch (error) {
             console.error(error);
-            setStatus("Não foi possível aplicar a programação no Playout.");
-        }
+            setStatus(error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "") : "Não foi possível aplicar a programação no Playout.");
+        } finally { setLoading(false); }
     }
 
     return (
@@ -385,7 +405,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                 <div className="opec-header-actions">
                     <button disabled={loading || !draft.history.length} onClick={() => { dispatchDraft({ type: "undo" }); setEditingFilm(null); setStatus("Última alteração desfeita. Salve para atualizar a programação."); }}>Desfazer</button>
                     <button disabled={loading} onClick={() => void window.santtosAPI.getDailyRundown(date).then(rundown => {
-                        loadItems(rundown.items ?? [], { title: rundown.title, startTime: rundown.startTime }); setVersion(rundown.updatedAt ?? null); setStatus("Programação atualizada.");
+                        setBoundary(rundown); loadItems(rundown.items ?? [], { title: rundown.title, startTime: rundown.startTime }); setVersion(rundown.updatedAt ?? null); setStatus("Programação atualizada.");
                     }).catch(() => setStatus("Não foi possível atualizar."))}>Atualizar programação</button>
                     <button disabled={loading} onClick={() => void exportRoteiro("pdf")}>PDF do roteiro</button>
                     <button disabled={loading} onClick={() => void exportRoteiro("html")}>HTML do roteiro</button>
@@ -438,11 +458,13 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                     <button disabled={loading} onClick={() => { setModalError(""); setModelAction("import"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Importar programação</button>
                     </div>
                 </div>
-                <label><span>Início programado</span><input type="time" value={startTime} onChange={(e) => setStartTime(e.currentTarget.value)} /></label>
-                <div className="opec-summary"><span>PROGRAMADO</span><strong>{totalDuration === null ? "--:--:--" : formatDuration(totalDuration)}</strong><small>até {scheduleTimes.end}</small></div>
+                <label><span>Início programado</span>{boundary?.date === date && boundary.previousDate
+                    ? <><input aria-label="Início herdado da programação anterior" title={formatDateTime(absoluteStart)} readOnly value={absoluteStart ? new Date(absoluteStart).toLocaleTimeString("pt-BR") : "Sem previsão"} /><small title={`Continua a grade de ${boundary.previousDate.split("-").reverse().join("/")}`}>{absoluteStart ? new Date(absoluteStart).toLocaleDateString("pt-BR") : "—"} · herdado</small></>
+                    : <input type="time" value={startTime} onChange={(e) => setStartTime(e.currentTarget.value)} />}</label>
+                <div className="opec-summary"><span>PROGRAMADO</span><strong>{totalDuration === null ? "--:--:--" : formatDuration(totalDuration)}</strong><small>até {formatDateTime(endMs)}</small></div>
             </div>
 
-            {status && <div className="opec-status">{status}</div>}
+            {status && <div className="opec-status" role="alert">{status}</div>}
 
             {editingFilm && <FilmBlockEditor item={editingFilm} errorMessage={splitError} onClose={() => setEditingFilm(null)}
                 onSaveEdit={(id, inPoint, outPoint) => { patchItem(id, { inPoint, outPoint }); setEditingFilm(null); }}
@@ -483,7 +505,9 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                             >
                                 {dropIntent?.mode === "replace" && dropIntent.itemId === item.rundownItemId && <span className="opec-replace-label">Substituir Item</span>}
                                 <div className="opec-order" title="Arrastar para reordenar"><span className="opec-drag-handle">⠿</span>{index + 1}</div>
-                                <div className="opec-entry-time">{scheduleTimes.times.get(item.rundownItemId)}</div>
+                                <div className="opec-entry-time" title={formatDateTime(absoluteTimes.get(item.rundownItemId) ?? null)}>
+                                    {absoluteTimes.get(item.rundownItemId) ? <>{new Date(absoluteTimes.get(item.rundownItemId)!).toLocaleTimeString("pt-BR")}<small>{new Date(absoluteTimes.get(item.rundownItemId)!).toLocaleDateString("pt-BR", {day:"2-digit",month:"2-digit"})}</small></> : "--:--:--"}
+                                </div>
                                 <div className="opec-item-main">
                                     {item.placeholder && <span className="opec-pending-label">{item.liveSlot ? "AO VIVO · AVANÇO MANUAL" : "A DEFINIR"}</span>}
                                     {item.placeholder ? <input className="opec-placeholder-name" aria-label="Nome do espaço" placeholder="Conteúdo a definir" value={item.name}

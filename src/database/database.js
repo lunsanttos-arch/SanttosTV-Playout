@@ -1,3 +1,4 @@
+const { previousDate, scheduleBounds } = require("../core/scheduling/broadcast-schedule.mjs");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
@@ -711,6 +712,12 @@ function getMedia() {
     }));
 }
 
+function timelineScheduleFields(item) {
+    const iso = value => typeof value === "string" && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : undefined;
+    return { scheduleDate: /^\d{4}-\d{2}-\d{2}$/.test(item.scheduleDate || "") ? item.scheduleDate : undefined,
+        programmedStartAt: iso(item.programmedStartAt), effectiveStartAt: iso(item.effectiveStartAt) };
+}
+
 function getTimeline() {
     const mediaById = new Map(
         data.media.map((item) => [
@@ -726,6 +733,7 @@ function getTimeline() {
                 return {
                     id: entry.id,
                     sourceMediaId: entry.sourceMediaId,
+                    ...timelineScheduleFields(entry),
                     programmedStartTime:
                         normalizeRundownTime(
                             entry.programmedStartTime
@@ -786,6 +794,7 @@ function getTimeline() {
                 id: entry.id,
                 sourceMediaId:
                     entry.sourceMediaId,
+                ...timelineScheduleFields(entry),
                 programmedStartTime:
                     normalizeRundownTime(
                         entry.programmedStartTime
@@ -835,7 +844,7 @@ function saveTimeline(timelineItems) {
         .map((item) => {
             if (item?.placeholder && item.liveSlot === true && typeof item.id === "string") {
                 const duration = Math.min(86400, Math.max(1, Number(item.duration) || 1800));
-                return { id: item.id, placeholder: true, liveSlot: true, sourceMediaId: "", path: "",
+                return { ...timelineScheduleFields(item), id: item.id, placeholder: true, liveSlot: true, sourceMediaId: "", path: "",
                     name: normalizeText(item.name, "Ao Vivo", 120), duration, inPoint: 0, outPoint: duration,
                     extension: "AO VIVO", status: "live", fileSize: 0, notes: normalizeText(item.notes, "", 500),
                     blockLabel: normalizeText(item.blockLabel, "", 80), programmedStartTime: item.programmedStartTime,
@@ -863,6 +872,7 @@ function saveTimeline(timelineItems) {
                             ? sourceMediaId
                             : item.id,
                     sourceType: "input",
+                    ...timelineScheduleFields(item),
                     programmedStartTime:
                         normalizeRundownTime(
                             item.programmedStartTime
@@ -915,6 +925,7 @@ function saveTimeline(timelineItems) {
             return {
                 id: item.id,
                 sourceMediaId,
+                ...timelineScheduleFields(item),
                 programmedStartTime:
                     normalizeRundownTime(
                         item.programmedStartTime
@@ -967,13 +978,22 @@ function normalizeRundownTime(value) {
 
 function getDailyRundown(dateValue) {
     const date = normalizeRundownDate(dateValue);
-    const stored = data.dailyRundowns?.[date] ?? {
-        date,
-        title: "Programação diária",
-        startTime: "00:00",
-        items: []
-    };
-    return hydrateRundown(stored, date);
+    // Walk the contiguous saved days iteratively: a multi-year archive cannot overflow the stack.
+    const chain = [date];
+    let cursor = previousDate(date);
+    while (data.dailyRundowns?.[cursor]?.items?.length) {
+        chain.push(cursor); cursor = previousDate(cursor);
+    }
+    let previous = null;
+    for (const key of chain.reverse()) {
+        const stored = data.dailyRundowns?.[key] ?? { date: key, title: "Programação diária", startTime: "00:00", items: [] };
+        const current = hydrateRundown(stored, key);
+        const bounds = scheduleBounds(key, current.startTime, current.items, previous);
+        // Missing media must never silently shorten the previous day's reserved schedule.
+        if (current.missingItems) bounds.endAt = null;
+        previous = { ...current, ...bounds };
+    }
+    return previous;
 }
 
 function hydrateRundown(stored, date = "") {

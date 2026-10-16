@@ -1,3 +1,4 @@
+const { planRundownApplication } = require("../core/scheduling/broadcast-schedule.mjs");
 const { app, BrowserWindow, ipcMain, dialog, shell, protocol, session, hostCall, hostEvents } = require("./program-host-adapter");
 const path = require("path");
 const fs = require("fs");
@@ -1420,17 +1421,33 @@ function registerIpcHandlers() {
         const patch = {}; for (const key of ["loop", "freezeEnd"]) if (typeof flags?.[key] === "boolean") patch[key] = flags[key];
         rundownController?.setFlags(id, patch); return { ok: true };
     });
-    registerTrustedHandle("playout:apply-rundown", (_event, items) => {
+    registerTrustedHandle("playout:apply-rundown", async (_event, items, context) => {
         if (!Array.isArray(items)) throw Error("Programação inválida.");
         const snapshot = playoutEngine.snapshot(), current = getTimeline().find(item => item.id === snapshot.itemId) || rundownController?.current;
         const preserve = current && ["PLAYING", "STARTING", "PAUSED"].includes(snapshot.state);
-        saveTimeline(preserve && !current.isContingency ? [current, ...items] : items);
-        if (rundownController?.current?.isContingency && items.length) void rundownController.play(getTimeline()[0]);
+        let alignment = null;
+        if (context?.date) {
+            const saved = getDailyRundown(context.date);
+            if (saved.updatedAt !== context.expectedUpdatedAt || saved.startAt !== context.expectedStartAt)
+                throw Error("A programação ou o término do dia anterior mudou. Atualize antes de aplicar.");
+            if (saved.missingItems) throw Error("Há materiais ausentes nesta programação. Substitua-os antes de aplicar.");
+            const canonical = saved.items.map((item,index) => ({ ...item,
+                id: `rundown-${context.date}-${Date.now()}-${index}`, loop:false, freezeEnd:false,
+                programmedStartTime:saved.startTime }));
+            alignment = planRundownApplication({ items:canonical, date:saved.date, startAt:saved.startAt,
+                queue:current?.isContingency ? [] : getTimeline(), snapshot:current?.isContingency ? {} : snapshot });
+            saveTimeline(alignment.timeline);
+            addLog(`Programação ${saved.date}: ${alignment.message}`);
+        } else {
+            // Compatibility for restored/legacy clients without a dated schedule.
+            saveTimeline(preserve && !current.isContingency ? [current, ...items] : items);
+        }
+        if (rundownController?.current?.isContingency && items.length) await rundownController.play(getTimeline()[0]);
         else if (!preserve && rundownController) {
             rundownController.stop(); rundownController.current = null;
             playoutEngine.itemId = null; playoutEngine.filePath = null;
         }
-        const result = { ok: true, timeline: getTimeline(), playout: { ...playoutEngine.snapshot(), autonomous: true } };
+        const result = { ok: true, message:alignment?.message, deltaSeconds:alignment?.deltaSeconds, timeline: getTimeline(), playout: { ...playoutEngine.snapshot(), autonomous: true } };
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("playout:rundown-changed", result);
         return result;
     });

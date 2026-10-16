@@ -6,6 +6,8 @@
 export interface ForecastMedia {
     id: string;
     name?: string;
+    programmedStartAt?: string;
+    effectiveStartAt?: string;
     duration?: number | null;
     inPoint?: number | null;
     outPoint?: number | null;
@@ -311,6 +313,7 @@ export function buildPlannedSchedule(
     }
     let cursor = match[0] * 3600 + match[1] * 60;
     let total = 0;
+    let absoluteEnd: number | null = null;
     const hasFreeze = items.some(item => item.freezeEnd === true);
     let blocked:
         | "LOOP ANTERIOR"
@@ -322,7 +325,8 @@ export function buildPlannedSchedule(
             times.set(item.id, "SEM PREVISÃO — " + blocked);
             continue;
         }
-        times.set(item.id, formatPlannedClock(cursor));
+        times.set(item.id, item.programmedStartAt && Number.isFinite(Date.parse(item.programmedStartAt))
+            ? new Date(item.programmedStartAt).toLocaleString("pt-BR") : formatPlannedClock(cursor));
         const clip = knownClipRange(item);
         if (!clip) {
             blocked = "DURAÇÃO ANTERIOR DESCONHECIDA";
@@ -334,6 +338,8 @@ export function buildPlannedSchedule(
             blocker = "loop";
             continue;
         }
+        if (item.programmedStartAt && Number.isFinite(Date.parse(item.programmedStartAt))) absoluteEnd = Date.parse(item.programmedStartAt);
+        if (absoluteEnd !== null) absoluteEnd += clip.length * 1000;
         cursor += clip.length;
         total += clip.length;
         // FREEZE é um alerta operacional, não um bloqueio da grade PROGRAMADA.
@@ -342,7 +348,7 @@ export function buildPlannedSchedule(
     }
     return {
         times,
-        end: blocked ? "SEM PREVISÃO" : formatPlannedClock(cursor),
+        end: blocked ? "SEM PREVISÃO" : absoluteEnd !== null ? new Date(absoluteEnd).toLocaleString("pt-BR") : formatPlannedClock(cursor),
         totalSeconds: blocked ? null : total,
         blocker,
         hasFreeze

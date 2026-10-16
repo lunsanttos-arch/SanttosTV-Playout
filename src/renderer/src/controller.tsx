@@ -35,7 +35,7 @@ function Controller() {
             setMedia(await request("/api/media"));
         } catch (error) { setError(error instanceof Error ? error.message : "Acesso indisponível."); }
     }
-    return <main className="remote-scheduler-workspace">{media ? <OpecSchedulerPanel media={media} remote onApply={() => {}} /> :
+    return <main className="remote-scheduler-workspace">{media ? <OpecSchedulerPanel media={media} remote onApply={async () => ""} /> :
         <section className="broadcast-settings-card remote-controller-login"><h1>SanTTos · Programação</h1><p>Informe o código exibido no computador master.</p>
             <div className="remote-login-controls">
                 <input aria-label="Código de acesso" type="password" value={pin} onChange={event => setPin(event.currentTarget.value)}
