@@ -29,6 +29,10 @@ await evaluate(`window.santtosAPI.importMedia(${JSON.stringify([fixture])})`);le
 // A compact raster keeps CI load separate from hardware production benchmarks.
 const settings=await evaluate('window.santtosAPI.getSettings()');await evaluate(`window.santtosAPI.saveOutputSettings(${JSON.stringify({...settings.output,resolution:process.env.SANTTOS_QA_RESOLUTION||'1280x720',fps:process.env.SANTTOS_QA_FPS||'25',ndi:{enabled:true,name:'Santtos QA DEV NULL'},omt:{enabled:false},srt:{enabled:false},rtmp:{enabled:false}})})`);
 ws.close();ws=null;
+if(process.argv.includes('--library-only')){
+ await run('test-native-library-watch.cjs');await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});
+ console.log('Independent Library viewing and common audio leveling integration passed.');return;
+}
 if(process.argv.includes('--schedule-only')){
  await run('test-native-dated-schedule.cjs');await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});
  console.log('Dated schedule integration passed.');return;
@@ -42,6 +46,7 @@ if(process.argv.includes('--cadence-only')){
  console.log('60-second Full HD cadence/preview check passed.');return;
 }
 await run('test-native-ab-service.cjs');
+await run('test-native-library-watch.cjs');
 if(process.argv.includes('--inputs-only')){
  await run('test-input-web-handoff.cjs',{SANTTOS_QA_GRAPHICS:'1'});
  await run('test-input-web-handoff.cjs',{SANTTOS_QA_STALL:'1'});

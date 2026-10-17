@@ -9,7 +9,7 @@ class MediaQualityQueue {
  pump(){if(this.stopped||this.running||!this.pending.size)return;const [id,item]=this.pending.entries().next().value;this.pending.delete(id);
   if(!this.getMedia().some(current=>current.id===id&&current.path===item.path)){this.pump();return;}
   this.update(id,{version:1,status:'checking',error:null});
-  const worker=new Worker(path.join(__dirname,'quality-worker.js'),{workerData:{ffmpeg:this.ffmpeg,path:item.path,videoStreamIndex:item.videoStreamIndex,duration:item.duration}});
+  const worker=new Worker(path.join(__dirname,'quality-worker.js'),{workerData:{ffmpeg:this.ffmpeg,path:item.path,videoStreamIndex:item.videoStreamIndex,audioStreamIndex:item.audioStreamIndex,duration:item.duration}});
   const job=this.running={worker,item,pid:null,finished:false};
   const finish=quality=>{if(job.finished)return;job.finished=true;
    const current=this.getMedia().find(current=>current.id===id&&current.path===item.path);

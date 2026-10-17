@@ -2286,3 +2286,23 @@ button {
     font-size: 14px;
     box-shadow: 0 4px 20px #0008;
 }
+
+/* Independent Library viewing; native dialog provides focus containment. */
+.library-watch-dialog {
+    width: min(1000px, 88vw);
+    max-height: 90vh;
+    overflow: auto;
+    padding: 18px;
+    color: #eee;
+    background: #17171e;
+    border: 1px solid #373544;
+    border-radius: 8px;
+}
+.library-watch-dialog::backdrop { background: rgb(0 0 0 / 70%); }
+.library-watch-dialog header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.library-watch-dialog h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.library-watch-dialog p { color: #bcb8ca; font-size: 13px; }
+.library-watch-dialog video { display: block; width: 100%; max-height: 65vh; background: #000; }
+.library-watch-dialog button { min-height: 32px; padding: 5px 12px; color: #eee; background: #1c1b27; border: 1px solid #373544; border-radius: 7px; cursor: pointer; }
+.library-watch-dialog button:hover, .library-watch-dialog button:focus-visible { background: #593386; border-color: #9566ce; }
+.library-watch-error { padding-top: 8px; }

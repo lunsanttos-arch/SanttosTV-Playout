@@ -226,7 +226,7 @@ function registerTrustedHandle(channel) {
         if (!isTrustedIpcSender(event)) throw Error("Origem IPC nao autorizada.");
         if (shuttingDown) throw Error("O aplicativo está encerrando.");
         const result = await service.call(channel, args);
-        if (channel === "media:prepare-preview" && result.ok && result.filePath) approvedPreviewPaths.add(fs.realpathSync(result.filePath));
+        if (["media:prepare-preview", "media:watch-source"].includes(channel) && result.ok && result.filePath) approvedPreviewPaths.add(await fs.promises.realpath(result.filePath));
         if (channel === "operation:save" && result.ok) configureWatchdog(result.settings);
         return result;
     });

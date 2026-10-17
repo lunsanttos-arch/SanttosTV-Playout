@@ -22,7 +22,7 @@ function verifyProgramRuntime(file) {
  const encoders = inspect('-encoders');
  const protocols = inspect('-protocols').split(/\r?\n/).map(line => line.trim());
  const missing = [];
- for (const name of ['drawtext', 'overlay', 'scale', 'pad', 'split', 'fps', 'format', 'setsar', 'colorchannelmixer']) {
+ for (const name of ['drawtext', 'overlay', 'scale', 'pad', 'split', 'fps', 'format', 'setsar', 'colorchannelmixer', 'aresample', 'aformat', 'loudnorm', 'volume', 'acompressor', 'alimiter']) {
   if (!new RegExp('^\\s*[.A-Z|]+\\s+' + name + '\\s', 'm').test(filters)) missing.push('filtro ' + name);
  }
  for (const name of ['libx264', 'aac', 'mjpeg', 'rawvideo', 'pcm_f32le']) {

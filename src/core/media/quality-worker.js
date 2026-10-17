@@ -24,9 +24,15 @@ const fingerprint=stat=>`${stat.size}:${stat.mtimeMs}:${stat.ino}`;
   child.stderr.on('data',chunk=>{stderr=(stderr+chunk.toString()).slice(-4000);});
   child.on('error',finish);child.on('close',(code,signal)=>finish(canceled?Error('Análise cancelada.'):code!==0||signal||!frames?Error(stderr||'O arquivo não entregou vídeo até o fim da análise.'):null));
  });
+ const loudness=await require('./loudness-analysis').analyzeLoudness({ffmpeg:workerData.ffmpeg,file:workerData.path,
+  audioStreamIndex:workerData.audioStreamIndex,duration:workerData.duration,isCanceled:()=>canceled,
+  onChild:process=>{child=process;parentPort.postMessage({type:'pid',pid:process.pid});}});
+ if(loudness.status!=='no-audio')loudness.mono=await require('./loudness-analysis').analyzeLoudness({ffmpeg:workerData.ffmpeg,file:workerData.path,
+  channels:1,audioStreamIndex:workerData.audioStreamIndex,duration:workerData.duration,isCanceled:()=>canceled,
+  onChild:process=>{child=process;parentPort.postMessage({type:'pid',pid:process.pid});}});
  const hash=crypto.createHash('sha256');stream=fs.createReadStream(workerData.path,{highWaterMark:256*1024});
  for await(const chunk of stream){if(canceled)throw Error('Análise cancelada.');hash.update(chunk);}
  const after=await fs.promises.stat(workerData.path);
  if(fingerprint(before)!==fingerprint(after))throw Object.assign(Error('O arquivo mudou durante a análise; verifique novamente.'),{code:'CHANGED'});
- parentPort.postMessage({type:'result',quality:{version:1,status:'approved',fingerprint:fingerprint(after),sha256:hash.digest('hex'),frames,checkedAt:new Date().toISOString(),error:null}});
+ parentPort.postMessage({type:'result',quality:{version:1,status:'approved',fingerprint:fingerprint(after),sha256:hash.digest('hex'),frames,loudness,checkedAt:new Date().toISOString(),error:null}});
 })().catch(error=>parentPort.postMessage({type:'result',quality:{version:1,fingerprint:originalFingerprint,status:['ENOENT','EACCES','EPERM','CHANGED'].includes(error.code)?'unavailable':'rejected',error:String(error.message).slice(-1600),checkedAt:new Date().toISOString()}})).finally(()=>parentPort.close());

@@ -1047,9 +1047,10 @@ const { DecoderDeck } = require('../core/playout/decoder-deck');
 const { DeckPreparer } = require('../core/playout/deck-preparer');
 function deckKey(item, position, overlay) {
     const settings = getSettings();
+    const quality = getMedia().find(media => media.id === (item.sourceMediaId || item.id))?.quality;
     return JSON.stringify([configurationRevision, item.id, item.path, position, overlay.inPointSeconds, overlay.inputTimingMode === "clock" ? overlay.inputEndTime : overlay.outPointSeconds,
         overlay.sourceType, overlay.inputProtocol, overlay.inputEngine, overlay.inputHttpReferer, overlay.inputHttpUserAgent,
-        item.metadataUpdatedAt, item.fileSize, overlay.videoStreamIndex, overlay.audioStreamIndex,
+        item.metadataUpdatedAt, item.fileSize, quality?.checkedAt, operationSettings.value.audioLevelingEnabled, overlay.videoStreamIndex, overlay.audioStreamIndex,
         overlay.watermarkEnabled, overlay.hashtag, item.hashtag, overlay.exhibitionType, overlay.fitMode, overlay.sizePercent,
         overlay.watermarkFadeIn, overlay.watermarkFadeOut, settings.output, settings.watermarkStyle, settings.hashtagStyle, settings.exhibitionStyle]);
 }
@@ -1115,6 +1116,18 @@ async function resolveDeckSource(item, position, overlay, signal) {
             await mediaQuality.assertPlayable(libraryItem);
             if (serverMedia.isServerMediaPath(filePath)) source.url = (await checked(serverMedia.resolveForPlayback(filePath))).playbackPath;
             else if (!(await checked(fs.promises.stat(filePath))).isFile()) throw Error('Arquivo indisponível no disco.');
+            if (libraryItem.quality?.status === 'approved') {
+                let unchanged = false;
+                try {
+                    const stat = await checked(fs.promises.stat(filePath));
+                    unchanged = libraryItem.quality.fingerprint === require('../core/media/quality-queue').fingerprint(stat);
+                } catch (error) {
+                    if (signal.aborted) throw error;
+                    unchanged = source.url !== filePath && Boolean(serverMedia.cachedFileAvailable(filePath));
+                }
+                if (unchanged) source.loudness = libraryItem.quality.loudness;
+                else mediaQuality.enqueue(libraryItem);
+            }
         }
         return source;
     } catch (error) { source.cleanup(); throw remote ? Error(redactDiagnostic(error.message)) : error; }
@@ -1286,7 +1299,8 @@ async function createDecoderDeck(item, position, overlayState, signal) {
             "-map", Number.isSafeInteger(programState.audioStreamIndex) && programState.audioStreamIndex >= 0
                 ? `0:${programState.audioStreamIndex}?` : "0:a:0?",
             "-vn", "-sn", "-dn",
-            "-af", "aresample=async=1:first_pts=0",
+            "-af", require('../core/audio/loudness').buildAudioLevelFilter({enabled:operationSettings.value.audioLevelingEnabled,
+                loudness:source.loudness,sampleRate:profile.sampleRate,channels:profile.channels}),
             "-ac", String(profile.channels), "-ar", String(profile.sampleRate),
             "-c:a", "pcm_f32le", "-f", "f32le"
         );
@@ -1403,6 +1417,27 @@ function redactDiagnostic(value) {
 }
 
 function registerIpcHandlers() {
+    async function libraryWatchSource(id) {
+        const item = getMedia().find(media => media.id === id && media.sourceType !== 'input' && !media.placeholder);
+        if (!item) throw Error('Material não cadastrado na Biblioteca.');
+        const source = await serverMedia.resolveForPlayback(item.path);
+        const filePath = await fs.promises.realpath(source.playbackPath);
+        if (!(await fs.promises.stat(filePath)).isFile()) throw Error('Arquivo indisponível.');
+        return filePath;
+    }
+    registerTrustedHandle('media:watch-source', async (_event, id) => {
+        try { return {ok:true,filePath:await libraryWatchSource(id)}; }
+        catch (error) { return {ok:false,error:error.message}; }
+    });
+    registerTrustedHandle('media:watch-external', async (_event, id) => {
+        try {
+            const filePath = await libraryWatchSource(id);
+            if (!['.mp4','.m4v','.mov','.mkv','.avi','.mxf','.ts','.mts','.m2ts','.webm','.mpeg','.mpg','.wmv','.flv'].includes(path.extname(filePath).toLowerCase()))
+                throw Error('Formato não permitido para abertura externa.');
+            const error = await shell.openPath(filePath);
+            return error ? {ok:false,error} : {ok:true};
+        } catch (error) { return {ok:false,error:error.message}; }
+    });
     registerTrustedHandle("operation:get", async () => ({ ok: true, settings: operationSettings.value,
         startupAvailable: process.platform === "win32" && app.isPackaged,
         diagnostics: { mediaQuality:mediaQuality.snapshot(), persistence: persistenceStatus(), metrics: { ...programMetrics, ndiVideo: videoPipeWriter.snapshot(), memory: process.memoryUsage() }, engine: playoutEngine.snapshot(), lastIssue: rundownController?.lastIssue, contingency: rundownController?.contingency,
@@ -2451,7 +2486,7 @@ function registerIpcHandlers() {
         async () => {
             const media = getMedia();
 
-            for(const item of media)if(!["pending-metadata","analyzing"].includes(item.status)&&(!item.quality||["queued","checking"].includes(item.quality.status)))mediaQuality.enqueue(item);
+            for(const item of media)if(!["pending-metadata","analyzing"].includes(item.status)&&(!item.quality||["queued","checking"].includes(item.quality.status)||(item.quality.status==='approved'&&!item.quality.loudness)))mediaQuality.enqueue(item);
 
             const pendingMedia =
                 media.filter(

@@ -7,6 +7,7 @@ import {
     useState
 } from "react";
 import type { CSSProperties } from "react";
+import LibraryWatchDialog from "./LibraryWatchDialog";
 import BroadcastSettingsPanel from "./BroadcastSettingsPanel";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
 import WebInputsPanel from "./WebInputsPanel";
@@ -243,6 +244,8 @@ declare global {
             restoreDataBackup: () => Promise<{ ok: boolean; error?: string }>;
 
             selectVideos: () => Promise<string[]>;
+            getLibraryWatchSource:(id:string)=>Promise<{ok:boolean;filePath?:string;error?:string}>;
+            openLibraryFile:(id:string)=>Promise<{ok:boolean;error?:string}>;
             recheckMedia:(id:string)=>Promise<{ok:boolean}>;
             onMediaChanged: (callback:()=>void) => ()=>void;
             getMedia: () => Promise<MediaItem[]>;
@@ -4874,6 +4877,7 @@ function LibraryPanel({
     onRemoveMedia,
     onAddToTimeline
 }: LibraryPanelProps) {
+    const [watchItem, setWatchItem] = useState<MediaItem | null>(null);
     const [search, setSearch] = useState("");
     const [categories, setCategories] = useState<LibraryCategory[]>([]);
     const [activeCategoryId, setActiveCategoryId] = useState("");
@@ -5480,6 +5484,7 @@ function LibraryPanel({
                                         <span title={item.quality?.error||""}>{item.quality?.status === "approved" ? "Análise aprovada" : item.quality?.status === "rejected" ? "Reprovado" : item.quality?.status === "unavailable" ? "Análise indisponível" : "Em análise"}</span>
                                     </div>
                                 </div>
+                                <button className="add-timeline-button" onDoubleClick={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); setWatchItem(item); }}>Assistir</button>
                                 <button
                                     className="remove-media-button"
                                     title="Remover da biblioteca"
@@ -5506,6 +5511,7 @@ function LibraryPanel({
                 )}
                 </>
             )}
+            {watchItem && <LibraryWatchDialog item={watchItem} onClose={() => setWatchItem(null)} />}
         </section>
     );
 }
