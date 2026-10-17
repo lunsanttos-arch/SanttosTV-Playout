@@ -46,6 +46,8 @@ contextBridge.exposeInMainWorld(
                 "media:select"
             ),
 
+        recheckMedia: id => ipcRenderer.invoke("media:analyze",id),
+        onMediaChanged: callback => { const listener=()=>callback(); ipcRenderer.on("media:changed",listener); return ()=>ipcRenderer.removeListener("media:changed",listener); },
         getMedia: () =>
             ipcRenderer.invoke(
                 "media:list"

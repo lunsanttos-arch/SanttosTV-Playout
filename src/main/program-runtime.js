@@ -63,7 +63,7 @@ let lastProgramFrame = null;
 let lastFrameGeneration = -1;
 let lastProgramFrameAt = 0;
 let nativeStartGeneration = 0;
-const programAudioRouter = new ProgramAudioRouter({ onOverload: () => ndiProcess?.kill() });
+const programAudioRouter = new ProgramAudioRouter({onConnected:()=>videoPipeWriter.flushAudio(),onOverload:()=>videoPipeWriter.fail("NDI sem consumir PCM; reconectando esta saída.")});
 const { DataBackupService, applyPendingRestore } = require("../core/backup/data-backup");
 let dataBackups = null;
 let preparedBackupRestore = null;
@@ -180,9 +180,12 @@ function registerTrustedHandle(channel, listener) {
             result = await listener(event, ...args);
             if (channel.startsWith("settings:set-") && result?.ok === true) configurationRevision++;
             if (durableChannels.has(channel) && result?.ok !== false) await flushPersistence();
+            if (channel === "playout:apply-rundown" && result?.ok === true) result.persisted = true;
             return result;
         } catch (error) {
             if (result && !Array.isArray(result) && Object.hasOwn(result, "ok")) {
+                if (channel === "playout:apply-rundown" && result.applied) return { ok:false, applied:true, persisted:false,
+                    error:"A fila foi atualizada em memória, mas não foi possível confirmar a gravação. Verifique o disco: " + error.message };
                 return { ok: false, error: "Não foi possível confirmar a gravação: " + error.message };
             }
             throw error;
@@ -335,17 +338,19 @@ function onPlayoutFault(message) {
     if (!rundownController?.opening) void rundownController?.fault(message).catch(error => console.error("Contingência:", error.message));
 }
 
-const { VideoPipeWriter } = require('../core/ndi/video-pipe-writer');
-const videoPipeWriter = new VideoPipeWriter({
-    onWritable: () => activeDeck?.pacer.resume(),
-    onError: (_error, sink) => { if (ndiProcess?.stdin === sink) ndiProcess.kill(); }
-});
-function writeNativeProgramFrame(frame) {
+const { IsolatedAvRoute } = require('../core/playout/isolated-av-route');
+const videoPipeWriter = new IsolatedAvRoute({sendAudio:chunk=>ndiDevNullSink||programAudioRouter.write(chunk),onFault:reason=>{
+    ndiLastError=reason;console.warn(reason);ndiReady=false;programAudioRouter.setPipe("");
+    const failed=ndiProcess;if(failed){failed.kill();const timer=setTimeout(()=>{if(failed.exitCode===null&&failed.signalCode===null)failed.kill("SIGKILL");},1000);timer.unref();failed.once?.("close",()=>clearTimeout(timer));}
+}});
+function writeNativeProgramFrame(frame, samples) {
     programMetrics.frames += 1;
-    const writable = videoPipeWriter.write(ndiReady ? ndiProcess?.stdin : null, frame);
+    videoPipeWriter.configure(activeOutputProfile);
+    videoPipeWriter.write(ndiReady ? ndiProcess?.stdin : null, frame, samples);
     if (omtOutput?.canWriteVideo()) omtOutput.writeVideo(frame, { allowDrop: true });
-    return writable;
+    return true; // A destination's flow control is never the PROGRAM clock.
 }
+
 function nativeOverlay(item, position = 0, overrides = {}) {
     let outPoint = Number(item.outPoint) > 0 ? Number(item.outPoint) : Number(item.duration) || null;
     if (item.sourceType === "input" && item.inputTimingMode === "clock" && /^\d{2}:\d{2}$/.test(item.inputEndTime || "")) {
@@ -357,6 +362,11 @@ function nativeOverlay(item, position = 0, overrides = {}) {
         watermarkEnabled: Boolean(item.watermark), watermarkFadeIn: false, watermarkFadeOut: false,
         ...overrides, itemId: item.id };
 }
+const { MediaQualityQueue } = require('../core/media/quality-queue');
+let mediaChangedTimer=null;
+const mediaQuality = new MediaQualityQueue({ffmpeg:require('../core/media/runtime-paths').resolveMediaRuntime('ffmpeg'),getMedia,canUseCached:file=>Boolean(serverMedia.cachedFileAvailable(file)),
+    onUpdate:(id,quality)=>{updateMediaMetadata(id,{quality});
+        if(!mediaChangedTimer)mediaChangedTimer=setTimeout(()=>{mediaChangedTimer=null;if(mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send('media:changed',{});},250);}});
 const analysesInProgress = new Map();
 const approvedPreviewPaths = new Set();
 
@@ -429,6 +439,8 @@ async function analyzeMediaItem(mediaItem) {
                         new Date().toISOString()
                 }
             );
+
+            if (decodeSupport.decodable) mediaQuality.enqueue(getMedia().find(item=>item.id===mediaItem.id));
 
             console.log(
                 [
@@ -927,7 +939,7 @@ function sendProgramAudioPcm(
     }
 
     programMetrics.audioSamples += chunk.length / (channels * 4);
-    programAudioRouter.write(chunk);
+    videoPipeWriter.writeAudio(chunk);
     // OMT consome exatamente o mesmo PCM que alimenta o medidor e o NDI.
     // Não existe uma segunda abertura/decodificação da mídia.
     omtOutput?.writeAudio(
@@ -1098,7 +1110,9 @@ async function resolveDeckSource(item, position, overlay, signal) {
                 }
             }
         } else {
-            if (!getMedia().some(media => path.resolve(media.path) === path.resolve(filePath))) throw Error('Material não cadastrado.');
+            const libraryItem=getMedia().find(media=>path.resolve(media.path)===path.resolve(filePath));
+            if(!libraryItem)throw Error('Material não cadastrado.');
+            await mediaQuality.assertPlayable(libraryItem);
             if (serverMedia.isServerMediaPath(filePath)) source.url = (await checked(serverMedia.resolveForPlayback(filePath))).playbackPath;
             else if (!(await checked(fs.promises.stat(filePath))).isFile()) throw Error('Arquivo indisponível no disco.');
         }
@@ -1289,7 +1303,8 @@ async function createDecoderDeck(item, position, overlayState, signal) {
             onFrame: frame => { if (activeDeck !== deck) return;
                 if (deck.delivered > 0) programMetrics.maxFrameGapMs = Math.max(programMetrics.maxFrameGapMs || 0, programClock.nowMs() - lastProgramFrameAt);
                 lastProgramFrame = frame; lastFrameGeneration = playoutEngine.generation;
-                lastProgramFrameAt = programClock.nowMs(); const writable = writeNativeProgramFrame(frame); for (const output of transportOutputs.values()) output.writeVideo(frame); return writable; },
+                lastProgramFrameAt = programClock.nowMs(); const count=Math.floor((deck.delivered+1)*profile.sampleRate*profile.fpsD/profile.fpsN)-Math.floor(deck.delivered*profile.sampleRate*profile.fpsD/profile.fpsN);
+                const writable = writeNativeProgramFrame(frame,count); for (const output of transportOutputs.values()) output.writeVideo(frame); return writable; },
             onPreview: sendProgramPreviewFrame,
             createAudio: pcmStream => new NdiAudioSource({ pcmStream, pipePath: '', ffmpegPath: resolveFfmpegPath(), filePath,
                 sampleRate: profile.sampleRate, channels: profile.channels, onPcmData: sendProgramAudioPcm }).start(),
@@ -1390,7 +1405,7 @@ function redactDiagnostic(value) {
 function registerIpcHandlers() {
     registerTrustedHandle("operation:get", async () => ({ ok: true, settings: operationSettings.value,
         startupAvailable: process.platform === "win32" && app.isPackaged,
-        diagnostics: { persistence: persistenceStatus(), metrics: { ...programMetrics, ndiVideo: videoPipeWriter.snapshot(), memory: process.memoryUsage() }, engine: playoutEngine.snapshot(), lastIssue: rundownController?.lastIssue, contingency: rundownController?.contingency,
+        diagnostics: { mediaQuality:mediaQuality.snapshot(), persistence: persistenceStatus(), metrics: { ...programMetrics, ndiVideo: videoPipeWriter.snapshot(), memory: process.memoryUsage() }, engine: playoutEngine.snapshot(), lastIssue: rundownController?.lastIssue, contingency: rundownController?.contingency,
             frameAgeMs: lastProgramFrameAt ? Math.max(0,programClock.nowMs()-lastProgramFrameAt) : null,
             ndiAudio: { connected: programAudioRouter.connected, bytes: programAudioRouter.bytes, droppedBytes: programAudioRouter.droppedBytes },
             transports: Object.fromEntries([...transportOutputs].map(([kind,out]) => [kind,{online:out.online,error:out.error}])) } }));
@@ -1423,14 +1438,20 @@ function registerIpcHandlers() {
     });
     registerTrustedHandle("playout:apply-rundown", async (_event, items, context) => {
         if (!Array.isArray(items)) throw Error("Programação inválida.");
-        const snapshot = playoutEngine.snapshot(), current = getTimeline().find(item => item.id === snapshot.itemId) || rundownController?.current;
-        const preserve = current && ["PLAYING", "STARTING", "PAUSED"].includes(snapshot.state);
+        let snapshot = playoutEngine.snapshot(), current = getTimeline().find(item => item.id === snapshot.itemId) || rundownController?.current;
+        let preserve = current && ["PLAYING", "STARTING", "PAUSED"].includes(snapshot.state);
         let alignment = null;
         if (context?.date) {
             const saved = getDailyRundown(context.date);
             if (saved.updatedAt !== context.expectedUpdatedAt || saved.startAt !== context.expectedStartAt)
                 throw Error("A programação ou o término do dia anterior mudou. Atualize antes de aplicar.");
             if (saved.missingItems) throw Error("Há materiais ausentes nesta programação. Substitua-os antes de aplicar.");
+            await mediaQuality.validate(saved.items);
+            const rechecked = getDailyRundown(context.date);
+            if (rechecked.updatedAt !== saved.updatedAt || rechecked.startAt !== saved.startAt)
+                throw Error("A programação mudou durante a validação. Atualize antes de aplicar.");
+            snapshot=playoutEngine.snapshot();current=getTimeline().find(item=>item.id===snapshot.itemId)||rundownController?.current;
+            preserve=current&&["PLAYING","STARTING","PAUSED"].includes(snapshot.state);
             const canonical = saved.items.map((item,index) => ({ ...item,
                 id: `rundown-${context.date}-${Date.now()}-${index}`, loop:false, freezeEnd:false,
                 programmedStartTime:saved.startTime }));
@@ -1447,7 +1468,7 @@ function registerIpcHandlers() {
             rundownController.stop(); rundownController.current = null;
             playoutEngine.itemId = null; playoutEngine.filePath = null;
         }
-        const result = { ok: true, message:alignment?.message, deltaSeconds:alignment?.deltaSeconds, timeline: getTimeline(), playout: { ...playoutEngine.snapshot(), autonomous: true } };
+        const result = { ok: true, applied:true, persisted:false, message:alignment?.message, deltaSeconds:alignment?.deltaSeconds, timeline: getTimeline(), playout: { ...playoutEngine.snapshot(), autonomous: true } };
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("playout:rundown-changed", result);
         return result;
     });
@@ -2430,6 +2451,8 @@ function registerIpcHandlers() {
         async () => {
             const media = getMedia();
 
+            for(const item of media)if(!["pending-metadata","analyzing"].includes(item.status)&&(!item.quality||["queued","checking"].includes(item.quality.status)))mediaQuality.enqueue(item);
+
             const pendingMedia =
                 media.filter(
                     (item) =>
@@ -2472,6 +2495,8 @@ function registerIpcHandlers() {
             };
         }
     );
+
+    registerTrustedHandle("media:analyze",(_event,id)=>{const item=getMedia().find(item=>item.id===id);if(!item)throw Error("Material não cadastrado.");mediaQuality.enqueue(item);return {ok:true};});
 
     registerTrustedHandle(
         "media:remove",
@@ -2877,6 +2902,7 @@ function startNdiSender() {
             );
 
             programAudioRouter.setPipe("");
+            videoPipeWriter.reset();
 
             ndiReady = false;
             ndiFrameBusy = false;
@@ -3043,6 +3069,7 @@ function stopNdiSender({
     ndiAudioNativeActive = false;
     ndiAudioPipe = "";
     programAudioRouter.setPipe("");
+    videoPipeWriter.reset();
 
     const processRef = ndiProcess;
     ndiProcess = null;
@@ -3180,9 +3207,9 @@ function startSystem() {
         });
         rundownController.pendingFailures.push(...getPendingFailedReportIds());
         programStandby = new ProgramStandby({ getProfile: () => activeOutputProfile,
-            isPlaying: () => videoPipeWriter.blocked || (nativePlaybackActive && lastFrameGeneration === playoutEngine.generation && programClock.nowMs() - lastProgramFrameAt < 1000),
+            isPlaying: () => (nativePlaybackActive && lastFrameGeneration === playoutEngine.generation && programClock.nowMs() - lastProgramFrameAt < 1000),
             getFrame: () => playoutEngine.snapshot().state !== "IDLE" && lastProgramFrame?.length === activeOutputProfile.frameSize ? lastProgramFrame : null,
-            onFrame: frame => { writeNativeProgramFrame(frame); for (const output of transportOutputs.values()) output.writeVideo(frame); },
+            onFrame: (frame,samples) => { writeNativeProgramFrame(frame,samples); for (const output of transportOutputs.values()) output.writeVideo(frame); },
             onAudio: sendProgramAudioPcm });
         programStandby.start();
         programSupervisorTimer = setInterval(() => {
@@ -3240,10 +3267,13 @@ async function shutdown() {
 
     dataBackups?.stop();
     programStandby?.stop();
+    videoPipeWriter.reset();
     programAudioRouter.stop();
     for (const output of transportOutputs.values()) output.stop();
     transportOutputs.clear();
     schedulingController?.stop();
+    clearTimeout(mediaChangedTimer);
+    await mediaQuality.stop();
     clearInterval(recoveryTimer);
     stopNativePlayback({ engineAction: "preserve" });
     try { await playoutRecovery?.captureNativeAsync(closingSnapshot); await playoutRecovery?.flush(); }

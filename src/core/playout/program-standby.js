@@ -11,7 +11,7 @@ class ProgramStandby {
     constructor({getProfile,isPlaying,getFrame,onFrame,onAudio}){Object.assign(this,{getProfile,isPlaying,getFrame,onFrame,onAudio});this.frames=0;this.samples=0;this.signature="";this.timer=null;}
     start(){let deadline=performance.now();const tick=()=>{const p=this.getProfile();const signature=[p.width,p.height,p.ndiPixelFormat,p.sampleRate,p.channels,p.fpsN,p.fpsD].join("|");if(this.signature!==signature){this.signature=signature;this.black=blackFrame(p);this.frames=0;this.samples=0;deadline=performance.now();}
         if(!this.isPlaying()) { const next=Math.floor(++this.frames*p.sampleRate*p.fpsD/p.fpsN),count=next-this.samples;this.samples=next;
-            this.onFrame(this.getFrame()||this.black);this.onAudio(Buffer.alloc(count*p.channels*4),p.sampleRate,p.channels); }
+            this.onFrame(this.getFrame()||this.black,count);this.onAudio(Buffer.alloc(count*p.channels*4),p.sampleRate,p.channels); }
         const period=1000*p.fpsD/p.fpsN;deadline=Math.max(deadline+period,performance.now()+period/2);
         this.timer=setTimeout(tick,Math.max(0,deadline-performance.now()));this.timer.unref();};tick();}
     stop(){clearTimeout(this.timer);}

@@ -1,6 +1,6 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import OpecSchedulerPanel from "./OpecSchedulerPanel";
 import type { MediaItem } from "./App";
 import "./styles.css";
@@ -23,6 +23,8 @@ function Controller() {
     const [media, setMedia] = useState<MediaItem[] | null>(null);
     const [pin, setPin] = useState("");
     const [error, setError] = useState("");
+    useEffect(()=>{if(!media?.some(item=>item.sourceType!=="input"&&!item.placeholder&&(!item.quality||["queued","checking"].includes(item.quality.status))))return;
+        const timer=window.setTimeout(()=>void request("/api/media").then(setMedia).catch(()=>{}),3000);return ()=>window.clearTimeout(timer);},[media]);
     async function login() {
         try {
             await request("/api/login", { pin });

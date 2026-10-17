@@ -2,6 +2,8 @@
 
 Data: **16/10/2026**. Código avaliado: **`34228cba3f3e8373b43c7b423b3c2f6eead1e546`**.
 
+Implementação posterior: [primeira etapa de robustez, escopo e testes de 17/10/2026](ETAPA-1-BROADCAST-2026-10-17.md). As evidências abaixo descrevem a revisão original.
+
 ## Parecer para decisão
 
 **Recomendo manter a arquitetura atual e fechar falhas de confirmação, controle de qualidade de mídia, isolamento das saídas e homologação física antes de anunciar operação profissional contínua.** Não encontrei fundamento para uma reescrita geral. Encontrei melhorias verificáveis e dois comportamentos reproduzidos que merecem correção.

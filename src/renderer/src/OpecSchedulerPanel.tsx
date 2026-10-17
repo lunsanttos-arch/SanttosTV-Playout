@@ -573,7 +573,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                     event.dataTransfer.setData("text/plain", item.name);
                                     event.dataTransfer.effectAllowed = "copy";
                                 }} onDragEnd={clearDrag}>
-                                <div><strong>{item.name}</strong><span>{formatDuration(clipDuration(item))} · {item.extension.toUpperCase()}</span></div>
+                                <div><strong>{item.name}</strong><span>{formatDuration(clipDuration(item))} · {item.extension.toUpperCase()} · {item.quality?.status === "approved" ? "Aprovado" : item.quality?.status === "rejected" ? "Reprovado" : "Em análise"}</span></div>
                                 <button onClick={() => addItem(item)}>+ Programação</button>
                             </article>
                         ))}

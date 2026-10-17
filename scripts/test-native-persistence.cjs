@@ -54,6 +54,17 @@ async function evaluate(expression) {
         assert.equal(JSON.parse(fs.readFileSync(path.join(databaseFolder, "santtos-tv.json"), "utf8")).settings.hashtagStyle.fontSize, nextStyle.fontSize);
         const recovered = await evaluate("window.santtosAPI.getNdiStatus()");
         assert.equal(recovered.persistenceError, null); assert.equal(recovered.playout.generation, before.playout.generation);
+        await evaluate("window.santtosAPI.stopNdiFile()");
+        fs.renameSync(databaseFolder, held); displaced = true;
+        fs.writeFileSync(databaseFolder, "QA: unavailable database directory");
+        const applyFailed = await evaluate(`window.santtosAPI.applyNativeRundown(${JSON.stringify([item])})`);
+        assert.equal(applyFailed.ok, false, "Applying must not claim success without durable persistence");
+        assert.equal(applyFailed.applied, true, "The response must disclose the actual in-memory change");
+        assert.equal(applyFailed.persisted, false);
+        assert.match(applyFailed.error, /memória/);
+        fs.unlinkSync(databaseFolder); fs.renameSync(held, databaseFolder); displaced = false;
+        const applyRetried = await evaluate(`window.santtosAPI.applyNativeRundown(${JSON.stringify([item])})`);
+        assert.equal(applyRetried.ok, true); assert.equal(applyRetried.persisted, true);
         console.log("NATIVE PERSISTENCE: real IPC failure with unavailable disk, visible alert, uninterrupted PROGRAM generation/frames and durable retry passed");
     } finally {
         if (displaced) { fs.rmSync(databaseFolder, { force: true }); fs.renameSync(held, databaseFolder); }

@@ -25,5 +25,10 @@ function fixture(delay,frameBytes=1024*1024){
  }finally{slow.omt.stop();}
  const restart=fixture(()=>60);restart.send(1);restart.send(2);const old=restart.sink;
  restart.omt.stop();assert.equal(restart.omt.snapshot().pendingVideoFrames,0);old.emit('drain');assert.deepEqual(restart.received,[1],'Stop must invalidate unsent frames');
+ const stalled=fixture(()=>1500);const failures=[];stalled.omt.onUnexpectedExit=reason=>failures.push(reason);
+ try{stalled.send(1);stalled.send(2);await wait(850);assert.equal(failures.length,1);assert.match(failures[0],/750 ms/);assert.equal(stalled.omt.process,null);assert.equal(stalled.omt.snapshot().pendingVideoFrames,0);}finally{stalled.omt.stop();}
+ const overloaded=fixture(()=>1);const audioFailures=[];overloaded.omt.onUnexpectedExit=reason=>audioFailures.push(reason);
+ let destroyed=false;overloaded.omt.audioSocket={destroyed:false,writableLength:512*1024+1,destroy(){destroyed=true;this.destroyed=true}};
+ overloaded.omt.writeAudio(Buffer.alloc(800));assert.equal(audioFailures.length,1);assert(destroyed);assert.equal(overloaded.omt.process,null);assert.equal(overloaded.omt.snapshot().audioBytesDropped,800);
  console.log('OMT FLOW: normal cadence has no drops; repeated slow writes preserve latest frame, one-frame pipe bound, autonomous drain, exact discard accounting and stop isolation passed');
 })().catch(error=>{console.error(error);process.exitCode=1;});

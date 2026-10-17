@@ -32,6 +32,7 @@ export interface MediaItem {
     liveSlot?: boolean;
     isContingency?: boolean;
     replacedPlaceholder?: boolean;
+    quality?: {version:number;status:"queued"|"checking"|"approved"|"rejected"|"unavailable";error?:string|null;checkedAt?:string;sha256?:string};
     programmedStartTime?: string;
     scheduleDate?: string;
     programmedStartAt?: string;
@@ -228,7 +229,7 @@ declare global {
 
             advanceNativeRundown: () => Promise<{ ok: boolean; error?: string; item?: MediaItem }>;
             updateNativeItemFlags: (id: string, flags: { loop?: boolean; freezeEnd?: boolean }) => Promise<{ ok: boolean }>;
-            applyNativeRundown: (items: MediaItem[], context?: {date: string; expectedUpdatedAt?: string | null; expectedStartAt?: string | null}) => Promise<{ ok: boolean; message?: string; deltaSeconds?: number; timeline: MediaItem[]; playout: NativePlayoutStatus }>;
+            applyNativeRundown: (items: MediaItem[], context?: {date: string; expectedUpdatedAt?: string | null; expectedStartAt?: string | null}) => Promise<{ ok: boolean; error?: string; applied?: boolean; persisted?: boolean; message?: string; deltaSeconds?: number; timeline: MediaItem[]; playout: NativePlayoutStatus }>;
             onNativeRundownChanged: (callback: (payload: { timeline: MediaItem[]; playout: NativePlayoutStatus }) => void) => () => void;
 
             getDataBackupStatus: () => Promise<import("./DataBackupSettingsTab").BackupStatus>;
@@ -242,6 +243,8 @@ declare global {
             restoreDataBackup: () => Promise<{ ok: boolean; error?: string }>;
 
             selectVideos: () => Promise<string[]>;
+            recheckMedia:(id:string)=>Promise<{ok:boolean}>;
+            onMediaChanged: (callback:()=>void) => ()=>void;
             getMedia: () => Promise<MediaItem[]>;
             importMedia: (
                 filePaths: string[]
@@ -767,6 +770,8 @@ export default function App() {
             });
     }, []);
 
+    useEffect(()=>window.santtosAPI.onMediaChanged?.(()=>{window.santtosAPI.getMedia().then(setMedia).catch(error=>console.error("Atualização da análise:",error));}),[]);
+
     async function addVideos() {
         try {
             setMessage("");
@@ -1031,6 +1036,7 @@ export default function App() {
                             onApply={async (items, startTime, context) => {
                                 if (!testBench || ndiTestMode) {
                                     const result = await window.santtosAPI.applyNativeRundown(items, context);
+                                    if (result?.ok !== true || result.persisted !== true) throw new Error(result?.error || "O motor não confirmou a aplicação da programação.");
                                     // Keep the alignment result visible before the master leaves this tab.
                                     return result.message || "Programação aplicada ao Playout.";
                                 }
@@ -1434,6 +1440,7 @@ function PlayoutPanel({
             if (nativeOutputEnabled) {
                 const result = await window.santtosAPI.applyNativeRundown(prepared);
                 if (cancelled) return;
+                if (result?.ok !== true || result.persisted !== true) throw new Error(result?.error || "O motor não confirmou a aplicação da programação.");
                 onNativeStateChange(result.playout);
                 setTimelineQueue(result.timeline);
                 const active = result.timeline.find(item => item.id === result.playout.itemId);
@@ -5460,6 +5467,7 @@ function LibraryPanel({
                                     event.dataTransfer.setData("application/x-santtos-library-media", item.id);
                                 }}
                             >
+                                {item.quality && ["rejected","unavailable"].includes(item.quality.status) && <button className="add-timeline-button" onClick={()=>void window.santtosAPI.recheckMedia(item.id).catch(error=>console.error("Nova análise:",error))}>Verificar</button>}
                                 <div className="media-thumbnail">{item.extension.toUpperCase()}</div>
                                 <div className="media-information">
                                     <strong>{item.name}</strong>
@@ -5469,6 +5477,7 @@ function LibraryPanel({
                                         <span>{item.videoCodec ?? "Codec desconhecido"}</span>
                                         <span>{item.fps !== null ? `${item.fps.toFixed(3)} fps` : "FPS desconhecido"}</span>
                                         <span>{formatDuration(item.duration)}</span>
+                                        <span title={item.quality?.error||""}>{item.quality?.status === "approved" ? "Análise aprovada" : item.quality?.status === "rejected" ? "Reprovado" : item.quality?.status === "unavailable" ? "Análise indisponível" : "Em análise"}</span>
                                     </div>
                                 </div>
                                 <button

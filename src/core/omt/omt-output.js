@@ -37,6 +37,7 @@ class OmtOutput {
         this.videoDrainListener = null;
         this.videoWriteWaits = 0;
         this.maxVideoWaitMs = 0;
+        this.videoStallTimer=null;this.audioBytesDropped=0;this.lastVideoAt=0;this.lastAudioAt=0;this.maxVideoGapMs=0;this.maxAudioGapMs=0;
     }
 
     executablePath() {
@@ -483,7 +484,12 @@ class OmtOutput {
         return true; // OMT pressure never blocks PROGRAM/NDI.
     }
 
+    failRoute(reason) {
+        if(this.stopping)return;this.stop();this.error=reason;this.emitState();this.onUnexpectedExit?.(reason);
+    }
+
     clearVideoQueue() {
+        clearTimeout(this.videoStallTimer);this.videoStallTimer=null;
         if (this.videoDrainTarget && this.videoDrainListener) {
             this.videoDrainTarget.off("drain", this.videoDrainListener);
             this.videoDrainTarget.off("close", this.videoDrainListener);
@@ -497,11 +503,13 @@ class OmtOutput {
     sendVideoFrame(frame, target) {
         if (target !== this.process?.stdin || target.destroyed || this.stopping) return;
         try {
+            const now=performance.now();if(this.lastVideoAt)this.maxVideoGapMs=Math.max(this.maxVideoGapMs,now-this.lastVideoAt);this.lastVideoAt=now;
             this.videoFrames += 1;
             if (target.write(frame)) return;
             this.videoBlocked = true;
             this.videoWriteWaits += 1;
             const started = performance.now();
+            this.videoStallTimer=setTimeout(()=>this.failRoute("OMT sem consumir vídeo por 750 ms; reconectando esta saída."),750);
             this.videoDrainTarget = target;
             const release = () => {
                 if (this.videoDrainTarget !== target) return;
@@ -515,9 +523,7 @@ class OmtOutput {
             target.once("drain", release);
             target.once("close", release);
         } catch (error) {
-            this.clearVideoQueue();
-            this.error = "Canal de vídeo OMT: " + error.message;
-            this.emitState();
+            this.failRoute("Canal de vídeo OMT: " + error.message);
         }
     }
 
@@ -557,9 +563,11 @@ class OmtOutput {
             this.audioSocket.writableLength >
             512 * 1024
         ) {
+            this.audioBytesDropped+=chunk.length;this.failRoute("OMT sem consumir áudio: fila PCM cheia; reconectando áudio e vídeo.");
             return;
         }
 
+        const now=performance.now();if(this.lastAudioAt)this.maxAudioGapMs=Math.max(this.maxAudioGapMs,now-this.lastAudioAt);this.lastAudioAt=now;
         this.audioBytes +=
             chunk.length;
 
@@ -619,6 +627,11 @@ class OmtOutput {
             }
 
             child.kill();
+            const deadline = setTimeout(() => {
+                if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+            }, 1000);
+            deadline.unref();
+            child.once?.("close", () => clearTimeout(deadline));
         }
 
         this.audioPipe = "";
@@ -658,6 +671,8 @@ class OmtOutput {
             maxVideoWaitMs: this.maxVideoWaitMs,
             audioBytes:
                 this.audioBytes,
+            queuedAudioBytes:this.audioSocket?.writableLength||0, audioBytesDropped:this.audioBytesDropped,
+            maxVideoGapMs:this.maxVideoGapMs,maxAudioGapMs:this.maxAudioGapMs,receiverVerified:false,
             error:
                 this.error ||
                 null
