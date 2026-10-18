@@ -26,6 +26,20 @@ app.whenReady().then(async()=>{
         await evaluate(`(()=>{const row=document.querySelectorAll('.opec-rundown-item')[1];const data=new DataTransfer();data.setData('application/x-santtos-media',${JSON.stringify(config.sourceId)});const bounds=row.getBoundingClientRect();row.dispatchEvent(new DragEvent('dragover',{bubbles:true,cancelable:true,dataTransfer:data,clientY:bounds.top+1,clientX:bounds.left+20}))})()`);
         await wait(220);assert.equal(await evaluate(`document.querySelector('.opec-insert-slot.active').innerText`),'Incluir Item');
         assert.equal(await evaluate(`document.querySelectorAll('.opec-modal').length`),0);
+        const rowsBefore=await evaluate(`document.querySelectorAll('.opec-rundown-item').length`);
+        assert.equal(await evaluate(`[...document.querySelectorAll('.opec-rundown-item')].filter(row=>row.querySelector('.opec-pending-label')).some(row=>row.querySelector('button[title="Assistir ao material"]'))`),false);
+        async function watch(selector){
+            await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
+            let ready=false;for(let n=0;n<80;n++){ready=await evaluate(`Boolean(document.querySelector('.library-watch-dialog video')?.readyState>=2)`);if(ready)break;await wait(50)}
+            assert(ready,'Authenticated web video must decode');
+            await evaluate(`(()=>{const v=document.querySelector('.library-watch-dialog video');v.pause();v.currentTime=1;v.volume=.2;})()`);
+            await evaluate(`document.querySelector('button[aria-label="Fechar reprodução"]').click()`);
+            await wait(50);assert.equal(await evaluate(`Boolean(document.querySelector('.library-watch-dialog'))`),false);
+        }
+        await watch('.opec-library-actions button');
+        await watch('button[title="Assistir ao material"]');
+        assert.equal(await evaluate(`document.querySelectorAll('.opec-rundown-item').length`),rowsBefore);
+        console.log('WEB WATCH: actual authenticated HTTP video, library/rundown controls, local pause/seek/volume and unchanged draft passed');
         console.log('WEB UI: real compiled assets, PIN login, current animated drag targets, model/import placement and theme parity passed');
     }catch(error){console.error(error);failed=true}finally{window.destroy();app.exit(failed?1:0)}
 });

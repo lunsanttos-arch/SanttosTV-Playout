@@ -516,3 +516,8 @@
 .remote-login-controls button { display: flex; align-items: center; justify-content: center; padding: 0 16px; }
 
 .opec-entry-time small { display:block; margin-top:3px; color:var(--muted-text,#9692a3); font-size:10px; font-weight:normal; }
+
+.opec-library-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 6px; }
+.opec-library-actions button { margin: 0; }
+.opec-row-actions { flex-wrap: wrap; justify-content: flex-end; }
+.opec-library-item > .opec-library-actions { flex: 0 0 auto; flex-direction: row; }

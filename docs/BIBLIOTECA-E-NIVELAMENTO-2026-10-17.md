@@ -6,6 +6,16 @@ O botão **Assistir** da Biblioteca abre um reprodutor local independente, dentr
 
 São aceitos somente identificadores de materiais cadastrados. A resolução do arquivo utiliza a política existente de origem/cache, inclusive o fallback em cache quando disponível. O protocolo de mídia mantém autorização e suporte a busca por intervalos. Se o Chromium não conseguir reproduzir o formato, a janela oferece abertura no player do sistema, também restrita ao material cadastrado e às extensões de vídeo permitidas. Não se inicia uma transcodificação pesada durante o ar. O player do sistema depende das associações/codecs instalados no Windows.
 
+### Programação e Opec remota
+
+**Assistir** também está nos itens definidos da Programação e na Biblioteca da Opec, no aplicativo e no navegador. No roteiro, respeita IN/OUT do bloco: começa no IN, para no OUT e restringe a busca ao trecho. Conteúdos a definir e lacunas ao vivo não apresentam esse botão. A consulta não modifica itens, observações, duração ou fila do PROGRAM.
+
+No navegador, o arquivo vem do master por uma rota HTTP autenticada pela sessão da Opec. São aceitos somente IDs de materiais cadastrados; a rota não recebe caminhos arbitrários do cliente. Suporta HEAD, Range e cancelamento quando a conexão é fechada. O master resolve origem/cache usando a política existente e não envia o catálogo inteiro a cada busca no vídeo. Não é necessário compartilhar as pastas do Windows com o computador da Opec.
+
+A reprodução remota depende de um formato compatível com o navegador, como MP4/H.264/AAC. Um formato incompatível ou uma sessão encerrada gera um aviso; não se inicia conversão pesada em tempo real. A alternativa de abrir no player do sistema fica no aplicativo, onde existe acesso local ao arquivo.
+
+Verificação: testes HTTP cobrem autenticação, HEAD, intervalos, busca inválida, ID inexistente, origem proibida e resolução em cache. `DISPLAY=:98 node scripts/run-native-qa.cjs --opec-watch-only` exercita a reprodução desktop de um bloco 2–4 s, busca limitada ao OUT, fila preservada, reprodução real no navegador autenticado e a continuidade do PROGRAM durante a consulta remota. Essa integração e `npm test` passaram após a extensão à Programação/Opec.
+
 ## Nivelamento de áudio
 
 Ativado por padrão em **Configurações → Operação → Nivelamento de áudio**. Desligar e salvar mantém o decoder no ar; a escolha é aplicada na próxima abertura de material. O áudio original do arquivo não é modificado. A escuta independente da Biblioteca reproduz o original, sem o processamento de emissão.

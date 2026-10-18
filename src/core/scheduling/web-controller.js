@@ -4,10 +4,13 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const os = require("node:os");
+const { Readable } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
+const { buildMediaUrl, serveImportedVideo } = require('../media/media-protocol');
 
 class SchedulingWebController {
-    constructor({ distFolder, getMedia, getRundown, saveRundown, getCategories = () => [], getWeekly, saveWeekly, renderPdf, commit = async () => {}, port = 8787 }) {
-        Object.assign(this, { distFolder, getMedia, getRundown, saveRundown, getCategories, getWeekly, saveWeekly, renderPdf, commit, port });
+    constructor({ distFolder, getMedia, getRundown, saveRundown, getCategories = () => [], getWeekly, saveWeekly, renderPdf, resolveWatchSource, commit = async () => {}, port = 8787 }) {
+        Object.assign(this, { distFolder, getMedia, getRundown, saveRundown, getCategories, getWeekly, saveWeekly, renderPdf, resolveWatchSource, commit, port });
         this.server = null; this.sessions = new Map(); this.attempts = new Map();
         this.pin = "";
     }
@@ -65,6 +68,37 @@ class SchedulingWebController {
             if (!session || (this.sessions.get(session) || 0) < Date.now()) {
                 this.sessions.delete(session);
                 return send(401, { error: "Informe o código de acesso do master." });
+            }
+            if (['GET', 'HEAD'].includes(req.method) && parsed.pathname === '/api/media/watch') {
+                const id = parsed.searchParams.get('id');
+                if (!id || id.length > 240) return send(404, {error:'Material não cadastrado.'});
+                const controller = new AbortController();
+                const abort = () => controller.abort();
+                res.once('close', abort);
+                try {
+                    let file;
+                    // The master resolver validates the library ID itself, avoiding
+                    // an entire catalog IPC round-trip for every browser seek.
+                    if (this.resolveWatchSource) file = await this.resolveWatchSource(id);
+                    else {
+                        const item = (await this.getMedia()).find(media => media.id === id && !media.placeholder && media.sourceType !== 'input');
+                        if (!item) return send(404, {error:'Material não cadastrado.'});
+                        file = item.path;
+                    }
+                    if (controller.signal.aborted) return;
+                    const response = serveImportedVideo(new Request(buildMediaUrl(file), {
+                        method:req.method, headers:req.headers.range ? {Range:req.headers.range} : {}, signal:controller.signal
+                    }), [{path:file}]);
+                    const headers = Object.fromEntries(response.headers);
+                    headers['Content-Disposition'] = 'inline';
+                    res.writeHead(response.status, headers);
+                    if (!response.body) res.end();
+                    else await pipeline(Readable.fromWeb(response.body), res);
+                } catch {
+                    if (!res.headersSent) send(404, {error:'Arquivo indisponível para reprodução.'});
+                    else res.destroy();
+                } finally { res.off('close', abort); }
+                return;
             }
             if (req.method === "GET" && parsed.pathname === "/api/weekly" && this.getWeekly) {
                 try { return send(200, await this.getWeekly(Number(parsed.searchParams.get("weekday")))); }

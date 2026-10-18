@@ -61,6 +61,20 @@ const { SchedulingWebController } = require("../src/core/scheduling/web-controll
         const cookie = login.headers.get("set-cookie").split(";")[0];
         assert(login.headers.get("set-cookie").includes("HttpOnly"));
         const headers = { Cookie: cookie, "Content-Type": "application/json" };
+        const watch = `${base}/api/media/watch?id=${encodeURIComponent(media.id)}`;
+        assert.equal((await fetch(watch)).status, 401);
+        const head = await fetch(watch, {method:'HEAD',headers});
+        assert.equal(head.status, 200); assert.equal(head.headers.get('content-length'), '100');
+        const partial = await fetch(watch, {headers:{...headers,Range:'bytes=10-29'}});
+        assert.equal(partial.status, 206); assert.equal(partial.headers.get('content-range'), 'bytes 10-29/100');
+        assert.equal((await partial.arrayBuffer()).byteLength, 20);
+        assert.equal((await fetch(watch, {headers:{...headers,Range:'bytes=999-'}})).status, 416);
+        assert.equal((await fetch(base+'/api/media/watch?id=not-imported&path=/etc/passwd',{headers})).status, 404);
+        assert.equal((await fetch(watch,{headers:{...headers,Origin:'http://outro-site'}})).status, 403);
+        const cached = path.join(root, 'cache.mp4');fs.writeFileSync(cached,Buffer.from('cache-version'));
+        controller.resolveWatchSource = async id => {assert.equal(id,media.id);return cached;};
+        assert.equal(await (await fetch(watch,{headers})).text(),'cache-version');
+        controller.resolveWatchSource = undefined;
         const response = await fetch(base + "/api/rundown?date=2026-10-13", { headers });
         assert.equal((await response.json()).items[0].sourceMediaId, media.id);
         const save = await fetch(base + "/api/rundown", { method: "POST", headers,

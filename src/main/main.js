@@ -276,6 +276,7 @@ app.whenReady().then(async () => {
         service.on("relaunch", () => app.relaunch()); service.on("request-quit", () => app.quit());
         const unwrap = async (channel, args) => { const result = await service.call(channel, args); if (result.ok === false) throw Error(result.error); return result.rundown; };
         controller = new SchedulingWebController({ distFolder: path.join(__dirname, "../../dist"),
+            resolveWatchSource: async id => { const result = await service.call('media:watch-source', [id]); if(!result.ok)throw Error(result.error);return result.filePath; },
             getMedia: () => service.call("service:media"), getCategories: () => service.call("library-categories:get"),
             getRundown: date => service.call("rundown:get", [date]), saveRundown: value => unwrap("rundown:save", [value]),
             getWeekly: weekday => service.call("rundown:weekly-get", [weekday]), saveWeekly: (weekday, value) => unwrap("rundown:weekly-save", [weekday, value]),

@@ -11,6 +11,7 @@ import "./library-categories.css";
 import StyledDatePicker from "./StyledDatePicker";
 import type { LibraryCategory } from "./LibraryFolderSettingsTab";
 import RemoteControllerAccess from "./RemoteControllerAccess";
+import LibraryWatchDialog from "./LibraryWatchDialog";
 
 const WEEKDAYS = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 
@@ -87,6 +88,7 @@ function SlotMinutes({ seconds, onChange }: { seconds: number; onChange: (second
 
 
 export default function OpecSchedulerPanel({ media, onApply, remote = false }: Props) {
+    const [watch, setWatch] = useState<{item:MediaItem;clip:boolean}|null>(null);
     const textDragGuard = useTextEditingDragGuard();
     const [date, setDate] = useState(todayKey());
     const [boundary, setBoundary] = useState<DailyRundown | null>(null);
@@ -526,6 +528,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                             onChange={(e) => patchItem(item.rundownItemId, { notes: e.currentTarget.value })}
                                         />
                                         <div className="opec-row-actions" role="group" aria-label="Ações do item">
+                                            {!item.placeholder && item.sourceType !== "input" && <button className="opec-row-add" title="Assistir ao material" onClick={() => setWatch({item,clip:true})}>Assistir</button>}
                                             <button className="opec-row-add" title="Adicionar Conteúdo a definir abaixo" aria-label="Adicionar Conteúdo a definir abaixo"
                                                 onClick={() => addPlaceholder(item.rundownItemId)}>+ A definir</button>
                                             <button className="opec-row-add" title="Adicionar material abaixo" aria-label="Adicionar material abaixo"
@@ -574,12 +577,14 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                                     event.dataTransfer.effectAllowed = "copy";
                                 }} onDragEnd={clearDrag}>
                                 <div><strong>{item.name}</strong><span>{formatDuration(clipDuration(item))} · {item.extension.toUpperCase()} · {item.quality?.status === "approved" ? "Aprovado" : item.quality?.status === "rejected" ? "Reprovado" : "Em análise"}</span></div>
-                                <button onClick={() => addItem(item)}>+ Programação</button>
+                                <div className="opec-library-actions"><button onClick={() => setWatch({item,clip:false})}>Assistir</button>
+                                <button onClick={() => addItem(item)}>+ Programação</button></div>
                             </article>
                         ))}
                     </div>
                 </aside>
             </div>
+            {watch && <LibraryWatchDialog item={watch.item} clip={watch.clip} remote={remote} onClose={() => setWatch(null)} />}
         </section>
     );
 }
