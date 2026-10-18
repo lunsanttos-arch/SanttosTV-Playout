@@ -33,16 +33,13 @@ jobs:
       - run: npm test
       - run: npm audit --audit-level=high
       - name: Build NSIS candidate
-        run: npm run build
-      - name: Installer SHA256
+        run: npm run build:lite
+      - name: Inspect installer signature
         shell: pwsh
         run: |
-          Get-ChildItem build -Filter '*.exe' | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } | Set-Content build/SHA256SUMS.txt
-          Copy-Item docs/HOMOLOGACAO-WINDOWS.md build/HOMOLOGACAO-WINDOWS.md
+          Get-ChildItem build -Filter '*.exe' | ForEach-Object { Get-AuthenticodeSignature $_.FullName | Format-List Status,StatusMessage,SignerCertificate }
       - uses: actions/upload-artifact@v4
         with:
           name: windows-candidate-${{ github.sha }}
           path: |
-            build/*.exe
-            build/SHA256SUMS.txt
-            build/HOMOLOGACAO-WINDOWS.md
+            build/release-*/**

@@ -33,6 +33,11 @@ if (omtMissing.length > 0) {
 console.log("OMT runtime: sender x64 e codecs oficiais presentes.");
 
 const runtime = path.resolve(__dirname, "../src/core/runtime");
+const runtimeNotices = fs.readdirSync(runtime);
+if (!runtimeNotices.some(name => /^LICENSE/i.test(name)) || !runtimeNotices.some(name => /^SOURCE/i.test(name))) {
+    console.error("PACOTE BLOQUEADO: inclua arquivos LICENSE e SOURCE com licença e origem do runtime de mídia.");
+    process.exit(1);
+}
 const { execFileSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const { supportedMediaVersion, verifyProgramRuntime } = require("../src/core/media/runtime-paths");

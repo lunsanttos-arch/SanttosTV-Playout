@@ -147,6 +147,20 @@ const {
             prepared.playbackPath
         );
 
+        // Same-name overnight replacement, including unchanged file size.
+        manager.setRealtimePriority(true, "replacement-test");
+        fs.writeFileSync(source, Buffer.alloc(1024 * 1024, 0x66));
+        const replacementTime = new Date(Date.now() + 5000);
+        fs.utimesSync(source, replacementTime, replacementTime);
+        const replaced = await manager.resolveForPlayback(source);
+        assert.equal(replaced.state, "direct", "Changed source must bypass stale cache");
+        assert.equal(fs.readFileSync(replaced.playbackPath)[0], 0x66);
+        manager.setRealtimePriority(false);
+        await manager.prepare(source);
+        const refreshed = await manager.resolveForPlayback(source);
+        assert.equal(refreshed.state, "cached");
+        assert.equal(fs.readFileSync(refreshed.playbackPath)[0], 0x66);
+
         fs.rmSync(
             source
         );
