@@ -1,307 +1,99 @@
-import {
-    useEffect,
-    useRef,
-    useState
-} from "react";
+import { useEffect, useRef, useState } from "react";
+import { programMonitorClock } from "./program-monitor-clock.mjs";
+import type { MonitorTiming, VideoPlan } from "./program-monitor-clock.mjs";
 
-type ProgramState =
-    | "IDLE"
-    | "STARTING"
-    | "PLAYING"
-    | "PAUSED"
-    | "ENDED"
-    | "FAULT";
+type ProgramState = "IDLE" | "STARTING" | "PLAYING" | "PAUSED" | "ENDED" | "FAULT";
+interface Props { state: ProgramState }
+type PreviewPayload = MonitorTiming & { sequence: number; mime: string; data: Uint8Array | ArrayBuffer };
 
-interface Props {
-    state: ProgramState;
-}
-
-type PreviewPayload = {
-    sequence: number;
-    mime: string;
-    data: Uint8Array | ArrayBuffer;
-};
-
-function copyToArrayBuffer(
-    data: Uint8Array | ArrayBuffer
-): ArrayBuffer {
-    if (data instanceof ArrayBuffer) {
-        return data.slice(0);
-    }
-
-    const copy =
-        new Uint8Array(
-            data.byteLength
-        );
-    copy.set(data);
-
-    return copy.buffer;
-}
-
-export default function NativeProgramPreview({
-    state
-}: Props) {
-    const canvasRef =
-        useRef<HTMLCanvasElement | null>(
-            null
-        );
-    const activeSequenceRef =
-        useRef(-1);
-    const decodingRef =
-        useRef(false);
-    const pendingFrameRef =
-        useRef<PreviewPayload | null>(
-            null
-        );
-    const mountedRef =
-        useRef(true);
-    const hasFrameRef =
-        useRef(false);
-    const [hasFrame, setHasFrame] =
-        useState(false);
-    const [decodeError, setDecodeError] =
-        useState("");
-
-    function clearCanvas() {
-        const canvas =
-            canvasRef.current;
-
-        if (canvas) {
-            const context =
-                canvas.getContext(
-                    "2d"
-                );
-
-            context?.clearRect(
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
-        }
-
-        hasFrameRef.current =
-            false;
-        setHasFrame(false);
-    }
-
-    async function decodeFrame(
-        payload: PreviewPayload
-    ) {
-        if (
-            !mountedRef.current
-        ) {
-            return;
-        }
-
-        if (
-            payload.sequence <
-            activeSequenceRef.current
-        ) {
-            return;
-        }
-
-        if (
-            payload.sequence >
-            activeSequenceRef.current
-        ) {
-            activeSequenceRef.current =
-                payload.sequence;
-            pendingFrameRef.current =
-                null;
-        }
-
-        if (decodingRef.current) {
-            pendingFrameRef.current =
-                payload;
-            return;
-        }
-
-        decodingRef.current =
-            true;
-
-        try {
-            let current:
-                | PreviewPayload
-                | null =
-                payload;
-
-            while (
-                current &&
-                mountedRef.current
-            ) {
-                pendingFrameRef.current =
-                    null;
-
-                const sequence =
-                    current.sequence;
-                const buffer =
-                    copyToArrayBuffer(
-                        current.data
-                    );
-                const blob =
-                    new Blob(
-                        [buffer],
-                        {
-                            type:
-                                current.mime ||
-                                "image/jpeg"
-                        }
-                    );
-
-                const bitmap =
-                    await createImageBitmap(
-                        blob
-                    );
-
-                try {
-                    const canvas =
-                        canvasRef.current;
-                    const shouldDraw =
-                        mountedRef.current &&
-                        sequence ===
-                            activeSequenceRef.current &&
-                        Boolean(canvas);
-
-                    if (
-                        shouldDraw &&
-                        canvas
-                    ) {
-                        if (
-                            canvas.width !==
-                                bitmap.width ||
-                            canvas.height !==
-                                bitmap.height
-                        ) {
-                            canvas.width =
-                                bitmap.width;
-                            canvas.height =
-                                bitmap.height;
-                        }
-
-                        const context =
-                            canvas.getContext(
-                                "2d",
-                                {
-                                    alpha: false
-                                }
-                            );
-
-                        if (!context) {
-                            throw new Error(
-                                "Canvas 2D indisponível."
-                            );
-                        }
-
-                        context.drawImage(
-                            bitmap,
-                            0,
-                            0,
-                            canvas.width,
-                            canvas.height
-                        );
-
-                        if (
-                            !hasFrameRef.current
-                        ) {
-                            hasFrameRef.current =
-                                true;
-                            setHasFrame(true);
-                        }
-
-                        setDecodeError("");
-                    }
-                } finally {
-                    bitmap.close();
-                }
-
-                current =
-                    pendingFrameRef.current;
-            }
-        } catch (error) {
-            if (
-                mountedRef.current
-            ) {
-                setDecodeError(
-                    error instanceof Error
-                        ? error.message
-                        : String(error)
-                );
-            }
-        } finally {
-            decodingRef.current =
-                false;
-
-            const pending =
-                pendingFrameRef.current;
-
-            if (
-                pending &&
-                mountedRef.current
-            ) {
-                pendingFrameRef.current =
-                    null;
-                void decodeFrame(
-                    pending
-                );
-            }
-        }
-    }
-
+export default function NativeProgramPreview({ state }: Props) {
+    const canvasRef = useRef<HTMLCanvasElement | null>(null);
+    const pendingFrameRef = useRef<PreviewPayload | null>(null);
+    const [hasFrame, setHasFrame] = useState(false);
+    const [decodeError, setDecodeError] = useState("");
     useEffect(() => {
-        mountedRef.current =
-            true;
-
-        const unsubscribeFrame =
-            window.santtosAPI
-                .onProgramPreviewFrame(
-                    (
-                        payload:
-                            PreviewPayload
-                    ) => {
-                        if (
-                            payload.sequence >
-                            activeSequenceRef.current
-                        ) {
-                            activeSequenceRef.current =
-                                payload.sequence;
+        let mounted = true, decoding = false, activeSequence = -1, activeStream: string | undefined;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let ready: { bitmap: ImageBitmap; plan: VideoPlan }[] = [];
+        function clearReady() {
+            clearTimeout(timer); timer = undefined;
+            for (const frame of ready) frame.bitmap.close();
+            ready = [];
+        }
+        function present() {
+            timer = undefined;
+            let latest: typeof ready[number] | undefined;
+            while (ready.length && ready[0].plan.deadline <= programMonitorClock.now() + 1) {
+                latest?.bitmap.close(); latest = ready.shift();
+            }
+            if (latest) {
+                try {
+                    const { bitmap, plan } = latest, canvas = canvasRef.current;
+                    if (mounted && canvas && programMonitorClock.valid(plan)) {
+                        if (canvas.width !== bitmap.width) canvas.width = bitmap.width;
+                        if (canvas.height !== bitmap.height) canvas.height = bitmap.height;
+                        const context = canvas.getContext("2d", { alpha: false });
+                        if (!context) throw Error("Canvas 2D indisponível.");
+                        context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+                        if (programMonitorClock.presented(plan)) {
+                            canvas.dataset.monitorTime = String(plan.mediaTimeSeconds);
+                            canvas.dataset.monitorEpoch = String(plan.epoch);
+                            setHasFrame(true); setDecodeError("");
                         }
-
-                        if (
-                            decodingRef.current
-                        ) {
-                            // Último frame vence: nunca formamos fila de preview.
-                            pendingFrameRef.current =
-                                payload;
-                            return;
+                    }
+                } catch (error) { setDecodeError(String(error)); }
+                finally { latest.bitmap.close(); }
+            }
+            if (ready.length) timer = setTimeout(present, Math.max(0, ready[0].plan.deadline - programMonitorClock.now()));
+        }
+        async function decodeFrame(payload: PreviewPayload) {
+            if (!mounted || payload.sequence < activeSequence) return;
+            activeSequence = payload.sequence;
+            if (decoding) { pendingFrameRef.current = payload; return; }
+            decoding = true;
+            try {
+                let current: PreviewPayload | null = payload;
+                while (current && mounted) {
+                    pendingFrameRef.current = null;
+                    const plan = programMonitorClock.video(current);
+                    if (plan) {
+                        const bytes = new Uint8Array(current.data instanceof ArrayBuffer ? current.data : current.data.slice());
+                        const bitmap = await createImageBitmap(new Blob([bytes.buffer], { type: current.mime || "image/jpeg" }));
+                        if (!mounted || current.sequence !== activeSequence || !programMonitorClock.valid(plan)) bitmap.close();
+                        else {
+                            ready.push({ bitmap, plan });
+                            while (ready.length > 8) ready.shift()!.bitmap.close();
+                            if (!timer) timer = setTimeout(present, Math.max(0, ready[0].plan.deadline - programMonitorClock.now()));
                         }
-
-                        void decodeFrame(
-                            payload
-                        );
                     }
-                );
-
-        const unsubscribeReset =
-            window.santtosAPI
-                .onProgramPreviewReset(
-                    (payload) => {
-                        activeSequenceRef.current =
-                            payload.sequence;
-                        pendingFrameRef.current =
-                            null;
-                        clearCanvas();
-                        setDecodeError("");
-                    }
-                );
-
+                    current = pendingFrameRef.current;
+                }
+            } catch (error) { if (mounted) setDecodeError(error instanceof Error ? error.message : String(error)); }
+            finally {
+                decoding = false;
+                const pending = pendingFrameRef.current;
+                pendingFrameRef.current = null;
+                if (pending && mounted) void decodeFrame(pending);
+            }
+        }
+        const unsubscribeClock = programMonitorClock.subscribe(reset => { if (reset) clearReady(); });
+        const unsubscribeFrame = window.santtosAPI.onProgramPreviewFrame(payload => {
+            if (payload.streamId !== activeStream) { activeStream = payload.streamId; activeSequence = -1; }
+            if (payload.sequence < activeSequence) return;
+            activeSequence = payload.sequence;
+            if (decoding) pendingFrameRef.current = payload;
+            else void decodeFrame(payload);
+        });
+        const unsubscribeReset = window.santtosAPI.onProgramPreviewReset(payload => {
+            activeSequence = payload.sequence; pendingFrameRef.current = null;
+            programMonitorClock.reset(); clearReady();
+            const canvas = canvasRef.current;
+            if (canvas) canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+            setHasFrame(false); setDecodeError("");
+        });
         return () => {
-            mountedRef.current =
-                false;
-            pendingFrameRef.current =
-                null;
-            unsubscribeFrame();
-            unsubscribeReset();
+            mounted = false; pendingFrameRef.current = null; clearReady();
+            unsubscribeFrame(); unsubscribeReset(); unsubscribeClock();
         };
     }, []);
 
@@ -338,7 +130,7 @@ export default function NativeProgramPreview({
                     canvasRef
                 }
                 className="program-video program-native-preview-canvas"
-                aria-label="Prévia exata do PROGRAM nativo"
+                aria-label="Monitor local do PROGRAM"
             />
 
             {!hasFrame && (

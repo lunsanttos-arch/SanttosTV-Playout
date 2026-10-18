@@ -81,8 +81,11 @@ class DecoderDeck {
         this.delivered++;
         let latest;
         const ratio = this.profile.fpsN / this.profile.fpsD > 30 ? 2 : 1;
-        while (this.previews.length && this.previews[0].index <= Math.ceil(this.delivered / ratio)) { latest = this.previews.shift().frame; this.previewBytes -= latest.length; }
-        if (latest) this.onPreview(latest);
+        while (this.previews.length && this.previews[0].index <= Math.ceil(this.delivered / ratio)) { latest = this.previews.shift(); this.previewBytes -= latest.frame.length; }
+        if (latest) this.onPreview(latest.frame, {
+            mediaTimeSeconds: (latest.index - 1) * ratio * this.profile.fpsD / this.profile.fpsN,
+            programTimeSeconds: (this.delivered - 1) * this.profile.fpsD / this.profile.fpsN
+        });
         return writable !== false;
     }
     fail(error) {

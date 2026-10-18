@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { programMonitorClock } from "./program-monitor-clock.mjs";
+import type { MonitorTiming } from "./program-monitor-clock.mjs";
 
 export interface NativeAudioStatus {
     state: "IDLE" | "STARTING" | "FLOWING" | "ENDED" | "ERROR" |
@@ -33,7 +35,7 @@ type StereoValues = {
     pr: number;
 };
 
-type ProgramPcmPayload = {
+type ProgramPcmPayload = MonitorTiming & {
     sequence: number;
     sampleRate: number;
     channels: number;
@@ -43,7 +45,6 @@ type ProgramPcmPayload = {
 type MonitorEngine = {
     ctx: AudioContext;
     gain: GainNode;
-    nextStart: number;
     sequence: number;
     sources: Set<AudioBufferSourceNode>;
 };
@@ -106,6 +107,7 @@ export default function ProgramAudioMeters({
     const monitorEnabledRef = useRef(monitorEnabled);
     const isPlayingRef = useRef(isPlaying);
     const monitor = useRef<MonitorEngine | null>(null);
+    const pendingPcm = useRef<ProgramPcmPayload[]>([]);
 
     const graph = useRef<{
         element: HTMLVideoElement;
@@ -142,7 +144,6 @@ export default function ProgramAudioMeters({
         }
 
         current.sources.clear();
-        current.nextStart = 0;
     }
 
     function ensureRealMonitor(): MonitorEngine | null {
@@ -170,7 +171,6 @@ export default function ProgramAudioMeters({
             const engine: MonitorEngine = {
                 ctx,
                 gain,
-                nextStart: 0,
                 sequence: -1,
                 sources:
                     new Set()
@@ -220,9 +220,24 @@ export default function ProgramAudioMeters({
         }
     }
 
-    function queueRealPcm(
-        payload: ProgramPcmPayload
-    ) {
+    function queueRealPcm(payload: ProgramPcmPayload) {
+        if (!monitorEnabledRef.current || !isPlayingRef.current) return;
+        pendingPcm.current.push(payload);
+        while (pendingPcm.current.length > 32) pendingPcm.current.shift();
+        drainRealPcm();
+    }
+
+    function drainRealPcm() {
+        while (pendingPcm.current.length) {
+            const payload = pendingPcm.current[0];
+            const plan = programMonitorClock.audio(payload);
+            if (plan.status === "wait") break;
+            pendingPcm.current.shift();
+            if (plan.status === "play" && plan.deadline !== undefined) scheduleRealPcm(payload, plan.deadline);
+        }
+    }
+
+    function scheduleRealPcm(payload: ProgramPcmPayload, deadline: number) {
         if (
             !monitorEnabledRef.current ||
             !isPlayingRef.current
@@ -260,6 +275,10 @@ export default function ProgramAudioMeters({
             ensureRealMonitor();
 
         if (!engine) return;
+        if (engine.ctx.state !== "running") {
+            void engine.ctx.resume().catch(() => setMonitorSuspended(true));
+            return;
+        }
 
         if (
             engine.sequence !==
@@ -337,42 +356,21 @@ export default function ProgramAudioMeters({
             }
         };
 
-        const now =
-            engine.ctx.currentTime;
-
-        // O monitor é operacional, não um buffer de contribuição.
-        // Se o renderer atrasar, descartamos a latência acumulada em vez
-        // de tocar áudio antigo segundos depois do PROGRAM.
-        if (
-            engine.nextStart <
-                now + 0.008 ||
-            engine.nextStart - now >
-                0.35
-        ) {
-            engine.nextStart =
-                now + 0.025;
+        // Map the shared video presentation deadline to the audio device clock.
+        // Missing IPC packets retain their source positions instead of being concatenated.
+        const stamp = engine.ctx.getOutputTimestamp?.();
+        const at = stamp && typeof stamp.contextTime === "number" && typeof stamp.performanceTime === "number" && stamp.contextTime > 0 && stamp.performanceTime > 0
+            ? stamp.contextTime + (deadline - performance.timeOrigin - stamp.performanceTime) / 1000
+            : engine.ctx.currentTime + (deadline - programMonitorClock.now()) / 1000 - (engine.ctx.baseLatency || 0);
+        const offset = Math.max(0, engine.ctx.currentTime - at);
+        if (offset > .06 || offset >= buffer.duration) {
+            source.disconnect();
+            return;
         }
+        source.start(Math.max(engine.ctx.currentTime, at), offset);
+        engine.sources.add(source);
 
-        source.start(
-            engine.nextStart
-        );
-        engine.sources.add(
-            source
-        );
-        engine.nextStart +=
-            frames / sampleRate;
 
-        if (
-            engine.ctx.state ===
-            "suspended"
-        ) {
-            void engine.ctx.resume()
-                .catch(() => {
-                    setMonitorSuspended(
-                        true
-                    );
-                });
-        }
     }
 
     useEffect(() => {
@@ -399,6 +397,7 @@ export default function ProgramAudioMeters({
         }
 
         if (!monitorEnabled) {
+            pendingPcm.current = [];
             resetRealMonitor();
         }
     }, [monitorEnabled]);
@@ -408,11 +407,17 @@ export default function ProgramAudioMeters({
             isPlaying;
 
         if (!isPlaying) {
+            pendingPcm.current = [];
             resetRealMonitor();
         }
     }, [isPlaying]);
 
     useEffect(() => {
+        const unsubscribeClock = programMonitorClock.subscribe(reset => {
+            if (reset) { pendingPcm.current = []; resetRealMonitor(); }
+            else drainRealPcm();
+        });
+        const watchdog = window.setInterval(() => { programMonitorClock.checkStall(); }, 20);
         const unsubscribePcm =
             window.santtosAPI
                 .onProgramAudioPcm(
@@ -436,11 +441,14 @@ export default function ProgramAudioMeters({
                                 payload.sequence;
                         }
 
+                        pendingPcm.current = [];
+                        programMonitorClock.reset();
                         resetRealMonitor();
                     }
                 );
 
         return () => {
+            window.clearInterval(watchdog); unsubscribeClock(); pendingPcm.current = [];
             unsubscribePcm();
             unsubscribeReset();
 

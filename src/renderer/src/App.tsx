@@ -1,3 +1,4 @@
+import type { MonitorTiming } from "./program-monitor-clock.mjs";
 import { useTextEditingDragGuard } from "./useTextEditingDragGuard";
 import {
     useEffect,
@@ -519,7 +520,7 @@ declare global {
                 callback: (status: NativePlayoutStatus) => void
             ) => () => void;
             onProgramAudioPcm: (
-                callback: (payload: {
+                callback: (payload: MonitorTiming & {
                     sequence: number;
                     sampleRate: number;
                     channels: number;
@@ -532,7 +533,7 @@ declare global {
                 }) => void
             ) => () => void;
             onProgramPreviewFrame: (
-                callback: (payload: {
+                callback: (payload: MonitorTiming & {
                     sequence: number;
                     mime: string;
                     data: Uint8Array | ArrayBuffer;

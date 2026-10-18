@@ -1,0 +1,37 @@
+"use strict";
+const assert = require('node:assert/strict');
+(async () => {
+    const { ProgramMonitorClock } = await import('../src/renderer/src/program-monitor-clock.mjs');
+    let now = 10000, canceled = 0;
+    const clock = new ProgramMonitorClock(() => now);
+    clock.subscribe(reset => { if (reset) canceled++; });
+    const packet = (time, generation = 1, streamId = 'service-a') => ({ streamId, generation,
+        emittedAt: now, mediaTimeSeconds: time, programTimeSeconds: time });
+    const audio = packet(0);
+    assert.equal(clock.audio(audio).status, 'wait', 'Never play before any video was presented');
+    const first = clock.video(packet(0)); assert(first); assert.equal(first.deadline, now + 120);
+    now = first.deadline; assert(clock.presented(first));
+    assert.equal(clock.audio(audio).deadline, first.deadline);
+    // Lost audio packets must retain their original positions, not concatenate.
+    now = 10200;
+    assert.equal(clock.audio(packet(.2)).deadline, 10320);
+    assert.equal(clock.audio({ ...packet(0), emittedAt: now - 900 }).status, 'drop');
+    const before = clock.epoch; now += 200;
+    assert(clock.checkStall()); assert(clock.epoch > before); assert(canceled >= 2);
+    assert(!clock.valid(first), 'An asynchronous old bitmap cannot reappear after recovery');
+    assert.equal(clock.audio(packet(.4)).status, 'wait', 'Video failure must silence local audio');
+    const resumed = clock.video(packet(.4)); assert(resumed); now = resumed.deadline;
+    assert(clock.presented(resumed)); assert.equal(clock.audio(packet(.4)).deadline, resumed.deadline);
+    assert.equal(clock.video({ ...packet(.1), programTimeSeconds: .6 }), null, 'Reject old JPEG content even when newly delivered');
+    const cut = clock.video(packet(0, 2)); assert(cut); assert.equal(clock.audio(packet(.7, 1)).status, 'drop');
+    now = cut.deadline; assert(clock.presented(cut));
+    // A restarted service may reuse generation/sequence zero; its identity must differ.
+    const restart = clock.video(packet(0, 0, 'service-b')); assert(restart);
+    assert.equal(clock.video(packet(0, 99, 'service-a')), null);
+    now = restart.deadline; assert(clock.presented(restart));
+    assert.equal(clock.audio(packet(0, 0, 'service-b')).status, 'play');
+    now += 1000;
+    const rebase = clock.video(packet(.04, 0, 'service-b')); assert(rebase); assert(rebase.epoch > restart.epoch);
+    assert.equal(rebase.deadline, now + 120, 'Source pause must rebase both tracks, never race through old packets');
+    console.log('PROGRAM MONITOR CLOCK: shared A/V deadlines, missing/stale IPC packets, image stall cancellation, late JPEG/bitmap rejection, source rebase, cuts and restarted service identity passed');
+})().catch(error => { console.error(error); process.exitCode = 1; });

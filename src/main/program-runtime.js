@@ -290,6 +290,7 @@ let audioSource = null;
 let audioOutputStatus = "IDLE";
 let audioOutputError = "";
 let programAudioSequence = 0;
+const monitorStreamId = require('node:crypto').randomUUID();
 let stopNdiFrameFeed = null;
 let stopProgramPreviewFeed = null;
 let programPreviewSequence = 0;
@@ -883,7 +884,7 @@ function sendProgramPreviewReset() {
 }
 
 function sendProgramPreviewFrame(
-    frame
+    frame, timing = {}
 ) {
     if (
         !mainWindow ||
@@ -897,6 +898,7 @@ function sendProgramPreviewFrame(
     mainWindow.webContents.send(
         "playout:preview-frame",
         {
+            ...timing, streamId: monitorStreamId, emittedAt: performance.timeOrigin + performance.now(),
             sequence:
                 programPreviewSequence,
             mime:
@@ -929,7 +931,7 @@ function sendProgramAudioReset() {
 function sendProgramAudioPcm(
     chunk,
     sampleRate,
-    channels
+    channels, timing = {}
 ) {
     if (
         !Buffer.isBuffer(chunk) ||
@@ -957,6 +959,7 @@ function sendProgramAudioPcm(
     mainWindow.webContents.send(
         "playout:audio-pcm",
         {
+            ...timing, streamId: monitorStreamId, emittedAt: performance.timeOrigin + performance.now(),
             sequence:
                 programAudioSequence,
             sampleRate,
@@ -1319,9 +1322,14 @@ async function createDecoderDeck(item, position, overlayState, signal) {
                 lastProgramFrame = frame; lastFrameGeneration = playoutEngine.generation;
                 lastProgramFrameAt = programClock.nowMs(); const count=Math.floor((deck.delivered+1)*profile.sampleRate*profile.fpsD/profile.fpsN)-Math.floor(deck.delivered*profile.sampleRate*profile.fpsD/profile.fpsN);
                 const writable = writeNativeProgramFrame(frame,count); for (const output of transportOutputs.values()) output.writeVideo(frame); return writable; },
-            onPreview: sendProgramPreviewFrame,
+            onPreview: (frame,timing) => { if(activeDeck===deck)sendProgramPreviewFrame(frame,{...timing,generation:playoutEngine.generation}); },
             createAudio: pcmStream => new NdiAudioSource({ pcmStream, pipePath: '', ffmpegPath: resolveFfmpegPath(), filePath,
-                sampleRate: profile.sampleRate, channels: profile.channels, onPcmData: sendProgramAudioPcm }).start(),
+                sampleRate: profile.sampleRate, channels: profile.channels, onPcmData:(chunk,rate,channels)=>{
+                    if(activeDeck!==deck)return;
+                    const mediaTimeSeconds=(deck.monitorAudioSamples||0)/rate;
+                    deck.monitorAudioSamples=(deck.monitorAudioSamples||0)+chunk.length/(channels*4);
+                    sendProgramAudioPcm(chunk,rate,channels,{generation:playoutEngine.generation,mediaTimeSeconds});
+                } }).start(),
             onFinish: error => {
                 if (activeDeck !== deck) return;
                 activeDeck = null; ffmpegProcess = null; activeGraphics = null; audioSource = null; nativePlaybackActive = false;
