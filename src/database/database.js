@@ -98,6 +98,7 @@ const initialData = {
     },
 
     media: [],
+    scheduleMedia: [],
     timeline: [],
     playlists: [],
     dailyRundowns: {},
@@ -712,6 +713,10 @@ function getMedia() {
     }));
 }
 
+function getPlayableMedia() {
+    return [...getMedia(), ...(data.scheduleMedia || []).map(item => ({ ...item }))];
+}
+
 function timelineScheduleFields(item) {
     const iso = value => typeof value === "string" && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : undefined;
     return { scheduleDate: /^\d{4}-\d{2}-\d{2}$/.test(item.scheduleDate || "") ? item.scheduleDate : undefined,
@@ -720,7 +725,7 @@ function timelineScheduleFields(item) {
 
 function getTimeline() {
     const mediaById = new Map(
-        data.media.map((item) => [
+        getPlayableMedia().map((item) => [
             item.id,
             item
         ])
@@ -837,7 +842,7 @@ function saveTimeline(timelineItems) {
     }
 
     const existingMediaIds = new Set(
-        data.media.map((item) => item.id)
+        getPlayableMedia().map((item) => item.id)
     );
 
     data.timeline = timelineItems
@@ -997,7 +1002,7 @@ function getDailyRundown(dateValue) {
 }
 
 function hydrateRundown(stored, date = "") {
-    const mediaById = new Map(data.media.map(item => [item.id, item]));
+    const mediaById = new Map(getPlayableMedia().map(item => [item.id, item]));
     const items = Array.isArray(stored.items)
         ? stored.items.map((entry) => {
               if (entry.placeholder) return {
@@ -1067,7 +1072,7 @@ function saveDailyRundown(rundown) {
 }
 
 function normalizeRundownItems(source) {
-    const mediaIds = new Set(data.media.map((item) => item.id));
+    const mediaIds = new Set(getPlayableMedia().map((item) => item.id));
     const sourceItems = Array.isArray(source) ? source : [];
 
     return sourceItems.map((item) => {
@@ -1123,7 +1128,9 @@ function saveWeeklyRundown(weekday, rundown) {
     return getWeeklyRundown(weekday);
 }
 
-function addMedia(filePaths) {
+function addMedia(filePaths, scheduleOnly = false) {
+    const collection = scheduleOnly ? "scheduleMedia" : "media";
+    data[collection] ||= [];
     if (!Array.isArray(filePaths)) {
         throw new TypeError(
             "A lista de arquivos é inválida."
@@ -1131,7 +1138,7 @@ function addMedia(filePaths) {
     }
 
     const existingPaths = new Set(
-        data.media.map((item) =>
+        data[collection].map((item) =>
             normalizePath(item.path)
         )
     );
@@ -1226,16 +1233,17 @@ function addMedia(filePaths) {
             createdAt: new Date().toISOString()
         };
 
-        data.media.push(item);
+        if (scheduleOnly) item.scheduleOnly = true;
+        data[collection].push(item);
         importedItems.push(item);
         existingPaths.add(normalizedPath);
     }
 
     if (importedItems.length > 0) {
-        writer().upsertMany(["media"], importedItems);
+        writer().upsertMany([collection], importedItems);
 
         addLog(
-            `${importedItems.length} mídia(s) adicionada(s) à biblioteca.`
+            `${importedItems.length} mídia(s) adicionada(s) ${scheduleOnly ? "somente à programação" : "à biblioteca"}.`
         );
     }
 
@@ -1315,7 +1323,7 @@ function updateMediaMetadata(
     metadata
 ) {
     const mediaItem =
-        data.media.find(
+        [...data.media, ...(data.scheduleMedia || [])].find(
             (item) =>
                 item.id === mediaId
         );
@@ -1334,7 +1342,7 @@ function updateMediaMetadata(
         }
     );
 
-    writer().upsert(["media"], mediaItem);
+    writer().upsert([mediaItem.scheduleOnly ? "scheduleMedia" : "media"], mediaItem);
 
     return {
         ...mediaItem
@@ -1351,6 +1359,7 @@ module.exports = {
     updateExhibitionStyle,
     addLog,
     getMedia,
+    getPlayableMedia,
     getTimeline,
     saveTimeline,
     getDailyRundown,

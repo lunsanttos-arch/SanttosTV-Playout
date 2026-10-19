@@ -29,6 +29,10 @@ await evaluate(`window.santtosAPI.importMedia(${JSON.stringify([fixture])})`);le
 // A compact raster keeps CI load separate from hardware production benchmarks.
 const settings=await evaluate('window.santtosAPI.getSettings()');await evaluate(`window.santtosAPI.saveOutputSettings(${JSON.stringify({...settings.output,resolution:process.env.SANTTOS_QA_RESOLUTION||'1280x720',fps:process.env.SANTTOS_QA_FPS||'25',ndi:{enabled:true,name:'Santtos QA DEV NULL'},omt:{enabled:false},srt:{enabled:false},rtmp:{enabled:false}})})`);
 ws.close();ws=null;
+if(process.argv.includes('--explorer-drop-only')){
+ await run('test-opec-explorer-drop.cjs');await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});
+ console.log('Explorer file drop integration passed.');return;
+}
 if(process.argv.includes('--opec-watch-only')){
  await run('test-opec-models.cjs',{SANTTOS_QA_OUTPUT:logs});await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});
  console.log('Desktop/remote Opec watching and clip bounds integration passed.');return;

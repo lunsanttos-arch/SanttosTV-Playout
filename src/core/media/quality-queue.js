@@ -23,7 +23,7 @@ class MediaQualityQueue {
   let stat;try{stat=await fs.promises.stat(current.path)}catch(error){if(current.quality?.status==='approved'&&this.canUseCached(current.path))return current.quality;throw error;}const valid=current.quality?.version===1&&current.quality.fingerprint===fingerprint(stat);
   if(valid&&current.quality.status==='approved')return current.quality;
   if((valid&&current.quality?.status==='rejected')||current.quality?.blockedFingerprint===fingerprint(stat))throw Error(`Material reprovado: ${current.name}. ${current.quality.error||''}`);
-  this.enqueue(current);throw Error(`Análise completa pendente: ${current.name}. Aguarde a aprovação na Biblioteca antes de aplicar.`);
+  this.enqueue(current);throw Error(`Análise completa pendente: ${current.name}. Aguarde a aprovação ${current.scheduleOnly ? 'do arquivo da programação' : 'na Biblioteca'} antes de aplicar.`);
  }
  async assertPlayable(item){const q=item.quality;if(!q||(!q.blockedFingerprint&&q.status!=="rejected"))return;
   const stat=await fs.promises.stat(item.path);if((q.status==="rejected"&&q.fingerprint===fingerprint(stat))||q.blockedFingerprint===fingerprint(stat))throw Error("Material reprovado na análise completa: "+(q.error||item.name));this.enqueue(item);}

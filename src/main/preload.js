@@ -55,6 +55,8 @@ contextBridge.exposeInMainWorld(
                 "media:list"
             ),
 
+        importRundownFiles: paths => ipcRenderer.invoke("rundown:import-files", paths),
+
         importMedia: (filePaths) =>
             ipcRenderer.invoke(
                 "media:import",

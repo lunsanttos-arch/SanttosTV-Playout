@@ -250,6 +250,7 @@ declare global {
             recheckMedia:(id:string)=>Promise<{ok:boolean}>;
             onMediaChanged: (callback:()=>void) => ()=>void;
             getMedia: () => Promise<MediaItem[]>;
+            importRundownFiles: (paths: string[]) => Promise<{media: MediaItem[]}>;
             importMedia: (
                 filePaths: string[]
             ) => Promise<ImportResult>;
@@ -1037,6 +1038,7 @@ export default function App() {
                     {activePanel === "scheduler" && (
                         <OpecSchedulerPanel
                             media={media}
+                            onImportDroppedFiles={paths => window.santtosAPI.importRundownFiles(paths)}
                             onApply={async (items, startTime, context) => {
                                 if (!testBench || ndiTestMode) {
                                     const result = await window.santtosAPI.applyNativeRundown(items, context);

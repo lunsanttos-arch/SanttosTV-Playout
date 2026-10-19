@@ -95,6 +95,7 @@ const {
     updateExhibitionStyle,
     addLog,
     getMedia,
+    getPlayableMedia,
     getTimeline,
     saveTimeline,
     getDailyRundown,
@@ -164,7 +165,7 @@ const isDevelopment = !app.isPackaged;
 
 const durableChannels = new Set([
     "operation:save", "playout:apply-rundown", "playout:checkpoint",
-    "media:select", "media:import", "media:remove", "timeline:save",
+    "media:select", "media:import", "rundown:import-files", "media:remove", "timeline:save",
     "rundown:save", "rundown:weekly-save", "library-categories:save", "library-categories:select-folder",
     "web-inputs:save", "web-inputs:remove", "server-media:set-settings", "server-media:select-root",
     "settings:set-output", "settings:set-watermark-style", "settings:set-hashtag-style", "settings:set-exhibition-style",
@@ -365,7 +366,7 @@ function nativeOverlay(item, position = 0, overrides = {}) {
 }
 const { MediaQualityQueue } = require('../core/media/quality-queue');
 let mediaChangedTimer=null;
-const mediaQuality = new MediaQualityQueue({ffmpeg:require('../core/media/runtime-paths').resolveMediaRuntime('ffmpeg'),getMedia,canUseCached:file=>Boolean(serverMedia.cachedFileAvailable(file)),
+const mediaQuality = new MediaQualityQueue({ffmpeg:require('../core/media/runtime-paths').resolveMediaRuntime('ffmpeg'),getMedia:getPlayableMedia,canUseCached:file=>Boolean(serverMedia.cachedFileAvailable(file)),
     onUpdate:(id,quality)=>{updateMediaMetadata(id,{quality});
         if(!mediaChangedTimer)mediaChangedTimer=setTimeout(()=>{mediaChangedTimer=null;if(mainWindow&&!mainWindow.isDestroyed())mainWindow.webContents.send('media:changed',{});},250);}});
 const analysesInProgress = new Map();
@@ -441,7 +442,7 @@ async function analyzeMediaItem(mediaItem) {
                 }
             );
 
-            if (decodeSupport.decodable) mediaQuality.enqueue(getMedia().find(item=>item.id===mediaItem.id));
+            if (decodeSupport.decodable) mediaQuality.enqueue(getPlayableMedia().find(item=>item.id===mediaItem.id));
 
             console.log(
                 [
@@ -1050,7 +1051,7 @@ const { DecoderDeck } = require('../core/playout/decoder-deck');
 const { DeckPreparer } = require('../core/playout/deck-preparer');
 function deckKey(item, position, overlay) {
     const settings = getSettings();
-    const quality = getMedia().find(media => media.id === (item.sourceMediaId || item.id))?.quality;
+    const quality = getPlayableMedia().find(media => media.id === (item.sourceMediaId || item.id))?.quality;
     return JSON.stringify([configurationRevision, item.id, item.path, position, overlay.inPointSeconds, overlay.inputTimingMode === "clock" ? overlay.inputEndTime : overlay.outPointSeconds,
         overlay.sourceType, overlay.inputProtocol, overlay.inputEngine, overlay.inputHttpReferer, overlay.inputHttpUserAgent,
         item.metadataUpdatedAt, item.fileSize, quality?.checkedAt, operationSettings.value.audioLevelingEnabled, overlay.videoStreamIndex, overlay.audioStreamIndex,
@@ -1114,7 +1115,7 @@ async function resolveDeckSource(item, position, overlay, signal) {
                 }
             }
         } else {
-            const libraryItem=getMedia().find(media=>path.resolve(media.path)===path.resolve(filePath));
+            const libraryItem=getPlayableMedia().find(media=>media.id===(item.sourceMediaId||item.id)) || getPlayableMedia().find(media=>path.resolve(media.path)===path.resolve(filePath));
             if(!libraryItem)throw Error('Material não cadastrado.');
             await mediaQuality.assertPlayable(libraryItem);
             if (serverMedia.isServerMediaPath(filePath)) source.url = (await checked(serverMedia.resolveForPlayback(filePath))).playbackPath;
@@ -1359,7 +1360,7 @@ async function startNativePlayback(filePath, startSeconds = 0, hashtag = '', ove
     const preparingRevision = configurationRevision;
     try {
     if (prior.state === 'PAUSED' && prior.itemId === overlayState.itemId && prior.filePath === filePath) startSeconds = prior.positionSeconds;
-    const source = getTimeline().find(item => item.id === overlayState.itemId) || getMedia().find(item => item.path === filePath) || {};
+    const source = getTimeline().find(item => item.id === overlayState.itemId) || getPlayableMedia().find(item => item.path === filePath) || {};
     const item = { ...source, ...overlayState, id: overlayState.itemId || source.id, path: filePath, hashtag };
     const overlay = { ...overlayState, __resumeRemote: prior.state === 'PAUSED' && prior.itemId === item.id && item.sourceType === 'input' };
     const prepared = decks.candidate?.key === deckKey(item, startSeconds, overlay) && Boolean(decks.candidate?.deck?.readyState);
@@ -1426,7 +1427,7 @@ function redactDiagnostic(value) {
 
 function registerIpcHandlers() {
     async function libraryWatchSource(id) {
-        const item = getMedia().find(media => media.id === id && media.sourceType !== 'input' && !media.placeholder);
+        const item = getPlayableMedia().find(media => media.id === id && media.sourceType !== 'input' && !media.placeholder);
         if (!item) throw Error('Material não cadastrado na Biblioteca.');
         const source = await serverMedia.resolveForPlayback(item.path);
         const filePath = await fs.promises.realpath(source.playbackPath);
@@ -1692,7 +1693,7 @@ function registerIpcHandlers() {
             if (!nativeOutputAllowed) return { ok: true, previewOnly: true };
             try {
                 const saved = getTimeline().find(item => item.id === overlayState?.itemId);
-                const source = saved || getMedia().find(item => item.path === filePath) || getWebInputs().find(item => item.url === filePath);
+                const source = saved || getPlayableMedia().find(item => item.path === filePath) || getWebInputs().find(item => item.url === filePath);
                 if (!source) throw Error("Material não cadastrado.");
                 const item = { ...source, id: overlayState?.itemId || source.id, path: filePath, hashtag,
                     sourceType: overlayState?.sourceType || source.sourceType || "file",
@@ -2464,7 +2465,7 @@ function registerIpcHandlers() {
                     throw new Error("Caminho da midia invalido.");
                 }
                 const realPath = fs.realpathSync(requestedPath);
-                const imported = getMedia().some((item) => {
+                const imported = getPlayableMedia().some((item) => {
                     try { return fs.realpathSync(item.path) === realPath; }
                     catch { return false; }
                 });
@@ -2493,6 +2494,10 @@ function registerIpcHandlers() {
         "media:list",
         async () => {
             const media = getMedia();
+            for (const item of getPlayableMedia().filter(item => item.scheduleOnly)) {
+                if (["pending-metadata", "analyzing"].includes(item.status)) void analyzeMediaItem(item);
+                else if (!item.quality || ["queued", "checking"].includes(item.quality.status)) mediaQuality.enqueue(item);
+            }
 
             for(const item of media)if(!["pending-metadata","analyzing"].includes(item.status)&&(!item.quality||["queued","checking"].includes(item.quality.status)||(item.quality.status==='approved'&&!item.quality.loudness)))mediaQuality.enqueue(item);
 
@@ -2538,6 +2543,16 @@ function registerIpcHandlers() {
             };
         }
     );
+
+    registerTrustedHandle("rundown:import-files", async (_event, paths) => {
+        if (!Array.isArray(paths) || paths.length > 100 || paths.some(file => typeof file !== "string" || !path.isAbsolute(file)))
+            throw Error("Arraste até 100 arquivos com caminhos válidos.");
+        const result = addMedia(paths, true);
+        await analyzeMediaItems(result.importedItems);
+        const normalize = file => process.platform === "win32" ? path.resolve(file).toLowerCase() : path.resolve(file);
+        const wanted = new Set(paths.map(normalize));
+        return { media: getPlayableMedia().filter(item => item.scheduleOnly && wanted.has(normalize(item.path)) && Number(item.duration) > 0 && item.status !== "incompatible" && item.status !== "error") };
+    });
 
     registerTrustedHandle("media:analyze",(_event,id)=>{const item=getMedia().find(item=>item.id===id);if(!item)throw Error("Material não cadastrado.");mediaQuality.enqueue(item);return {ok:true};});
 

@@ -33,6 +33,7 @@ interface DailyRundown {
 interface Props {
     media: MediaItem[];
     remote?: boolean;
+    onImportDroppedFiles?: (paths: string[]) => Promise<{ media: MediaItem[] }>;
     onApply: (
         items: MediaItem[],
         startTime: string,
@@ -87,10 +88,13 @@ function SlotMinutes({ seconds, onChange }: { seconds: number; onChange: (second
 }
 
 
-export default function OpecSchedulerPanel({ media, onApply, remote = false }: Props) {
+export default function OpecSchedulerPanel({ media, onApply, remote = false, onImportDroppedFiles }: Props) {
     const [watch, setWatch] = useState<{item:MediaItem;clip:boolean}|null>(null);
     const textDragGuard = useTextEditingDragGuard();
     const [date, setDate] = useState(todayKey());
+    const dropContext = useRef(0);
+    const importingDrop = useRef(false);
+    useEffect(() => { dropContext.current++; return () => { dropContext.current++; }; }, [date]);
     const [boundary, setBoundary] = useState<DailyRundown | null>(null);
     const [version, setVersion] = useState<string | null>(null);
     const [draft, dispatchDraft] = useReducer(rundownDraftReducer, { items: [], history: [], meta: { title: "Programação diária", startTime: "00:00" } });
@@ -232,7 +236,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
     }
 
     function supportedDrag(event: DragEvent) {
-        return ["application/x-santtos-media", "application/x-santtos-rundown"].some(type => event.dataTransfer.types.includes(type));
+        return ["Files", "application/x-santtos-media", "application/x-santtos-rundown"].some(type => event.dataTransfer.types.includes(type));
     }
 
     function articleIntent(event: DragEvent<HTMLElement>, item: RundownItem, index: number): DropIntent {
@@ -240,7 +244,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
         const position = (event.clientY - bounds.top) / Math.max(1, bounds.height);
         if (position < .22) return { mode: "insert", beforeId: item.rundownItemId };
         if (position > .78) return { mode: "insert", beforeId: items[index + 1]?.rundownItemId ?? null };
-        return event.dataTransfer.types.includes("application/x-santtos-media")
+        return event.dataTransfer.types.includes("application/x-santtos-media") || event.dataTransfer.types.includes("Files")
             ? { mode: "replace", itemId: item.rundownItemId }
             : { mode: "insert", beforeId: item.rundownItemId };
     }
@@ -248,15 +252,62 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
     function previewDrop(event: DragEvent, intent: DropIntent) {
         if (!supportedDrag(event)) return;
         event.preventDefault(); event.stopPropagation();
-        event.dataTransfer.dropEffect = event.dataTransfer.types.includes("application/x-santtos-media") ? "copy" : "move";
+        event.dataTransfer.dropEffect = event.dataTransfer.types.includes("application/x-santtos-rundown") ? "move" : "copy";
         setDropIntent(current => JSON.stringify(current) === JSON.stringify(intent) ? current : intent);
     }
 
     function clearDrag() { setDraggedId(null); setDropIntent(null); }
 
+    async function importExplorerDrop(files: File[], intent: DropIntent) {
+        if (remote || !onImportDroppedFiles) {
+            setStatus("No navegador, arraste os materiais da biblioteca. Para importar arquivos do Explorador, use o aplicativo no computador master.");
+            return;
+        }
+        if (importingDrop.current) { setStatus("Aguarde a importação dos arquivos anteriores."); return; }
+        const paths = [...new Set(files.map(file => window.santtosAPI.getDroppedFilePath(file)).filter(Boolean))];
+        if (!paths.length) { setStatus("Não foi possível obter os arquivos arrastados. Arraste arquivos de vídeo do Explorador."); return; }
+        const context = dropContext.current;
+        importingDrop.current = true;
+        setStatus("Importando arquivos para a programação…");
+        try {
+            const result = await onImportDroppedFiles(paths);
+            if (dropContext.current !== context) return;
+            const normalize = (value: string) => navigator.platform.startsWith("Win") ? value.replace(/\\/g, "/").toLowerCase() : value;
+            const sources = paths.map(file => result.media.find(item => normalize(item.path) === normalize(file))).filter((item): item is MediaItem => !!item);
+            if (!sources.length) { setStatus("Nenhum vídeo válido foi encontrado nos arquivos arrastados."); return; }
+            // One edit/undo for the complete drop; use the current draft after asynchronous import.
+            setItems(current => {
+                const position = intent.mode === "replace" ? current.findIndex(item => item.rundownItemId === intent.itemId)
+                    : intent.beforeId ? current.findIndex(item => item.rundownItemId === intent.beforeId) : current.length;
+                if (position < 0) return current; // Target was removed while importing.
+                const target = intent.mode === "replace" ? current[position] : undefined;
+                const added: RundownItem[] = sources.map((source, index) => ({ ...source,
+                    sourceMediaId: source.sourceMediaId ?? source.id,
+                    rundownItemId: index === 0 && target ? target.rundownItemId : crypto.randomUUID(),
+                    placeholder: false, liveSlot: false,
+                    replacedPlaceholder: index === 0 && !!target && (target.placeholder || target.replacedPlaceholder === true),
+                    blockLabel: index === 0 && target?.blockLabel ? target.blockLabel : source.blockLabel || splitContentName(source.name).code,
+                    notes: index === 0 && target ? target.notes || "" : "",
+                    exhibitionType: normalizeExhibitionType(source.exhibitionType),
+                    inPoint: clipIn(source), outPoint: clipOut(source)
+                }));
+                const next = [...current]; next.splice(position, target ? 1 : 0, ...added); return next;
+            });
+            setStatus(`${sources.length} material(is) importado(s).${sources.length < paths.length ? " Alguns arquivos não são vídeos compatíveis." : ""}`);
+        } catch (error) {
+            if (dropContext.current === context) setStatus(error instanceof Error ? error.message : "Não foi possível importar os arquivos.");
+        } finally { importingDrop.current = false; }
+    }
+
     function dropItem(event: DragEvent, intent: DropIntent = { mode: "insert", beforeId: null }) {
         if (!supportedDrag(event)) return;
         event.preventDefault(); event.stopPropagation();
+        if (event.dataTransfer.files.length) {
+            const files = Array.from(event.dataTransfer.files);
+            clearDrag();
+            void importExplorerDrop(files, intent);
+            return;
+        }
         const source = media.find(item => item.id === event.dataTransfer.getData("application/x-santtos-media"));
         if (source) {
             if (intent.mode === "replace") {
@@ -487,7 +538,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false }: P
                             if (event.clientX < bounds.left || event.clientX >= bounds.right || event.clientY < bounds.top || event.clientY >= bounds.bottom) setDropIntent(null);
                         }}
                         onDrop={event => dropItem(event)}>
-                        {items.length === 0 && <div className="opec-empty">Arraste mídias das pastas da biblioteca para a programação.</div>}
+                        {items.length === 0 && <div className="opec-empty">{remote ? "Arraste mídias das pastas da biblioteca para a programação." : "Arraste vídeos do Explorador ou das pastas da biblioteca para a programação."}</div>}
                         {items.map((item, index) => (
                             <div className="opec-drag-row" key={item.rundownItemId}>
                             {insertionSlot(item.rundownItemId)}
