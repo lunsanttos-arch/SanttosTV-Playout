@@ -40,7 +40,7 @@ function runProbe(filePath, options = {}) {
                 filePath
             );
 
-            execFile(
+            const probeChild = execFile(
                 ffprobePath,
                 argumentsList,
                 {
@@ -76,6 +76,7 @@ function runProbe(filePath, options = {}) {
                     }
                 }
             );
+            options.onChild?.(probeChild);
         }
     );
 }

@@ -34,7 +34,7 @@ export interface MediaItem {
     liveSlot?: boolean;
     isContingency?: boolean;
     replacedPlaceholder?: boolean;
-    quality?: {version:number;status:"queued"|"checking"|"approved"|"rejected"|"unavailable";error?:string|null;checkedAt?:string;sha256?:string};
+    quality?: {version:number;warning?:string|null;policyVersion?:number;status:"queued"|"checking"|"approved"|"rejected"|"unavailable";error?:string|null;checkedAt?:string;sha256?:string};
     programmedStartTime?: string;
     scheduleDate?: string;
     programmedStartAt?: string;
@@ -5484,7 +5484,7 @@ function LibraryPanel({
                                         <span>{item.videoCodec ?? "Codec desconhecido"}</span>
                                         <span>{item.fps !== null ? `${item.fps.toFixed(3)} fps` : "FPS desconhecido"}</span>
                                         <span>{formatDuration(item.duration)}</span>
-                                        <span title={item.quality?.error||""}>{item.quality?.status === "approved" ? "Análise aprovada" : item.quality?.status === "rejected" ? "Reprovado" : item.quality?.status === "unavailable" ? "Análise indisponível" : "Em análise"}</span>
+                                        <span title={item.quality?.warning||item.quality?.error||""}>{item.quality?.status === "approved" ? item.quality.warning ? "Reproduzível com ressalva" : "Análise aprovada" : item.quality?.status === "rejected" ? "Reprovado" : item.quality?.status === "unavailable" ? "Análise indisponível" : "Em análise"}</span>
                                     </div>
                                 </div>
                                 <button className="add-timeline-button" onDoubleClick={event => event.stopPropagation()} onClick={event => { event.stopPropagation(); setWatchItem(item); }}>Assistir</button>

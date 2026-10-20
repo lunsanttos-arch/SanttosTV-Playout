@@ -590,6 +590,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                                 </div>
                                 <div className="opec-block-tools">
                                     <span>{formatDuration(clipDuration(item))}</span>
+                                    {item.quality?.warning && <span title={item.quality.warning}>Reproduzível com ressalva</span>}
                                     {item.placeholder && <>
                                         <button type="button" aria-pressed={item.liveSlot === true} className={item.liveSlot ? "opec-live-active" : ""}
                                             onClick={() => patchItem(item.rundownItemId, { liveSlot: !item.liveSlot })}>Ao Vivo</button>

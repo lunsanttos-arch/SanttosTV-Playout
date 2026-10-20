@@ -44,6 +44,8 @@ jobs:
         run: xvfb-run -a npm run test:native-integration
       - name: Explorer files into scheduling without library registration
         run: xvfb-run -a node scripts/run-native-qa.cjs --explorer-drop-only
+      - name: Bounded H264 recovery and strict successor
+        run: xvfb-run -a node scripts/run-native-qa.cjs --quality-recovery-only
       - uses: actions/upload-artifact@v4
         if: always()
         with:

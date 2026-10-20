@@ -1129,7 +1129,10 @@ async function resolveDeckSource(item, position, overlay, signal) {
                     if (signal.aborted) throw error;
                     unchanged = source.url !== filePath && Boolean(serverMedia.cachedFileAvailable(filePath));
                 }
-                if (unchanged) source.loudness = libraryItem.quality.loudness;
+                if (unchanged) {
+                    source.loudness = libraryItem.quality.loudness;
+                    source.allowRecoveredDecode = libraryItem.quality.policyVersion === 2 && libraryItem.quality.recovery?.mode === "bounded-h264-recovery";
+                }
                 else mediaQuality.enqueue(libraryItem);
             }
         }
@@ -1169,7 +1172,7 @@ async function createDecoderDeck(item, position, overlayState, signal) {
         "-fflags",
         isRemoteInput ? "+genpts+discardcorrupt" : "+genpts",
         "-err_detect",
-        isRemoteInput ? "ignore_err" : "explode",
+        isRemoteInput ? "ignore_err" : source.allowRecoveredDecode ? "careful" : "explode",
         "-probesize",
         isRemoteInput || warmedUdp
             ? "1000000"
@@ -1180,7 +1183,7 @@ async function createDecoderDeck(item, position, overlayState, signal) {
             : "10000000"
     ];
 
-    if (!isRemoteInput) args.push("-xerror");
+    if (!isRemoteInput && !source.allowRecoveredDecode) args.push("-xerror");
 
     if (
         normalizedStartSeconds > 0 &&
@@ -2496,10 +2499,10 @@ function registerIpcHandlers() {
             const media = getMedia();
             for (const item of getPlayableMedia().filter(item => item.scheduleOnly)) {
                 if (["pending-metadata", "analyzing"].includes(item.status)) void analyzeMediaItem(item);
-                else if (!item.quality || ["queued", "checking"].includes(item.quality.status)) mediaQuality.enqueue(item);
+                else if (!item.quality || ["queued", "checking"].includes(item.quality.status) || (item.quality.status === "rejected" && item.quality.policyVersion !== 2)) mediaQuality.enqueue(item);
             }
 
-            for(const item of media)if(!["pending-metadata","analyzing"].includes(item.status)&&(!item.quality||["queued","checking"].includes(item.quality.status)||(item.quality.status==='approved'&&!item.quality.loudness)))mediaQuality.enqueue(item);
+            for(const item of media)if(!["pending-metadata","analyzing"].includes(item.status)&&(!item.quality||(item.quality.status==='rejected'&&item.quality.policyVersion!==2)||["queued","checking"].includes(item.quality.status)||(item.quality.status==='approved'&&!item.quality.loudness)))mediaQuality.enqueue(item);
 
             const pendingMedia =
                 media.filter(

@@ -14,7 +14,7 @@
     "start": "npm run dev",
     "build:renderer": "vite build",
     "build": "npm run build:renderer && node scripts/check-native-runtime.js && electron-builder",
-    "test:broadcast-stage1": "node scripts/test-application-confirmation.js && node scripts/test-media-quality.js && node scripts/test-output-isolation.js && npm run test:video-diagnostic",
+    "test:broadcast-stage1": "node scripts/test-application-confirmation.js && node scripts/test-media-quality.js && node scripts/test-output-isolation.js && npm run test:video-diagnostic && node scripts/test-quality-recovery.js",
     "test:backend": "node scripts/test-backend.js && node scripts/test-schedule-only-media.js",
     "test:broadcast-schedule": "node scripts/test-broadcast-schedule.js && node scripts/test-broadcast-schedule-store.js",
     "test:security": "node scripts/test-security.js",
