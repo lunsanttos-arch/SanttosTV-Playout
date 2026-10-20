@@ -14,11 +14,19 @@ for (const patch of [{ frames: 61100 }, { expected: NaN }, { progressEnd: false 
         const file = path.join(root, "empty-unit.mp4"); createRecoveryFixture(file);
         const media = [{ id: "recoverable", path: file, name: "Recoverable", duration: 4, videoStreamIndex: 0, audioStreamIndex: 1,
             quality: { version: 1, status: "rejected", fingerprint: `${fs.statSync(file).size}:${fs.statSync(file).mtimeMs}:${fs.statSync(file).ino}` } }];
+        const held = new MediaQualityQueue({ ffmpeg: "unused", getMedia: () => media,
+            onUpdate: (id, quality) => { media[0].quality = quality; } });
+        held.pump = () => {}; // Hold the queue to inspect the queued state deterministically.
+        held.enqueue(media[0]);
+        assert.equal(media[0].quality.error, null);
+        await assert.rejects(() => held.validate(media), error => /Na fila, posição 1/.test(error.message) && !/Material reprovado/.test(error.message));
+        await assert.rejects(() => held.assertPlayable(media[0]), /Na fila, posição 1/);
+        await held.stop();
         queue = new MediaQualityQueue({ ffmpeg: require("../src/core/media/runtime-paths").resolveMediaRuntime("ffmpeg"), getMedia: () => media,
             onUpdate: (id, quality) => { media[0].quality = quality; } });
         // Old-policy rejection must trigger a fresh scan, without allowing queued rejected bytes to play.
         await assert.rejects(() => queue.validate(media), /pendente/);
-        await assert.rejects(() => queue.assertPlayable(media[0]), /reprovado/);
+        await assert.rejects(() => queue.assertPlayable(media[0]), /Análise em andamento/);
         for (let i = 0; i < 600 && (queue.pending.size || queue.running); i++) await new Promise(resolve => setTimeout(resolve, 20));
         const q = media[0].quality;
         assert.equal(q.status, "approved", JSON.stringify(q)); assert.equal(q.policyVersion, 2);

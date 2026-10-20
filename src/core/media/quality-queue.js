@@ -21,12 +21,21 @@ class MediaQualityQueue {
  async inspect(item){if(item.placeholder||item.sourceType==='input')return {status:'live'};
   const current=this.getMedia().find(current=>current.id===(item.sourceMediaId||item.id));if(!current)throw Error(`Material não cadastrado: ${item.name}`);
   let stat;try{stat=await fs.promises.stat(current.path)}catch(error){if(current.quality?.status==='approved'&&this.canUseCached(current.path))return current.quality;throw error;}const valid=current.quality?.version===1&&current.quality.fingerprint===fingerprint(stat);
+  if(['queued','checking'].includes(current.quality?.status)){this.enqueue(current);throw Error(this.pendingMessage(current));}
   if(valid&&current.quality.status==='approved')return current.quality;
   if((valid&&current.quality?.status==='rejected'&&current.quality.policyVersion===2)||current.quality?.blockedFingerprint===fingerprint(stat))throw Error(`Material reprovado: ${current.name}. ${current.quality.error||''}`);
-  this.enqueue(current);throw Error(`Análise completa pendente: ${current.name}. Aguarde a aprovação ${current.scheduleOnly ? 'do arquivo da programação' : 'na Biblioteca'} antes de aplicar.`);
+  this.enqueue(current);throw Error(this.pendingMessage(current));
+ }
+ pendingMessage(item){
+  if(this.running?.item.id===item.id)return `Análise completa pendente: ${item.name}. Análise em andamento; aguarde a conclusão antes de aplicar. Arquivos longos podem levar vários minutos.`;
+  const position=[...this.pending.keys()].indexOf(item.id)+1;
+  return `Análise completa pendente: ${item.name}. ${position>0?`Na fila, posição ${position}. `:''}${this.running?`Analisando agora: ${this.running.item.name}. `:''}Aguarde a conclusão antes de aplicar.`;
  }
  async assertPlayable(item){const q=item.quality;if(!q||(!q.blockedFingerprint&&q.status!=="rejected"))return;
-  const stat=await fs.promises.stat(item.path);if((q.status==="rejected"&&q.fingerprint===fingerprint(stat))||q.blockedFingerprint===fingerprint(stat))throw Error("Material reprovado na análise completa: "+(q.error||item.name));this.enqueue(item);}
+  const stat=await fs.promises.stat(item.path);if((q.status==="rejected"&&q.fingerprint===fingerprint(stat))||q.blockedFingerprint===fingerprint(stat)){
+   if(['queued','checking'].includes(q.status)){this.enqueue(item);throw Error(this.pendingMessage(item));}
+   throw Error("Material reprovado na análise completa: "+(q.error||item.name));
+  }this.enqueue(item);}
  async validate(items){for(const item of items)await this.inspect(item);}
  snapshot(){return {queued:this.pending.size,running:this.running?.item.id||null,completed:this.completed};}
  async stop(){this.stopped=true;this.pending.clear();const job=this.running;if(!job)return;job.worker.postMessage('cancel');
