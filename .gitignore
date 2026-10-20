@@ -22,6 +22,7 @@ src/core/ndi/Processing.NDI.Lib.x64.dll
 src/core/runtime/*.exe
 
 # Logs and temp files
+diagnosticos/
 *.log
 npm-debug.log*
 yarn-debug.log*

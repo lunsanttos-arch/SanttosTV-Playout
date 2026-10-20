@@ -14,7 +14,7 @@
     "start": "npm run dev",
     "build:renderer": "vite build",
     "build": "npm run build:renderer && node scripts/check-native-runtime.js && electron-builder",
-    "test:broadcast-stage1": "node scripts/test-application-confirmation.js && node scripts/test-media-quality.js && node scripts/test-output-isolation.js",
+    "test:broadcast-stage1": "node scripts/test-application-confirmation.js && node scripts/test-media-quality.js && node scripts/test-output-isolation.js && npm run test:video-diagnostic",
     "test:backend": "node scripts/test-backend.js && node scripts/test-schedule-only-media.js",
     "test:broadcast-schedule": "node scripts/test-broadcast-schedule.js && node scripts/test-broadcast-schedule-store.js",
     "test:security": "node scripts/test-security.js",
@@ -69,7 +69,9 @@
     "test:audio-leveling": "node scripts/test-audio-leveling.js",
     "test:program-monitor-clock": "node scripts/test-program-monitor-clock.js",
     "build:lite": "npm run build -- --win --x64 && node scripts/create-release-kit.js",
-    "test:release-kit": "node scripts/test-release-kit.js"
+    "test:release-kit": "node scripts/test-release-kit.js",
+    "diagnostico:video": "node scripts/diagnose-video.js",
+    "test:video-diagnostic": "node scripts/test-video-diagnostic.js"
   },
   "dependencies": {
     "@derhuerst/ffprobe-static": "5.3.0",
