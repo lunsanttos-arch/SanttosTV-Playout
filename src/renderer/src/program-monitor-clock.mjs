@@ -1,7 +1,7 @@
 // One presentation timeline for local PCM and JPEG. Never controls PROGRAM.
 export class ProgramMonitorClock {
     constructor(now = () => performance.timeOrigin + performance.now()) {
-        this.now = now; this.epoch = 0; this.generation = -1; this.anchor = null;
+        this.delayMs = 120; this.now = now; this.epoch = 0; this.generation = -1; this.anchor = null;
         this.streamId = null; this.retiredStreams = new Set();
         this.lastDrawAt = null; this.lastVideoTime = null; this.listeners = new Set();
         this.metrics = { resets: 0, staleVideo: 0, staleAudio: 0, videoStalls: 0, draws: 0 };
@@ -15,13 +15,18 @@ export class ProgramMonitorClock {
         this.generation = generation; this.epoch++; this.anchor = null;
         this.lastDrawAt = null; this.lastVideoTime = null; this.metrics.resets++; this.notify(true);
     }
-    fresh(payload) {
+    configureAudioLatency(seconds) {
+        const latency = Number.isFinite(seconds) ? Math.max(0, seconds) : 0;
+        const delay = Math.min(1000, Math.max(250, Math.ceil(latency * 1000 + 120)));
+        if (delay !== this.delayMs) { this.delayMs = delay; this.reset(); }
+    }
+    fresh(payload, maxAge = 250) {
         const age = this.now() - payload.emittedAt;
         return typeof payload.streamId === 'string' && payload.streamId.length > 0 && payload.streamId.length <= 128 &&
             !this.retiredStreams.has(payload.streamId) && Number.isSafeInteger(payload.generation) &&
             (payload.streamId !== this.streamId || payload.generation >= this.generation) &&
             Number.isFinite(payload.mediaTimeSeconds) && payload.mediaTimeSeconds >= 0 &&
-            Number.isFinite(age) && age >= -100 && age <= 250;
+            Number.isFinite(age) && age >= -100 && age <= maxAge;
     }
     video(payload) {
         if (!this.fresh(payload) || !Number.isFinite(payload.programTimeSeconds) ||
@@ -34,7 +39,7 @@ export class ProgramMonitorClock {
             this.reset(payload.generation, payload.streamId);
         if (this.anchor === null) this.anchor = anchor;
         const plan = { epoch: this.epoch, generation: this.generation,
-            deadline: this.anchor + payload.mediaTimeSeconds * 1000 + 120, mediaTimeSeconds: payload.mediaTimeSeconds };
+            deadline: this.anchor + payload.mediaTimeSeconds * 1000 + this.delayMs, mediaTimeSeconds: payload.mediaTimeSeconds };
         if (!this.valid(plan)) { this.metrics.staleVideo++; return null; }
         return plan;
     }
@@ -51,14 +56,14 @@ export class ProgramMonitorClock {
         return false;
     }
     audio(payload) {
-        if (!this.fresh(payload)) {
+        if (!this.fresh(payload, Math.max(250, this.delayMs + 60))) {
             this.metrics.staleAudio++; return { status: 'drop' };
         }
         if (payload.streamId !== this.streamId || payload.generation > this.generation) return { status: 'wait' };
         if (this.anchor === null || this.lastDrawAt === null) return { status: 'wait' };
         if (this.checkStall()) return { status: 'drop' };
-        const deadline = this.anchor + payload.mediaTimeSeconds * 1000 + 120;
-        if (this.now() - deadline > 60 || deadline > this.now() + 250) {
+        const deadline = this.anchor + payload.mediaTimeSeconds * 1000 + this.delayMs;
+        if (this.now() - deadline > 60 || deadline > this.now() + this.delayMs + 130) {
             this.metrics.staleAudio++; return { status: 'drop' };
         }
         return { status: 'play', deadline, epoch: this.epoch };

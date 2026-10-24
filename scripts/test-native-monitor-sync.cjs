@@ -25,6 +25,8 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         await call('stopNdiFile');
         await evaluate(`(()=>{
             const q=window.__monitorQA={starts:[],stops:0,draws:[],pcm:[],delay:0};
+            q.latencyDescriptor=Object.getOwnPropertyDescriptor(AudioContext.prototype,"outputLatency");
+            if (${Number(process.env.SANTTOS_QA_MONITOR_LATENCY)||0}>0) Object.defineProperty(AudioContext.prototype,"outputLatency",{configurable:true,get:()=>${Number(process.env.SANTTOS_QA_MONITOR_LATENCY)||0}});
             const signature=(samples,step=1)=>Array.from({length:32},(_,i)=>samples[i*step]?.toPrecision(7)).join(',');
             const start=AudioBufferSourceNode.prototype.start,stop=AudioBufferSourceNode.prototype.stop;
             q.restoreStart=start;q.restoreStop=stop;q.restoreBitmap=window.createImageBitmap;
@@ -80,7 +82,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     } finally {
         await call('stopNdiFile').catch(() => {});
         if (timeline) await call('saveTimeline', timeline).catch(() => {});
-        await evaluate('(()=>{const q=window.__monitorQA;if(!q)return;q.delay=0;q.unsubscribe();q.observer.disconnect();AudioBufferSourceNode.prototype.start=q.restoreStart;AudioBufferSourceNode.prototype.stop=q.restoreStop;window.createImageBitmap=q.restoreBitmap;})()').catch(() => {});
+        await evaluate('(()=>{const q=window.__monitorQA;if(!q)return;q.delay=0;q.unsubscribe();q.observer.disconnect();AudioBufferSourceNode.prototype.start=q.restoreStart;AudioBufferSourceNode.prototype.stop=q.restoreStop;window.createImageBitmap=q.restoreBitmap;if(q.latencyDescriptor)Object.defineProperty(AudioContext.prototype,"outputLatency",q.latencyDescriptor);})()').catch(() => {});
         ws.close();
     }
 })().catch(error => { console.error(error); process.exitCode = 1; });

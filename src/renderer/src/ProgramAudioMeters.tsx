@@ -158,8 +158,9 @@ export default function ProgramAudioMeters({
             const ctx =
                 new AudioContext({
                     latencyHint:
-                        "interactive"
+                        "playback"
                 });
+            programMonitorClock.configureAudioLatency((ctx.baseLatency || 0) + (ctx.outputLatency || 0));
             const gain =
                 ctx.createGain();
 
@@ -180,6 +181,7 @@ export default function ProgramAudioMeters({
             };
 
             ctx.onstatechange = () => {
+                if (ctx.state === "running") programMonitorClock.configureAudioLatency((ctx.baseLatency || 0) + (ctx.outputLatency || 0));
                 setMonitorSuspended(
                     ctx.state === "suspended"
                 );
@@ -226,7 +228,7 @@ export default function ProgramAudioMeters({
     function queueRealPcm(payload: ProgramPcmPayload) {
         if (!monitorEnabledRef.current || !isPlayingRef.current) return;
         pendingPcm.current.push(payload);
-        while (pendingPcm.current.length > 32) pendingPcm.current.shift();
+        while (pendingPcm.current.length > 128) pendingPcm.current.shift();
         drainRealPcm();
     }
 
@@ -274,10 +276,11 @@ export default function ProgramAudioMeters({
 
         if (frames <= 0) return;
 
+        const monitorEpoch = programMonitorClock.epoch;
         const engine =
             ensureRealMonitor();
 
-        if (!engine) return;
+        if (!engine || monitorEpoch !== programMonitorClock.epoch) return;
         if (engine.ctx.state !== "running") {
             void engine.ctx.resume().catch(() => setMonitorSuspended(true));
             return;

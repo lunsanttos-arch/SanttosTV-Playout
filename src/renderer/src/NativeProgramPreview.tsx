@@ -62,7 +62,7 @@ export default function NativeProgramPreview({ state }: Props) {
                         if (!mounted || current.sequence !== activeSequence || !programMonitorClock.valid(plan)) bitmap.close();
                         else {
                             ready.push({ bitmap, plan });
-                            while (ready.length > 8) ready.shift()!.bitmap.close();
+                            while (ready.length > Math.min(64, Math.ceil((programMonitorClock.delayMs + 120) * 30 / 1000) + 2)) ready.shift()!.bitmap.close();
                             if (!timer) timer = setTimeout(present, Math.max(0, ready[0].plan.deadline - programMonitorClock.now()));
                         }
                     }
