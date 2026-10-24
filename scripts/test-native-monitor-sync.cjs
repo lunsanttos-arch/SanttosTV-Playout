@@ -17,6 +17,17 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
             return reply.result.result.value;
         } finally { clearTimeout(timer); pending.delete(id); }
     }
+    async function host(expression) {
+        const pages=await(await fetch('http://127.0.0.1:19334/json')).json();
+        const socket=new WebSocket(pages[0].webSocketDebuggerUrl);
+        await new Promise(resolve=>socket.addEventListener('open',resolve,{once:true}));
+        try { return await new Promise((resolve,reject)=>{
+            const timer=setTimeout(()=>reject(Error('Host visibility timeout')),5000);
+            socket.addEventListener('message',event=>{const r=JSON.parse(event.data);if(r.id!==1)return;clearTimeout(timer);if(r.result?.exceptionDetails)reject(Error(JSON.stringify(r.result.exceptionDetails)));else resolve(r.result?.result?.value);});
+            socket.send(JSON.stringify({id:1,method:'Runtime.evaluate',params:{expression,returnByValue:true}}));
+        }); } finally { socket.close(); }
+    }
+    const electronHost=`process.getBuiltinModule('node:module').createRequire(${JSON.stringify(require('node:path').resolve(__dirname,'../src/main/main.js'))})('electron')`;
     const call = (method, ...args) => evaluate(`window.santtosAPI.${method}(...${JSON.stringify(args)})`);
     let timeline;
     try {
@@ -56,6 +67,19 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
             console.error(await evaluate("import('/src/program-monitor-clock.mjs').then(m=>m.programMonitorClock.snapshot())"));
         }
         assert(baseline.starts > 8 && baseline.draws > 8, JSON.stringify(baseline));
+        await host(`globalThis.__qaMonitorWindow=${electronHost}.BrowserWindow.getAllWindows()[0]`);
+        for(const action of ['minimize','hide','cover']) {
+            if(action==='cover')await host(`globalThis.__qaMonitorCover=new (${electronHost}.BrowserWindow)({width:1800,height:1200,alwaysOnTop:true,webPreferences:{sandbox:true}});__qaMonitorCover.loadURL('data:text/html,<body style="background:black">Coverage test</body>');undefined`);
+            else await host(`__qaMonitorWindow.${action}()`);
+            const start=await evaluate('({starts:__monitorQA.starts.length,draws:__monitorQA.draws.length,stops:__monitorQA.stops})');
+            await wait(1800);
+            const end=await evaluate('({starts:__monitorQA.starts.length,draws:__monitorQA.draws.length,stops:__monitorQA.stops})');
+            assert(end.starts-start.starts>15,`${action}: local sound must keep scheduling`);
+            assert(end.draws-start.draws>10,`${action}: local video clock must keep presenting`);
+            assert.equal(end.stops,start.stops,`${action}: visibility must not cancel sound`);
+            await host(`if(globalThis.__qaMonitorCover){__qaMonitorCover.close();__qaMonitorCover=null;}__qaMonitorWindow.restore();__qaMonitorWindow.show();__qaMonitorWindow.focus();undefined`);
+        }
+        assert.equal(await evaluate(`document.querySelector('.system-status').innerText.includes('SRT')`),true);
         await evaluate('__monitorQA.delay=650'); await wait(850);
         const stalled = await evaluate('({stops:__monitorQA.stops,starts:__monitorQA.starts.length})');
         assert(stalled.stops > baseline.stops, 'Image decoding stall must cancel scheduled local sound');
@@ -80,6 +104,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         const maximum = Math.max(...matched.map(Math.abs)); assert(maximum < .085, `Local scheduling offset after stall: ${maximum}s`);
         console.log(`MONITOR SYNC: actual PCM/WebAudio scheduling and canvas, 650ms bitmap stall + 650ms frozen renderer, scheduled sound canceled, recovery aligned within ${(maximum*1000).toFixed(1)}ms over ${matched.length} matched PCM/video pairs; PROGRAM decoder unchanged`);
     } finally {
+        await host(`if(globalThis.__qaMonitorCover)__qaMonitorCover.close();if(globalThis.__qaMonitorWindow){__qaMonitorWindow.restore();__qaMonitorWindow.show();}undefined`).catch(()=>{});
         await call('stopNdiFile').catch(() => {});
         if (timeline) await call('saveTimeline', timeline).catch(() => {});
         await evaluate('(()=>{const q=window.__monitorQA;if(!q)return;q.delay=0;q.unsubscribe();q.observer.disconnect();AudioBufferSourceNode.prototype.start=q.restoreStart;AudioBufferSourceNode.prototype.stop=q.restoreStop;window.createImageBitmap=q.restoreBitmap;if(q.latencyDescriptor)Object.defineProperty(AudioContext.prototype,"outputLatency",q.latencyDescriptor);})()').catch(() => {});

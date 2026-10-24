@@ -603,6 +603,7 @@ export default function App() {
     const [nativePlaybackActive, setNativePlaybackActive] = useState(false);
     const [transportOnline, setTransportOnline] = useState(false);
     const [programClockKind, setProgramClockKind] = useState("MONOTONIC");
+    const [srtOnline, setSrtOnline] = useState(false);
     const [omtStatus, setOmtStatus] = useState({
         enabled: false,
         online: false,
@@ -708,6 +709,7 @@ export default function App() {
                     await window.santtosAPI
                         .getNdiStatus();
                 setNdiOnline(status.online);
+                setSrtOnline(Boolean(status.transports?.srt?.online));
                 setTransportOnline(Object.values(status.transports ?? {}).some(value => value.online));
                 setNdiConfiguredEnabled(
                     status.profile?.ndiEnabled !== false
@@ -990,6 +992,7 @@ export default function App() {
                 <div className="system-status" title={testBench ? "PRÉVIA DE TESTE" : undefined}>
                     <span className={ndiOnline && !ndiDevNullSink ? "status-online" : "status-disabled"}>● NDI {ndiOnline && !ndiDevNullSink ? "Online" : "Offline"}</span>
                     <span className={omtStatus.online ? "status-online" : "status-disabled"}>● OMT {omtStatus.online ? "Online" : "Offline"}</span>
+                    <span className={srtOnline ? "status-online" : "status-disabled"}>● SRT {srtOnline ? "Online" : "Offline"}</span>
                 </div>
             </header>
 

@@ -13,3 +13,9 @@ Validação: teste de 60 segundos simulando oscilações de 25 ms em 44,1/48 kHz
 A reserva fixa de 120 ms podia ser insuficiente para alguns dispositivos Windows. O monitor usa agora `latencyHint: playback` e uma reserva comum à imagem e ao áudio: pelo menos 250 ms, ou latência base + latência de saída + 120 ms de margem, limitada a um segundo. Ao retomar o AudioContext, a latência é consultada novamente. Uma mudança da reserva reinicia o relógio local dos dois fluxos. As filas de bitmap e PCM também foram dimensionadas para essa reserva; a fila antiga de oito bitmaps não comportava latências maiores.
 
 Testes adicionais cobrem a retenção de PCM durante a reserva sem aceitar pacotes antigos indefinidamente e integração Electron com 400 ms de latência de saída simulada. Continua necessária a confirmação auditiva no dispositivo Windows real. NDI, OMT, SRT e RTMP não recebem esse atraso do monitor local.
+
+## Janela minimizada ou coberta
+
+A janela principal passa a usar `backgroundThrottling: false`, com as opções Chromium `disable-renderer-backgrounding` e `disable-backgrounding-occluded-windows`. O monitor mantém o agendamento PCM e o relógio de imagem mesmo fora de foco, escondido ou minimizado; o mecanismo que cancela áudio em uma travada real do preview continua ativo.
+
+A integração Electron verifica avanço dos agendamentos de áudio e das apresentações de imagem sem cancelamentos durante minimize/hide e durante cobertura por outra BrowserWindow. A continuidade física no Windows depende da confirmação no equipamento; o teste automatizado usa display virtual Linux.

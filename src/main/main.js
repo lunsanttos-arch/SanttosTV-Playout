@@ -10,6 +10,9 @@ const { INPUT_PREVIEW_SCHEME, serveWebInputPreview } = require("../core/media/we
 const { resolveMediaRuntime } = require("../core/media/runtime-paths");
 const { ProcessWatchdog } = require("../core/playout/process-watchdog");
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+// The confidence monitor must keep scheduling PCM/JPEG while covered or minimized.
+app.commandLine.appendSwitch("disable-renderer-backgrounding");
+app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
 if (process.platform === "win32") app.setAppUserModelId("com.santtos.tvautomation");
 const testBenchConfig = configureTestBench(app), isTestBench = testBenchConfig.enabled, isNdiTestBench = testBenchConfig.ndiEnabled;
 const isDevelopment = !app.isPackaged;
@@ -69,6 +72,7 @@ function createWindow() {
             : isTestBench ? "SanTTos Playout — BANCADA"
             : "SanTTos Playout",
         webPreferences: {
+            backgroundThrottling: false,
             nodeIntegration: false,
             contextIsolation: true,
             webSecurity: true,
