@@ -50,7 +50,10 @@ class VideoClockedPcm {
             this.buffered -= count;
             this.blocked = !this.output.write(packet);
         }
-        if (!this.blocked && this.buffered < this.limit / 2) this.source.resume();
+        // A short video reserve may not contain enough frames to drain half
+        // the PCM budget. Resume as soon as any capacity is available, or the
+        // shared FFmpeg can block on audio before producing the next video.
+        if (!this.blocked && this.buffered < this.limit) this.source.resume();
     }
 
     stop() {

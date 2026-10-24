@@ -29,6 +29,22 @@ const { NdiAudioSource } = require('../src/core/audio/ndi-audio-source');
         audio.stop(); clock.stop();
         assert.equal(source.listenerCount('data'), 0, 'Stopped feeds must release decoder listeners');
     }
+    // A decoder may need the PCM pipe drained before it can produce more video.
+    // The short raw-video queue cannot consume half a second of PCM first.
+    const stalledSource = new PassThrough();
+    const stalledClock = new VideoClockedPcm(stalledSource, { sampleRate:48000, channels:2, fpsN:60000, fpsD:1001 });
+    let bytesDelivered = 0, producerResumed = false;
+    stalledClock.output.on('data', bytes => { bytesDelivered += bytes.length; });
+    stalledSource.write(Buffer.alloc(stalledClock.limit));
+    await new Promise(resolve => setImmediate(resolve));
+    assert(stalledSource.isPaused());
+    stalledSource.once('resume', () => { producerResumed = true; });
+    stalledClock.advance(); // Only one of the already-decoded video frames is available.
+    await new Promise(resolve => setImmediate(resolve));
+    assert(producerResumed, 'PCM pipe must release decoder as soon as a video frame frees capacity, before waiting for unavailable future frames');
+    assert.equal(bytesDelivered, Math.floor(48000*1001/60000)*8);
+    assert(stalledClock.buffered < stalledClock.limit && stalledClock.buffered > stalledClock.limit/2);
+    stalledClock.stop();
     const tail = new PassThrough();
     const tailClock = new VideoClockedPcm(tail, { sampleRate: 48000, channels: 2, fpsN: 30, fpsD: 1 });
     tail.write(Buffer.alloc(48000 * 8 * 2));

@@ -114,7 +114,7 @@ class DecoderDeck {
         const timer = setTimeout(() => { if (this.child.exitCode === null && this.child.signalCode === null) this.child.kill("SIGKILL"); }, 1000);
         timer.unref(); this.child.once("close", () => clearTimeout(timer));
     }
-    snapshot() { return { pid: this.child.pid, ready: this.readyState && !this.stopped, active: this.active, decodedFrames: this.decoded,
+    snapshot() { return { pid: this.child.pid, rawVideoPaused: this.child.stdout.isPaused(), pcmInputPaused: this.child.stdio[4].isPaused(), pcmOutputBlocked: this.clock?.blocked || false, ready: this.readyState && !this.stopped, active: this.active, decodedFrames: this.decoded,
         pacing: this.pacer.snapshot(), deliveredFrames: this.delivered, previewFrames: this.previewIndex, bufferedPreviewFrames: this.previews.length, bufferedPreviewBytes: this.previewBytes, droppedPreviewFrames: this.previewDrops, nextPreviewFrame: this.previews[0]?.index || null, bufferedFrames: this.pacer.queue.length, bufferedAudioBytes: this.clock?.buffered || 0, hasAudio: this.requireAudio, error: this.error || null }; }
 }
 module.exports = { DecoderDeck };

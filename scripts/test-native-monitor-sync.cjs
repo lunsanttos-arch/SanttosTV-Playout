@@ -29,7 +29,7 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
     }
     const electronHost=`process.getBuiltinModule('node:module').createRequire(${JSON.stringify(require('node:path').resolve(__dirname,'../src/main/main.js'))})('electron')`;
     const call = (method, ...args) => evaluate(`window.santtosAPI.${method}(...${JSON.stringify(args)})`);
-    let timeline;
+    let timeline, operation;
     try {
         assert((await call('getNdiStatus')).devNullSink, 'Use only disposable DEV NULL');
         timeline = await call('getTimeline'); const media = (await call('getMedia'))[0];
@@ -138,10 +138,31 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         await evaluate(`document.querySelector('button[aria-label="Ativar áudio da prévia"]').click()`);
         await wait(500);
         assert(await evaluate('__monitorQA.starts.length')>muted.starts,'Preview sound must resume independently');
+        operation=(await call('getOperationSettings')).settings;
+        await call('stopNdiFile');
+        await call('saveOperationSettings',{...operation,stallSeconds:5});
+        const faultItems=[{...media,id:'diagnostic-stalled',sourceMediaId:media.id,outPoint:20,loop:false},{...media,id:'diagnostic-successor',sourceMediaId:media.id,outPoint:20,loop:false}];
+        await call('applyNativeRundown',faultItems);
+        await call('playNdiFile',media.path,0,'',{itemId:'diagnostic-stalled',outPointSeconds:20});
+        await wait(700);
+        const frozen=await call('getNdiStatus');
+        assert.equal(frozen.playout.itemId,'diagnostic-stalled');
+        process.kill(frozen.decks.active.pid,'SIGSTOP'); // Disposable DEV NULL process only.
+        let failure,successor;
+        for(let i=0;i<100;i++){
+            failure=(await call('getOperationSettings')).diagnostics.lastFailure;
+            successor=await call('getNdiStatus');
+            if(failure?.engine?.itemId==='diagnostic-stalled'&&successor.playout?.itemId==='diagnostic-successor'&&successor.playout.state==='PLAYING')break;
+            await wait(100);
+        }
+        assert.equal(failure.engine.itemId,'diagnostic-stalled');assert.equal(failure.deck.pid,frozen.decks.active.pid);
+        assert(failure.frameAgeMs>=5000);assert(failure.resolvedSource);assert.equal(typeof failure.storage.cached,"boolean");
+        assert.equal(successor.playout.itemId,'diagnostic-successor');assert.equal(successor.playout.state,'PLAYING');
         console.log(`MONITOR SYNC: actual PCM/WebAudio scheduling and canvas, 650ms bitmap stall + 650ms frozen renderer, scheduled sound canceled, recovery aligned within ${(maximum*1000).toFixed(1)}ms over ${matched.length} matched PCM/video pairs; PROGRAM decoder unchanged`);
     } finally {
         await host(`if(globalThis.__qaMonitorCover)__qaMonitorCover.close();if(globalThis.__qaMonitorWindow){__qaMonitorWindow.restore();__qaMonitorWindow.show();}undefined`).catch(()=>{});
         await call('stopNdiFile').catch(() => {});
+        if(operation)await call('saveOperationSettings',operation).catch(()=>{});
         if (timeline) await call('saveTimeline', timeline).catch(() => {});
         await evaluate('(()=>{const q=window.__monitorQA;if(!q)return;q.delay=0;q.unsubscribe();q.observer.disconnect();AudioBufferSourceNode.prototype.start=q.restoreStart;AudioBufferSourceNode.prototype.stop=q.restoreStop;window.createImageBitmap=q.restoreBitmap;if(q.latencyDescriptor)Object.defineProperty(AudioContext.prototype,"outputLatency",q.latencyDescriptor);})()').catch(() => {});
         ws.close();
