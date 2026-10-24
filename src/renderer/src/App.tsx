@@ -1,3 +1,4 @@
+import { programMonitorClock } from "./program-monitor-clock.mjs";
 import type { MonitorTiming } from "./program-monitor-clock.mjs";
 import { useTextEditingDragGuard } from "./useTextEditingDragGuard";
 import {
@@ -635,6 +636,7 @@ export default function App() {
     const [playoutError, setPlayoutError] = useState<string | null>(null);
     const [activePanel, setActivePanel] =
         useState<Panel>("playout");
+    useEffect(() => { programMonitorClock.setPreviewVisible(activePanel === "playout"); }, [activePanel]);
     const [media, setMedia] =
         useState<MediaItem[]>([]);
     const [isLoading, setIsLoading] =

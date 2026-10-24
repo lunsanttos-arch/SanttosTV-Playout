@@ -82,6 +82,18 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
             if(action==='cover'){await evaluate(`__monitorQA.delay=0;window.dispatchEvent(new Event('focus'))`);await wait(700);}
         }
         assert.equal(await evaluate(`document.querySelector('.system-status').innerText.includes('SRT')`),true);
+        for(const section of ['Programação','Configurações']) {
+            await evaluate(`__monitorQA.delay=400;window.dispatchEvent(new Event('focus'));[...document.querySelectorAll('.sidebar button')].find(b=>b.innerText.includes(${JSON.stringify(section)})).click()`);
+            await wait(200);
+            const start=await evaluate('({starts:__monitorQA.starts.length,stops:__monitorQA.stops})');
+            await wait(1800);
+            const end=await evaluate('({starts:__monitorQA.starts.length,stops:__monitorQA.stops})');
+            assert(end.starts-start.starts>15,`${section}: switching sections must keep local sound`);
+            assert.equal(end.stops,start.stops,`${section}: absent preview must not cancel local sound`);
+            await evaluate(`__monitorQA.delay=0;[...document.querySelectorAll('.sidebar button')].find(b=>b.innerText.includes('Playout')).click()`);
+            await wait(700);
+            assert(await evaluate(`(()=>{const c=document.querySelector('.program-native-preview-canvas');return Number.isFinite(Number(c.dataset.monitorTime))&&performance.timeOrigin+performance.now()-__monitorQA.draws.at(-1).at<200})()`));
+        }
         const pcmStart=await evaluate('__monitorQA.pcm.length');
         await host(`globalThis.__qaAckOriginal=${electronHost}.ipcMain.listeners('program:monitor-ack')[0];${electronHost}.ipcMain.removeListener('program:monitor-ack',__qaAckOriginal);globalThis.__qaAckDelayed=(event,channel)=>{if(channel==='playout:audio-pcm')setTimeout(()=>__qaAckOriginal(event,channel),120);else __qaAckOriginal(event,channel);};${electronHost}.ipcMain.on('program:monitor-ack',__qaAckDelayed);undefined`);
         await wait(2200);

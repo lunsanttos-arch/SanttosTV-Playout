@@ -3,6 +3,7 @@ export interface VideoPlan { epoch: number; generation: number; deadline: number
 export class ProgramMonitorClock {
     constructor(now?: () => number);
     setBackground(value:boolean):void;
+    setPreviewVisible(value:boolean):void;
     delayMs: number;
     configureAudioLatency(seconds:number):void;
     epoch: number;

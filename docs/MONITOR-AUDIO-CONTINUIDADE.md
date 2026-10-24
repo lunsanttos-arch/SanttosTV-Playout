@@ -35,3 +35,9 @@ Foi identificado outro acoplamento: a ausência de apresentação no canvas por 
 Além de desabilitar `CalculateNativeWinOcclusion`, o relógio do monitor agora trata blur/ocultação como segundo plano. Nesse estado, PCM válido do motor mantém a linha de tempo sem depender de desenho no canvas; cortes e novas gerações continuam invalidando o fluxo anterior. Ao recuperar foco, há um prazo limitado à reserva + 250 ms para voltar a apresentar uma imagem atual. A proteção de travada real em primeiro plano permanece ativa, assim como os descartes de pacotes atrasados.
 
 A integração Full HD/60 fps cobre sobreposição com processamento de bitmap artificialmente atrasado em 400 ms: o áudio continua agendado sem cancelamentos causados pela falta de desenho. Depois verifica a recuperação em primeiro plano e a proteção de travada real. A implementação ainda requer confirmação auditiva no Windows do operador.
+
+## Navegação entre sessões
+
+A visibilidade da aba do Playout agora é informada separadamente do foco da janela. Ao abrir Programação ou Configurações, a janela permanece em primeiro plano, mas a área persistente do Playout fica escondida; a ausência de desenho nessa área não pode silenciar o monitor. Eventos de foco não anulam esse estado de aba escondida.
+
+O PCM continua no relógio do motor enquanto o preview está fora da tela. Ao voltar ao Playout, é concedido o mesmo prazo limitado de recuperação de imagem, sem reutilizar quadros atrasados. A proteção de travada permanece para o preview efetivamente visível. Testes de relógio cobrem a combinação de aba escondida, perda/retorno de foco e reapresentação. A integração Full HD/60 fps navega por Programação e Configurações com bitmap atrasado em 400 ms, verifica continuidade do agendamento sem cancelamentos e exige uma apresentação recente ao retornar.
