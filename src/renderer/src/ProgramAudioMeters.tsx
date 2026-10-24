@@ -422,6 +422,12 @@ export default function ProgramAudioMeters({
     }, [isPlaying]);
 
     useEffect(() => {
+        const updateVisibility = () => programMonitorClock.setBackground(document.hidden || !document.hasFocus());
+        const onBlur = () => programMonitorClock.setBackground(true);
+        const onFocus = () => { programMonitorClock.setBackground(false); drainRealPcm(); };
+        window.addEventListener("blur", onBlur);
+        window.addEventListener("focus", onFocus);
+        document.addEventListener("visibilitychange", updateVisibility);
         const unsubscribeClock = programMonitorClock.subscribe(reset => {
             if (reset) { pendingPcm.current = []; resetRealMonitor(); }
             else drainRealPcm();
@@ -457,6 +463,7 @@ export default function ProgramAudioMeters({
                 );
 
         return () => {
+            window.removeEventListener("blur", onBlur); window.removeEventListener("focus", onFocus); document.removeEventListener("visibilitychange", updateVisibility);
             window.clearInterval(watchdog); unsubscribeClock(); pendingPcm.current = [];
             unsubscribePcm();
             unsubscribeReset();

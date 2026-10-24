@@ -71,13 +71,15 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         for(const action of ['minimize','hide','cover']) {
             if(action==='cover')await host(`globalThis.__qaMonitorCover=new (${electronHost}.BrowserWindow)({width:1800,height:1200,alwaysOnTop:true,webPreferences:{sandbox:true}});__qaMonitorCover.loadURL('data:text/html,<body style="background:black">Coverage test</body>');undefined`);
             else await host(`__qaMonitorWindow.${action}()`);
+            if(action==='cover') await evaluate(`window.dispatchEvent(new Event('blur'));__monitorQA.delay=400`);
             const start=await evaluate('({starts:__monitorQA.starts.length,draws:__monitorQA.draws.length,stops:__monitorQA.stops})');
             await wait(1800);
             const end=await evaluate('({starts:__monitorQA.starts.length,draws:__monitorQA.draws.length,stops:__monitorQA.stops})');
             assert(end.starts-start.starts>15,`${action}: local sound must keep scheduling`);
-            assert(end.draws-start.draws>10,`${action}: local video clock must keep presenting`);
+            if(action!=='cover') assert(end.draws-start.draws>10,`${action}: local video clock must keep presenting`);
             assert.equal(end.stops,start.stops,`${action}: visibility must not cancel sound`);
             await host(`if(globalThis.__qaMonitorCover){__qaMonitorCover.close();__qaMonitorCover=null;}__qaMonitorWindow.restore();__qaMonitorWindow.show();__qaMonitorWindow.focus();undefined`);
+            if(action==='cover'){await evaluate(`__monitorQA.delay=0;window.dispatchEvent(new Event('focus'))`);await wait(700);}
         }
         assert.equal(await evaluate(`document.querySelector('.system-status').innerText.includes('SRT')`),true);
         const pcmStart=await evaluate('__monitorQA.pcm.length');

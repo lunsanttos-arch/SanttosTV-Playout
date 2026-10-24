@@ -1,7 +1,7 @@
 // One presentation timeline for local PCM and JPEG. Never controls PROGRAM.
 export class ProgramMonitorClock {
     constructor(now = () => performance.timeOrigin + performance.now()) {
-        this.delayMs = 120; this.now = now; this.epoch = 0; this.generation = -1; this.anchor = null;
+        this.background = false; this.visibilityGrace = 0; this.delayMs = 120; this.now = now; this.epoch = 0; this.generation = -1; this.anchor = null;
         this.streamId = null; this.retiredStreams = new Set();
         this.lastDrawAt = null; this.lastVideoTime = null; this.listeners = new Set();
         this.metrics = { resets: 0, staleVideo: 0, staleAudio: 0, videoStalls: 0, draws: 0 };
@@ -47,9 +47,15 @@ export class ProgramMonitorClock {
     presented(plan) {
         if (!this.valid(plan) || (this.lastVideoTime !== null && plan.mediaTimeSeconds < this.lastVideoTime)) return false;
         this.lastDrawAt = this.now(); this.lastVideoTime = plan.mediaTimeSeconds;
-        this.metrics.draws++; this.notify(); return true;
+        this.visibilityGrace = 0; this.metrics.draws++; this.notify(); return true;
+    }
+    setBackground(value) {
+        if (this.background === value) return;
+        this.background = value;
+        if (!value) this.visibilityGrace = this.now() + this.delayMs + 250;
     }
     checkStall() {
+        if (this.background || this.now() < this.visibilityGrace) return false;
         if (this.lastDrawAt !== null && this.now() - this.lastDrawAt > 150) {
             this.metrics.videoStalls++; this.reset(); return true;
         }
@@ -59,8 +65,12 @@ export class ProgramMonitorClock {
         if (!this.fresh(payload, Math.max(250, this.delayMs + 60))) {
             this.metrics.staleAudio++; return { status: 'drop' };
         }
+        if (this.background && (payload.streamId !== this.streamId || payload.generation > this.generation || this.anchor === null)) {
+            this.reset(payload.generation, payload.streamId);
+            this.anchor = payload.emittedAt - payload.mediaTimeSeconds * 1000;
+        }
         if (payload.streamId !== this.streamId || payload.generation > this.generation) return { status: 'wait' };
-        if (this.anchor === null || this.lastDrawAt === null) return { status: 'wait' };
+        if (this.anchor === null || (this.lastDrawAt === null && !this.background && this.now() >= this.visibilityGrace)) return { status: 'wait' };
         if (this.checkStall()) return { status: 'drop' };
         const deadline = this.anchor + payload.mediaTimeSeconds * 1000 + this.delayMs;
         if (this.now() - deadline > 60 || deadline > this.now() + this.delayMs + 130) {

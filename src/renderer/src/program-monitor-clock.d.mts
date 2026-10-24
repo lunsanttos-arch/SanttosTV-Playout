@@ -2,6 +2,7 @@ export interface MonitorTiming { streamId?: string; generation?: number; emitted
 export interface VideoPlan { epoch: number; generation: number; deadline: number; mediaTimeSeconds: number }
 export class ProgramMonitorClock {
     constructor(now?: () => number);
+    setBackground(value:boolean):void;
     delayMs: number;
     configureAudioLatency(seconds:number):void;
     epoch: number;

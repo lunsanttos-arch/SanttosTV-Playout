@@ -13,6 +13,7 @@ app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 // The confidence monitor must keep scheduling PCM/JPEG while covered or minimized.
 app.commandLine.appendSwitch("disable-renderer-backgrounding");
 app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 if (process.platform === "win32") app.setAppUserModelId("com.santtos.tvautomation");
 const testBenchConfig = configureTestBench(app), isTestBench = testBenchConfig.enabled, isNdiTestBench = testBenchConfig.ndiEnabled;
 const isDevelopment = !app.isPackaged;

@@ -27,3 +27,11 @@ Testes adicionais cobrem a retenção de PCM durante a reserva sem aceitar pacot
 A janela principal passa a usar `backgroundThrottling: false`, com as opções Chromium `disable-renderer-backgrounding` e `disable-backgrounding-occluded-windows`. O monitor mantém o agendamento PCM e o relógio de imagem mesmo fora de foco, escondido ou minimizado; o mecanismo que cancela áudio em uma travada real do preview continua ativo.
 
 A integração Electron verifica avanço dos agendamentos de áudio e das apresentações de imagem sem cancelamentos durante minimize/hide e durante cobertura por outra BrowserWindow. A continuidade física no Windows depende da confirmação no equipamento; o teste automatizado usa display virtual Linux.
+
+## Oclusão e proteção de imagem
+
+Foi identificado outro acoplamento: a ausência de apresentação no canvas por 150 ms acionava a proteção de travada e cancelava os buffers locais. A janela coberta podia ter seu preview suprimido pelo compositor mesmo mantendo os temporizadores ativos.
+
+Além de desabilitar `CalculateNativeWinOcclusion`, o relógio do monitor agora trata blur/ocultação como segundo plano. Nesse estado, PCM válido do motor mantém a linha de tempo sem depender de desenho no canvas; cortes e novas gerações continuam invalidando o fluxo anterior. Ao recuperar foco, há um prazo limitado à reserva + 250 ms para voltar a apresentar uma imagem atual. A proteção de travada real em primeiro plano permanece ativa, assim como os descartes de pacotes atrasados.
+
+A integração Full HD/60 fps cobre sobreposição com processamento de bitmap artificialmente atrasado em 400 ms: o áudio continua agendado sem cancelamentos causados pela falta de desenho. Depois verifica a recuperação em primeiro plano e a proteção de travada real. A implementação ainda requer confirmação auditiva no Windows do operador.
