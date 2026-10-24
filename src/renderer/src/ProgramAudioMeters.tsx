@@ -116,6 +116,7 @@ export default function ProgramAudioMeters({
         ctx: AudioContext;
         left: AnalyserNode;
         right: AnalyserNode;
+        gain: GainNode;
         bufferL: Float32Array<ArrayBuffer>;
         bufferR: Float32Array<ArrayBuffer>;
         peakL: number;
@@ -405,6 +406,9 @@ export default function ProgramAudioMeters({
             );
         }
 
+        const previewGraph = graph.current;
+        if (previewGraph) previewGraph.gain.gain.setValueAtTime(monitorEnabled ? 1 : 0, previewGraph.ctx.currentTime);
+
         if (!monitorEnabled) {
             pendingPcm.current = [];
             resetRealMonitor();
@@ -540,15 +544,17 @@ export default function ProgramAudioMeters({
                 right,
                 1
             );
-            source.connect(
-                ctx.destination
-            );
+            const gain = ctx.createGain();
+            gain.gain.value = monitorEnabledRef.current ? 1 : 0;
+            source.connect(gain);
+            gain.connect(ctx.destination);
 
             const nextGraph = {
                 element,
                 ctx,
                 left,
                 right,
+                gain,
                 bufferL:
                     new Float32Array(
                         new ArrayBuffer(
@@ -864,9 +870,11 @@ export default function ProgramAudioMeters({
 
 
 
-            {nativeOutput && (
+            {
                 <button
                     type="button"
+                    aria-pressed={monitorEnabled}
+                    aria-label={monitorEnabled ? "Silenciar áudio da prévia" : "Ativar áudio da prévia"}
                     className={
                         "audio-monitor-toggle" +
                         (
@@ -877,8 +885,8 @@ export default function ProgramAudioMeters({
                     }
                     title={
                         monitorEnabled
-                            ? "Ouvindo o áudio do PROGRAM neste computador."
-                            : "Ouvir o áudio do PROGRAM neste computador."
+                            ? "Silenciar somente a prévia local. PROGRAM e saídas continuam com áudio."
+                            : "Ativar somente o som da prévia neste computador."
                     }
                     onClick={() =>
                         setMonitorEnabled(
@@ -888,10 +896,10 @@ export default function ProgramAudioMeters({
                     }
                 >
                     {monitorEnabled
-                        ? "MONITOR ON"
-                        : "MONITOR OFF"}
+                        ? "SOM ON"
+                        : "SOM OFF"}
                 </button>
-            )}
+            }
 
             {monitorSuspended &&
                 monitorEnabled &&

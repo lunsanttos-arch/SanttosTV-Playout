@@ -123,6 +123,21 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         }
         assert(matched.length >= 5, `Need measured resumed PCM/video pairs: ${matched.length}`);
         const maximum = Math.max(...matched.map(Math.abs)); assert(maximum < .085, `Local scheduling offset after stall: ${maximum}s`);
+        const muteBefore=await call('getNdiStatus');
+        await evaluate(`document.querySelector('button[aria-label="Silenciar áudio da prévia"]').click()`);
+        await wait(150);
+        const muted=await evaluate('({starts:__monitorQA.starts.length,pcm:__monitorQA.pcm.length})');
+        await wait(500);
+        assert.equal(await evaluate('__monitorQA.starts.length'),muted.starts,'Muted preview must not schedule local audio');
+        assert(await evaluate('__monitorQA.pcm.length')>muted.pcm+4,'PROGRAM PCM must continue while local preview is muted');
+        const muteAfter=await call('getNdiStatus');
+        assert.equal(muteAfter.playout.generation,muteBefore.playout.generation);
+        assert.equal(muteAfter.decks.active.pid,muteBefore.decks.active.pid);
+        assert.equal(muteAfter.playout.state,'PLAYING');
+        assert.equal(await evaluate(`localStorage.getItem('santtos-program-audio-monitor')`),'off');
+        await evaluate(`document.querySelector('button[aria-label="Ativar áudio da prévia"]').click()`);
+        await wait(500);
+        assert(await evaluate('__monitorQA.starts.length')>muted.starts,'Preview sound must resume independently');
         console.log(`MONITOR SYNC: actual PCM/WebAudio scheduling and canvas, 650ms bitmap stall + 650ms frozen renderer, scheduled sound canceled, recovery aligned within ${(maximum*1000).toFixed(1)}ms over ${matched.length} matched PCM/video pairs; PROGRAM decoder unchanged`);
     } finally {
         await host(`if(globalThis.__qaMonitorCover)__qaMonitorCover.close();if(globalThis.__qaMonitorWindow){__qaMonitorWindow.restore();__qaMonitorWindow.show();}undefined`).catch(()=>{});

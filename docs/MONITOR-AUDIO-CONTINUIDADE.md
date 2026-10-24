@@ -41,3 +41,9 @@ A integração Full HD/60 fps cobre sobreposição com processamento de bitmap a
 A visibilidade da aba do Playout agora é informada separadamente do foco da janela. Ao abrir Programação ou Configurações, a janela permanece em primeiro plano, mas a área persistente do Playout fica escondida; a ausência de desenho nessa área não pode silenciar o monitor. Eventos de foco não anulam esse estado de aba escondida.
 
 O PCM continua no relógio do motor enquanto o preview está fora da tela. Ao voltar ao Playout, é concedido o mesmo prazo limitado de recuperação de imagem, sem reutilizar quadros atrasados. A proteção de travada permanece para o preview efetivamente visível. Testes de relógio cobrem a combinação de aba escondida, perda/retorno de foco e reapresentação. A integração Full HD/60 fps navega por Programação e Configurações com bitmap atrasado em 400 ms, verifica continuidade do agendamento sem cancelamentos e exige uma apresentação recente ao retornar.
+
+## Botão SOM ON / SOM OFF
+
+O botão sob os medidores controla somente a escuta da prévia neste computador. Na operação nativa ele silencia o ganho Web Audio local e descarta seus buffers pendentes; não envia comandos de parada ao motor nem às saídas. Na prévia Chromium, o controle atua em um ganho local após a derivação dos medidores, preservando a medição. A preferência continua salva entre aberturas.
+
+A integração Electron verifica que, com SOM OFF, não surgem novos agendamentos locais, enquanto os pacotes PCM seguem chegando e PID/geração/estado PLAYING do motor permanecem iguais. SOM ON volta a agendar som sem reiniciar o item.

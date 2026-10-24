@@ -488,7 +488,7 @@ const programAudioMeters = fs.readFileSync(
 assert(
     programAudioMeters.includes("onProgramAudioPcm") &&
     programAudioMeters.includes("programPcmAvailable") &&
-    programAudioMeters.includes("MONITOR ON") &&
+    programAudioMeters.includes("SOM ON") &&
     !programAudioMeters.includes("SEM PCM") &&
     app.includes("muted={nativeOutputEnabled}") &&
     preload.includes("playout:audio-pcm") &&
