@@ -1,5 +1,13 @@
 # Continuidade do áudio no monitor local
 
+## Janela de transporte PCM
+
+O adaptador entre o processo PROGRAM e a interface limitava PCM a quatro mensagens aguardando ACK. A 60 fps, isso equivalia a somente 67 ms; durante atrasos normais de IPC, novos pacotes eram descartados antes de chegar ao buffer do monitor. Aumentar apenas a reserva de reprodução não recuperava esses pacotes. OMT permanecia íntegro porque recebe o PCM antes desse transporte.
+
+O limite passou a ser uma janela de até 250 ms de PCM em trânsito, com teto adicional de 64 mensagens e 256 KiB. ACKs liberam a duração e os bytes efetivamente enviados, sem bloquear o motor e sem criar fila ilimitada se a interface parar. O preview continua com crédito independente de um quadro.
+
+A integração Full HD/60 fps atrasa os ACKs de áudio em 120 ms e verifica continuidade das posições e quantidades de amostras recebidas, além de manter os testes de minimização, cobertura, travada e recuperação. O teste unitário cobre 25/30/60 fps, atraso de 150 ms, saturação, retomada e reset. O teste automatizado não substitui a confirmação auditiva no Windows do usuário.
+
 O relato de áudio picotando apenas no PROGRAM local, com OMT limpo no vMix, motivou a revisão do agendamento Web Audio. Cada pacote recalculava sua posição a partir de `getOutputTimestamp()`. Oscilações entre leituras do relógio do dispositivo podiam produzir pequenos espaços e sobreposições, mesmo com PCM consecutivo.
 
 O monitor agora fixa a correspondência com o relógio do dispositivo uma vez por época do relógio compartilhado com o vídeo. Pacotes contíguos seguem uma grade de amostras contínua. Pacotes realmente perdidos preservam sua lacuna; não há concatenação que encurte a linha de tempo. Mudanças de dispositivo/relógio superiores a 80 ms reiniciam o relógio compartilhado de áudio e imagem, em vez de acumular desvio. Cortes, pausa, desligamento do monitor e recuperação após travadas descartam o agendamento anterior.

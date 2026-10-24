@@ -11,8 +11,21 @@ function hostCall(action, args = {}) {
     });
 }
 const credits = new Map();
+const audioFlights = [];
+let audioFlightSeconds = 0, audioFlightBytes = 0;
 function hostEvents(channel, payload) {
-    const limit = channel === "playout:preview-frame" ? 1 : channel === "playout:audio-pcm" ? 4 : null;
+    const audio = channel === "playout:audio-pcm";
+    if (audio) {
+        const bytes = payload?.data?.byteLength || 0;
+        const rate = Number(payload?.sampleRate), channels = Number(payload?.channels);
+        if (!bytes || ![44100,48000,96000].includes(rate) || ![1,2].includes(channels)) return;
+        const seconds = bytes / (rate * channels * 4);
+        // Four events represented only 67 ms at 60 fps. A bounded media-time
+        // window absorbs normal IPC round trips without dropping PCM packets.
+        if (audioFlights.length >= 64 || audioFlightSeconds + seconds > .25 + 1e-6 || audioFlightBytes + bytes > 256 * 1024) return;
+        audioFlights.push({ seconds, bytes }); audioFlightSeconds += seconds; audioFlightBytes += bytes;
+    }
+    const limit = channel === "playout:preview-frame" ? 1 : audio ? 64 : null;
     if (limit !== null) {
         if ((credits.get(channel) || 0) >= limit) return;
         credits.set(channel, (credits.get(channel) || 0) + 1);
@@ -38,13 +51,19 @@ async function invoke(channel, args) {
     return handler({}, ...args);
 }
 function receive(message) {
-    if (message.type === "event-reset") credits.clear();
+    if (message.type === "event-reset") { credits.clear(); audioFlights.length = 0; audioFlightSeconds = 0; audioFlightBytes = 0; }
     if (message.type === "host-reply") {
         const waiting = pending.get(message.id); if (!waiting) return;
         pending.delete(message.id); clearTimeout(waiting.timer);
         if (message.error) waiting.reject(Error(message.error)); else waiting.resolve(message.value);
     }
-    if (message.type === "event-ack") credits.set(message.channel, Math.max(0, (credits.get(message.channel) || 0) - 1));
+    if (message.type === "event-ack") {
+        if (message.channel === "playout:audio-pcm") {
+            const flight = audioFlights.shift();
+            if (flight) { audioFlightSeconds = Math.max(0, audioFlightSeconds - flight.seconds); audioFlightBytes = Math.max(0, audioFlightBytes - flight.bytes); }
+        }
+        credits.set(message.channel, Math.max(0, (credits.get(message.channel) || 0) - 1));
+    }
     if (message.type === "notify") listeners.get(message.channel)?.({}, ...message.args);
 }
 const dialog = Object.fromEntries(["showOpenDialog", "showSaveDialog", "showMessageBox"].map(action =>

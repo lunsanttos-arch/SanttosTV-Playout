@@ -80,6 +80,13 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
             await host(`if(globalThis.__qaMonitorCover){__qaMonitorCover.close();__qaMonitorCover=null;}__qaMonitorWindow.restore();__qaMonitorWindow.show();__qaMonitorWindow.focus();undefined`);
         }
         assert.equal(await evaluate(`document.querySelector('.system-status').innerText.includes('SRT')`),true);
+        const pcmStart=await evaluate('__monitorQA.pcm.length');
+        await host(`globalThis.__qaAckOriginal=${electronHost}.ipcMain.listeners('program:monitor-ack')[0];${electronHost}.ipcMain.removeListener('program:monitor-ack',__qaAckOriginal);globalThis.__qaAckDelayed=(event,channel)=>{if(channel==='playout:audio-pcm')setTimeout(()=>__qaAckOriginal(event,channel),120);else __qaAckOriginal(event,channel);};${electronHost}.ipcMain.on('program:monitor-ack',__qaAckDelayed);undefined`);
+        await wait(2200);
+        await host(`${electronHost}.ipcMain.removeListener('program:monitor-ack',__qaAckDelayed);${electronHost}.ipcMain.on('program:monitor-ack',__qaAckOriginal);undefined`);
+        const audioPackets=await evaluate(`__monitorQA.pcm.slice(${pcmStart})`);
+        assert(audioPackets.length>20,'Delayed ACK must not starve local PCM');
+        for(let i=1;i<audioPackets.length;i++) assert(Math.abs(audioPackets[i].time-audioPackets[i-1].time-audioPackets[i-1].frames/48000)<.001,'Local PCM must not lose samples during 120ms ACK round trips');
         await evaluate('__monitorQA.delay=650'); await wait(850);
         const stalled = await evaluate('({stops:__monitorQA.stops,starts:__monitorQA.starts.length})');
         assert(stalled.stops > baseline.stops, 'Image decoding stall must cancel scheduled local sound');
