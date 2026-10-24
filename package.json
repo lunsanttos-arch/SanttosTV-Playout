@@ -67,7 +67,7 @@
     "test:rundown-export": "node scripts/test-rundown-pdf.js",
     "test:content-label": "node scripts/test-content-label.js",
     "test:audio-leveling": "node scripts/test-audio-leveling.js",
-    "test:program-monitor-clock": "node scripts/test-program-monitor-clock.js",
+    "test:program-monitor-clock": "node scripts/test-program-monitor-clock.js && node scripts/test-monitor-audio-timeline.js",
     "build:lite": "npm run build -- --win --x64 && node scripts/create-release-kit.js",
     "test:release-kit": "node scripts/test-release-kit.js",
     "diagnostico:video": "node scripts/diagnose-video.js",

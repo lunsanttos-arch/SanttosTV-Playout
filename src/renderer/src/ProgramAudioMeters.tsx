@@ -1,3 +1,4 @@
+import { MonitorAudioTimeline } from "./monitor-audio-timeline.mjs";
 import { useEffect, useRef, useState } from "react";
 import { programMonitorClock } from "./program-monitor-clock.mjs";
 import type { MonitorTiming } from "./program-monitor-clock.mjs";
@@ -108,6 +109,7 @@ export default function ProgramAudioMeters({
     const isPlayingRef = useRef(isPlaying);
     const monitor = useRef<MonitorEngine | null>(null);
     const pendingPcm = useRef<ProgramPcmPayload[]>([]);
+    const audioTimeline = useRef(new MonitorAudioTimeline());
 
     const graph = useRef<{
         element: HTMLVideoElement;
@@ -121,6 +123,7 @@ export default function ProgramAudioMeters({
     } | null>(null);
 
     function resetRealMonitor() {
+        audioTimeline.current.reset();
         const current =
             monitor.current;
 
@@ -359,9 +362,12 @@ export default function ProgramAudioMeters({
         // Map the shared video presentation deadline to the audio device clock.
         // Missing IPC packets retain their source positions instead of being concatenated.
         const stamp = engine.ctx.getOutputTimestamp?.();
-        const at = stamp && typeof stamp.contextTime === "number" && typeof stamp.performanceTime === "number" && stamp.contextTime > 0 && stamp.performanceTime > 0
+        const deviceAt = stamp && typeof stamp.contextTime === "number" && typeof stamp.performanceTime === "number" && stamp.contextTime > 0 && stamp.performanceTime > 0
             ? stamp.contextTime + (deadline - performance.timeOrigin - stamp.performanceTime) / 1000
             : engine.ctx.currentTime + (deadline - programMonitorClock.now()) / 1000 - (engine.ctx.baseLatency || 0);
+        const at = audioTimeline.current.plan({ epoch: programMonitorClock.epoch,
+            mediaTime: payload.mediaTimeSeconds!, frames, rate: sampleRate, deviceAt });
+        if (at === null) { source.disconnect(); programMonitorClock.reset(); return; }
         const offset = Math.max(0, engine.ctx.currentTime - at);
         if (offset > .06 || offset >= buffer.duration) {
             source.disconnect();
