@@ -98,6 +98,13 @@ function formatDuration(seconds: number) {
         .join(":");
 }
 
+function parseDuration(value: string): number | null {
+    const match = /^(\d{1,2}):([0-5]\d):([0-5]\d)$/.exec(value.trim());
+    if (!match) return null;
+    const seconds = Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+    return seconds >= 1 && seconds <= 86400 ? seconds : null;
+}
+
 function sanitizePastedUrl(value: string) {
     return String(value ?? "")
         .replace(/[\u0000-\u001f\u007f]/g, "")
@@ -233,6 +240,8 @@ function WebInputsContent({
         useState<WebInput[]>([]);
     const [draft, setDraft] =
         useState(EMPTY_INPUT);
+    const [durationText, setDurationText] = useState(() => formatDuration(EMPTY_INPUT.durationSeconds));
+    const durationSeconds = parseDuration(durationText);
     const [editingId, setEditingId] =
         useState<string | null>(null);
     const [status, setStatus] =
@@ -298,16 +307,11 @@ function WebInputsContent({
                     ? secondsUntilClock(
                           draft.endTime
                       )
-                    : Math.max(
-                          1,
-                          Number(
-                              draft.durationSeconds
-                          ) || 1
-                      ),
+                    : durationSeconds ?? 0,
             [
                 draft.timingMode,
                 draft.endTime,
-                draft.durationSeconds
+                durationSeconds
             ]
         );
 
@@ -317,6 +321,7 @@ function WebInputsContent({
         setEditingId(
             input.id
         );
+        setDurationText(formatDuration(input.durationSeconds));
         setDraft({
             name: input.name,
             url: input.url,
@@ -344,6 +349,7 @@ function WebInputsContent({
 
     function clear() {
         setEditingId(null);
+        setDurationText(formatDuration(EMPTY_INPUT.durationSeconds));
         setDraft(
             EMPTY_INPUT
         );
@@ -353,6 +359,11 @@ function WebInputsContent({
         if (saving) return;
 
         setStatus("");
+
+        if (draft.timingMode === "duration" && durationSeconds === null) {
+            setStatus("Informe a duração em HH:MM:SS, entre 00:00:01 e 24:00:00.");
+            return;
+        }
 
         const checked =
             validateDraftUrl(
@@ -378,6 +389,7 @@ function WebInputsContent({
                 await window.santtosAPI
                     .saveWebInput({
                         ...draft,
+                        durationSeconds: durationSeconds ?? draft.durationSeconds,
                         url:
                             checked.url,
                         protocol:
@@ -901,29 +913,16 @@ function WebInputsContent({
                     {draft.timingMode ===
                     "duration" ? (
                         <label>
-                            <span>Duração (segundos)</span>
+                            <span>Duração (HH:MM:SS)</span>
                             <input
-                                type="number"
-                                min={1}
-                                max={86400}
-                                value={
-                                    draft.durationSeconds
-                                }
-                                onChange={(event) => {
-                                    const value =
-                                        Math.max(
-                                            1,
-                                            Number(
-                                                event.currentTarget.value
-                                            ) || 1
-                                        );
-                                    setDraft(
-                                        (current) => ({
-                                            ...current,
-                                            durationSeconds:
-                                                value
-                                        })
-                                    );
+                                type="text"
+                                aria-label="Duração em horas, minutos e segundos"
+                                placeholder="00:00:00"
+                                maxLength={8}
+                                value={durationText}
+                                onChange={(event) => setDurationText(event.currentTarget.value)}
+                                onBlur={() => {
+                                    if (durationSeconds !== null) setDurationText(formatDuration(durationSeconds));
                                 }}
                             />
                         </label>
@@ -955,9 +954,9 @@ function WebInputsContent({
                 <div className="web-input-duration-preview">
                     Se entrar agora, sai em{" "}
                     <strong>
-                        {formatDuration(
-                            previewDuration
-                        )}
+                        {draft.timingMode === "duration" && durationSeconds === null
+                            ? "--:--:--"
+                            : formatDuration(previewDuration)}
                     </strong>
                 </div>
 
