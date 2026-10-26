@@ -31,6 +31,7 @@ type Panel =
 export interface MediaItem {
     id: string;
     sourceMediaId?: string;
+    scheduleOnly?: boolean;
     placeholder?: boolean;
     liveSlot?: boolean;
     isContingency?: boolean;
@@ -1546,7 +1547,9 @@ function PlayoutPanel({
                         mediaById.get(sourceId);
 
                     if (!source) {
-                        return null;
+                        // Arquivos avulsos têm cadastro próprio e não pertencem
+                        // à biblioteca. Atualizá-la não pode removê-los da fila.
+                        return entry.scheduleOnly ? entry : null;
                     }
 
                     return {
