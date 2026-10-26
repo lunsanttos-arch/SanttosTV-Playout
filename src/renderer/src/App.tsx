@@ -1167,7 +1167,7 @@ interface PlayoutPanelProps {
     hashtagStyle: HashtagStyle;
     exhibitionStyle: ExhibitionStyle;
     onSelectMedia: (
-        media: MediaItem
+        media: MediaItem | null
     ) => void;
     onAddVideos: () => Promise<void>;
     onImportDroppedFiles: (
@@ -1271,6 +1271,7 @@ function PlayoutPanel({
     const [editingFilm, setEditingFilm] =
         useState<MediaItem | null>(null);
     const [applyingRundown, setApplyingRundown] = useState(false);
+    const [playlistMessage, setPlaylistMessage] = useState("");
     const applyingRundownRef = useRef(false);
     const nativeStartRef = useRef<Promise<unknown> | null>(null);
     const selectedMediaRef = useRef(selectedMedia);
@@ -1498,7 +1499,7 @@ function PlayoutPanel({
     }, [rundownApplyRequest]);
 
     useEffect(() => {
-        if (!timelineLoadedRef.current) {
+        if (!timelineLoadedRef.current || applyingRundown) {
             return;
         }
 
@@ -1518,7 +1519,7 @@ function PlayoutPanel({
 
         return () =>
             window.clearTimeout(timer);
-    }, [timelineQueue]);
+    }, [timelineQueue, applyingRundown]);
 
     useEffect(() => {
         if (!timelineLoadedRef.current) {
@@ -2746,7 +2747,9 @@ function PlayoutPanel({
         setFreezeHoldItemId(null);
 
         if (nativeOutputEnabled) {
-            await window.santtosAPI.stopNdiFile();
+            const result = await window.santtosAPI.stopNdiFile();
+            if (!result.ok) throw new Error(result.error || "Não foi possível interromper a reprodução.");
+            if (result.playout) onNativeStateChange(result.playout);
             await window.santtosAPI
                 .cancelPreparedNdiInput()
                 .catch(() => undefined);
@@ -2775,6 +2778,36 @@ function PlayoutPanel({
         if (selectedMedia) {
             await window.santtosAPI.savePlayoutCheckpoint({ itemId: selectedMedia.id,
                 positionSeconds: inPoint, playing: false });
+        }
+    }
+
+    async function clearPlaylist() {
+        if (applyingRundownRef.current || timelineQueueRef.current.length === 0) return;
+        if (!window.confirm("Limpar toda a playlist atual e interromper a reprodução? Os arquivos da biblioteca e as programações salvas serão mantidos.")) return;
+        applyingRundownRef.current = true;
+        setApplyingRundown(true);
+        setPlaylistMessage("");
+        try {
+            await nativeStartRef.current?.catch(() => undefined);
+            await stopVideo();
+            pendingRecoveryRef.current = null;
+            restoredPositionRef.current = null;
+            pendingNativeEndRef.current = null;
+            selectedMediaRef.current = null;
+            timelineQueueRef.current = [];
+            setTimelineQueue([]);
+            onSelectMedia(null);
+            setCurrentTime(0);
+            setDuration(0);
+            setPendingSeek(null);
+            setDraggedMediaId(null);
+            setEditingFilm(null);
+            await window.santtosAPI.saveTimeline([]);
+        } catch (error) {
+            setPlaylistMessage(error instanceof Error ? error.message : "Não foi possível limpar a playlist.");
+        } finally {
+            applyingRundownRef.current = false;
+            setApplyingRundown(false);
         }
     }
 
@@ -4140,9 +4173,18 @@ function PlayoutPanel({
                         }
                     }}
                 >
-                    <div className="panel-title">
-                        TIMELINE
+                    <div className="playlist-header">
+                        <div className="panel-title">TIMELINE</div>
+                        <button
+                            type="button"
+                            className="secondary-button danger-secondary"
+                            disabled={applyingRundown || timelineQueue.length === 0}
+                            onClick={() => void clearPlaylist()}
+                        >
+                            Limpar playlist
+                        </button>
                     </div>
+                    {playlistMessage && <div className="library-message" role="alert">{playlistMessage}</div>}
                     {timelineMedia.length > 0 ? (
                         <div className="timeline-list">
                             {timelineMedia.map(
