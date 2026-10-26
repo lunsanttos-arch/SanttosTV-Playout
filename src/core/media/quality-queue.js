@@ -36,7 +36,9 @@ class MediaQualityQueue {
    if(['queued','checking'].includes(q.status)){this.enqueue(item);throw Error(this.pendingMessage(item));}
    throw Error("Material reprovado na análise completa: "+(q.error||item.name));
   }this.enqueue(item);}
- async validate(items){for(const item of items)await this.inspect(item);}
+ async validate(items){for(const [index,item] of items.entries()){
+  try{await this.inspect(item)}catch(error){throw new Error(`Item ${index+1} — ${item.name}: ${error.message}`,{cause:error});}
+ }}
  snapshot(){return {queued:this.pending.size,running:this.running?.item.id||null,completed:this.completed};}
  async stop(){this.stopped=true;this.pending.clear();const job=this.running;if(!job)return;job.worker.postMessage('cancel');
   await new Promise(resolve=>{let timer;const done=()=>{clearTimeout(timer);resolve()};job.worker.once('exit',done);timer=setTimeout(()=>{if(job.pid)try{process.kill(job.pid,'SIGKILL')}catch{};void job.worker.terminate().finally(done)},1500)});}

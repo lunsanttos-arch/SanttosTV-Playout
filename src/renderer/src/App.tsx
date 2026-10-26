@@ -1220,6 +1220,9 @@ function PlayoutPanel({
     const videoRef =
         useRef<HTMLVideoElement | null>(null);
     const nativeOutputEnabled = !testBench || ndiTestMode;
+    // A falha da saída SRT permanece no status/diagnóstico, sem cobrir o vídeo.
+    const programDisplayError = nativePlayout.error ??
+        (playoutError?.startsWith("Saída SRT:") ? null : playoutError);
     const timelineLoadedRef = useRef(false);
     const pendingRecoveryRef = useRef<{ itemId: string; positionSeconds: number; playing: boolean } | null>(null);
     const restoredPositionRef = useRef<{ itemId: string; positionSeconds: number } | null>(null);
@@ -3822,20 +3825,18 @@ function PlayoutPanel({
                             "SEM SINAL"
                         )}
 
-                        {(nativePlayout.state === "FAULT" || playoutError) && (
+                        {(nativePlayout.state === "FAULT" || programDisplayError) && (
                             <div
                                 className="program-engine-error-banner"
                                 role="alert"
                                 title={
-                                    nativePlayout.error ??
-                                    playoutError ??
+                                    programDisplayError ??
                                     undefined
                                 }
                             >
                                 <strong>ERRO DO PROGRAM</strong>
                                 <span>
-                                    {nativePlayout.error ??
-                                        playoutError ??
+                                    {programDisplayError ??
                                         "Falha desconhecida no motor de playout."}
                                 </span>
                             </div>

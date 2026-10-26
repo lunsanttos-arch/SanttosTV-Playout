@@ -13,6 +13,9 @@ try{
  await assert.rejects(()=>queue.validate(media),/pendente/);await done();
  assert.equal(maxChecking,1);assert.equal(media[0].quality.status,'approved');assert.equal(media[0].quality.sha256.length,64);assert.equal(media[1].quality.status,'rejected');assert.equal(queue.completed,2);
  await queue.validate([media[0]]);await assert.rejects(()=>queue.validate([media[1]]),/reprovado/);await assert.rejects(()=>queue.assertPlayable(media[1]),/reprovado/);
+ const missing={id:'gone',name:'Arquivo removido',path:path.join(root,'gone.mp4')};media.push(missing);
+ await assert.rejects(()=>queue.validate([media[0],{...media[0],id:'occurrence',sourceMediaId:'good'},missing]),error=>error.message.startsWith('Item 3 — Arquivo removido: ENOENT:')&&error.cause.code==='ENOENT');
+ media.pop();
  queue.enqueue(media[1]);await assert.rejects(()=>queue.assertPlayable(media[1]),/Análise em andamento/);await assert.rejects(()=>queue.validate([media[1]]),/Análise em andamento/);await done();assert.equal(media[1].quality.status,"rejected");
  fs.copyFileSync(good,bad);await assert.rejects(()=>queue.validate([media[1]]),/pendente/);await done();assert.equal(media[1].quality.status,'approved');await queue.validate([media[1]]);
  fs.appendFileSync(good,'modified');await assert.rejects(()=>queue.validate([media[0]]),/pendente/);await done();
