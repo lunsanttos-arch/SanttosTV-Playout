@@ -6,6 +6,8 @@ export class ProgramMonitorClock {
     setPreviewVisible(value:boolean):void;
     delayMs: number;
     configureAudioLatency(seconds:number):void;
+    configureSourceClock(streamId:string,offsetMs:number):void;
+    sourceClockKnown(streamId:string):boolean;
     epoch: number;
     generation: number;
     now: () => number;

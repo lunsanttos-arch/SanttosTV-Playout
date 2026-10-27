@@ -67,6 +67,18 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
             console.error(await evaluate("import('/src/program-monitor-clock.mjs').then(m=>m.programMonitorClock.snapshot())"));
         }
         assert(baseline.starts > 8 && baseline.draws > 8, JSON.stringify(baseline));
+        // A healthy PROGRAM must remain visible when bitmap decoding takes
+        // longer than one preview frame, but less than the presentation reserve.
+        await evaluate('__monitorQA.delay=80');
+        const slowStart=await evaluate('__monitorQA.draws.length');
+        await wait(1600);
+        const slowDraws=await evaluate('__monitorQA.draws.length')-slowStart;
+        assert(slowDraws>8,`Continuous 80ms bitmap decode must not starve preview; drew ${slowDraws} frames`);
+        const duringSlow=await call('getNdiStatus');
+        assert.equal(duringSlow.decks.active.pid,before.decks.active.pid);
+        assert.equal(duringSlow.playout.generation,before.playout.generation);
+        assert.equal(duringSlow.playout.state,'PLAYING');
+        await evaluate('__monitorQA.delay=0');await wait(500);
         await host(`globalThis.__qaMonitorWindow=${electronHost}.BrowserWindow.getAllWindows()[0]`);
         for(const action of ['minimize','hide','cover']) {
             if(action==='cover')await host(`globalThis.__qaMonitorCover=new (${electronHost}.BrowserWindow)({width:1800,height:1200,alwaysOnTop:true,webPreferences:{sandbox:true}});__qaMonitorCover.loadURL('data:text/html,<body style="background:black">Coverage test</body>');undefined`);
@@ -158,8 +170,25 @@ const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
         assert.equal(failure.engine.itemId,'diagnostic-stalled');assert.equal(failure.deck.pid,frozen.decks.active.pid);
         assert(failure.frameAgeMs>=5000);assert(failure.resolvedSource);assert.equal(typeof failure.storage.cached,"boolean");
         assert.equal(successor.playout.itemId,'diagnostic-successor');assert.equal(successor.playout.state,'PLAYING');
+        // Simulate a new service clock origin after a system-clock change.
+        // Only presentation timestamps change; the actual decoder stays on air.
+        const serviceHost=`process.getBuiltinModule('node:module').createRequire(${JSON.stringify(require('node:path').resolve(__dirname,'../src/main/main.js'))})(${JSON.stringify(require('node:path').resolve(__dirname,'../src/main/main.js'))}).programService`;
+        await host(`(()=>{const service=${serviceHost};globalThis.__qaClockBridge={service,call:service.call,event:service.event};
+            service.call=async function(channel,...args){const result=await __qaClockBridge.call.call(this,channel,...args);return channel==='program:monitor-clock'?{...result,streamId:'qa-shifted-clock',emittedAt:result.emittedAt+5000}:result;};
+            service.event=function(channel,payload){return __qaClockBridge.event.call(this,channel,['playout:preview-frame','playout:audio-pcm'].includes(channel)?{...payload,streamId:'qa-shifted-clock',emittedAt:payload.emittedAt+5000}:payload);};
+        })()`);
+        const clockBefore=await evaluate('({draws:__monitorQA.draws.length,starts:__monitorQA.starts.length})');
+        await wait(2200);
+        const clockAfter=await evaluate('({draws:__monitorQA.draws.length,starts:__monitorQA.starts.length})');
+        assert(clockAfter.draws-clockBefore.draws>15,'New service clock domain must not freeze the local canvas');
+        assert(clockAfter.starts-clockBefore.starts>20,'Local sound must recover with the same calibrated clock');
+        const unchanged=await call('getNdiStatus');
+        assert.equal(unchanged.decks.active.pid,successor.decks.active.pid);assert.equal(unchanged.playout.generation,successor.playout.generation);
+        const monitorState=await evaluate('window.santtosMonitorSnapshot()');
+        assert(Math.abs(monitorState.clock.sourceClockOffsetMs-5000)<60);
         console.log(`MONITOR SYNC: actual PCM/WebAudio scheduling and canvas, 650ms bitmap stall + 650ms frozen renderer, scheduled sound canceled, recovery aligned within ${(maximum*1000).toFixed(1)}ms over ${matched.length} matched PCM/video pairs; PROGRAM decoder unchanged`);
     } finally {
+        await host(`if(globalThis.__qaClockBridge){__qaClockBridge.service.call=__qaClockBridge.call;__qaClockBridge.service.event=__qaClockBridge.event;delete globalThis.__qaClockBridge;}undefined`).catch(()=>{});
         await host(`if(globalThis.__qaMonitorCover)__qaMonitorCover.close();if(globalThis.__qaMonitorWindow){__qaMonitorWindow.restore();__qaMonitorWindow.show();}undefined`).catch(()=>{});
         await call('stopNdiFile').catch(() => {});
         if(operation)await call('saveOperationSettings',operation).catch(()=>{});

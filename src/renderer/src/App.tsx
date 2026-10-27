@@ -227,6 +227,7 @@ const DEFAULT_HASHTAG_STYLE: HashtagStyle = {
 
 declare global {
     interface Window {
+        santtosMonitorSnapshot?: () => unknown;
         santtosAPI: {
             getOperationSettings: () => Promise<import("./OperationSettingsTab").OperationStatus>;
             saveOperationSettings: (settings: import("./OperationSettingsTab").OperationOptions) => Promise<import("./OperationSettingsTab").OperationStatus>;
@@ -253,6 +254,7 @@ declare global {
             recheckMedia:(id:string)=>Promise<{ok:boolean}>;
             onMediaChanged: (callback:()=>void) => ()=>void;
             getMediaAnalysisStatus: () => Promise<import("./MediaAnalysisProgress").AnalysisStatus>;
+            getProgramMonitorClock: () => Promise<{streamId:string;emittedAt:number}>;
             getMedia: () => Promise<MediaItem[]>;
             importRundownFiles: (paths: string[]) => Promise<{media: MediaItem[]}>;
             importMedia: (
@@ -595,6 +597,13 @@ declare global {
 }
 
 export default function App() {
+    useEffect(() => {
+        const snapshot = () => ({clock:programMonitorClock.snapshot(),visibility:document.visibilityState,
+            canvasTime:document.querySelector<HTMLCanvasElement>('.program-native-preview-canvas')?.dataset.monitorTime ?? null,
+            decodeError:document.querySelector<HTMLElement>('.program-native-preview')?.dataset.decodeError ?? null});
+        window.santtosMonitorSnapshot = snapshot;
+        return () => { if (window.santtosMonitorSnapshot === snapshot) delete window.santtosMonitorSnapshot; };
+    }, []);
     const [clock, setClock] =
         useState("00:00:00");
     const [ndiOnline, setNdiOnline] =

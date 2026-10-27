@@ -1,6 +1,7 @@
 import { MonitorAudioTimeline } from "./monitor-audio-timeline.mjs";
 import { useEffect, useRef, useState } from "react";
 import { programMonitorClock } from "./program-monitor-clock.mjs";
+import { synchronizeMonitorClock } from "./program-monitor-clock-bridge";
 import type { MonitorTiming } from "./program-monitor-clock.mjs";
 
 export interface NativeAudioStatus {
@@ -227,6 +228,7 @@ export default function ProgramAudioMeters({
     }
 
     function queueRealPcm(payload: ProgramPcmPayload) {
+        void synchronizeMonitorClock(payload.streamId);
         if (!monitorEnabledRef.current || !isPlayingRef.current) return;
         pendingPcm.current.push(payload);
         while (pendingPcm.current.length > 128) pendingPcm.current.shift();

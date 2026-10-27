@@ -242,6 +242,14 @@ function configureWatchdog(settings) {
     if (settings.watchdogEnabled) watchdog.start(); else watchdog.stop();
 }
 async function hostCall(action, args) {
+    if (action === 'monitorDiagnostics') {
+        if (!mainWindow || mainWindow.isDestroyed()) return {unavailable:'Interface fechada'};
+        let timer;
+        try { return await Promise.race([
+            mainWindow.webContents.executeJavaScript('window.santtosMonitorSnapshot?.() ?? null'),
+            new Promise(resolve => { timer=setTimeout(()=>resolve({unavailable:'Interface não respondeu em 1 segundo'}),1000); })
+        ]); } catch (error) { return {unavailable:error.message}; } finally { clearTimeout(timer); }
+    }
     if (["showOpenDialog", "showSaveDialog", "showMessageBox"].includes(action)) return dialog[action](mainWindow ?? undefined, args);
     if (action === "openPath") return shell.openPath(args.file);
     if (action === "logoAsset") return logoAsset(args.style, args.profile);

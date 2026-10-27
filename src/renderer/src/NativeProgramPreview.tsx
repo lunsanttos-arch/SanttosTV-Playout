@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { programMonitorClock } from "./program-monitor-clock.mjs";
+import { synchronizeMonitorClock } from "./program-monitor-clock-bridge";
 import type { MonitorTiming, VideoPlan } from "./program-monitor-clock.mjs";
 
 type ProgramState = "IDLE" | "STARTING" | "PLAYING" | "PAUSED" | "ENDED" | "FAULT";
@@ -78,6 +79,7 @@ export default function NativeProgramPreview({ state }: Props) {
         }
         const unsubscribeClock = programMonitorClock.subscribe(reset => { if (reset) clearReady(); });
         const unsubscribeFrame = window.santtosAPI.onProgramPreviewFrame(payload => {
+            void synchronizeMonitorClock(payload.streamId);
             if (payload.streamId !== activeStream) { activeStream = payload.streamId; activeSequence = -1; }
             if (payload.sequence < activeSequence) return;
             activeSequence = payload.sequence;
@@ -116,6 +118,7 @@ export default function NativeProgramPreview({ state }: Props) {
 
     return (
         <div
+            data-decode-error={decodeError || undefined}
             className={
                 "program-native-preview" +
                 (

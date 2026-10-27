@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld(
     "santtosAPI",
     {
         getOperationSettings: () => ipcRenderer.invoke("operation:get"),
+        getProgramMonitorClock: () => ipcRenderer.invoke("program:monitor-clock"),
         saveOperationSettings: settings => ipcRenderer.invoke("operation:save", settings),
         exportDiagnostics: () => ipcRenderer.invoke("operation:diagnostics"),
         advanceNativeRundown: () => ipcRenderer.invoke("playout:next"),

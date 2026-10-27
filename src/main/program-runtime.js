@@ -1450,6 +1450,7 @@ function redactDiagnostic(value) {
 }
 
 function registerIpcHandlers() {
+    registerTrustedHandle('program:monitor-clock', () => ({streamId:monitorStreamId,emittedAt:performance.timeOrigin + performance.now()}));
     registerTrustedHandle('media:analysis-status', async () => mediaQuality.snapshot());
     async function libraryWatchSource(id) {
         const item = getPlayableMedia().find(media => media.id === id && media.sourceType !== 'input' && !media.placeholder);
@@ -1492,10 +1493,11 @@ function registerIpcHandlers() {
         } catch (error) { return { ok: false, error: error.message }; }
     });
     registerTrustedHandle("operation:diagnostics", async () => {
+        const localMonitor = await hostCall('monitorDiagnostics');
         const selected = await dialog.showSaveDialog(mainWindow,{title:"Exportar diagnóstico",defaultPath:"Santtos-diagnostico.json",filters:[{name:"Diagnóstico",extensions:["json"]}]});
         if (selected.canceled) return { canceled:true };
         await fs.promises.writeFile(selected.filePath,JSON.stringify(redactDiagnostic({version:app.getVersion(),platform:process.platform,createdAt:new Date().toISOString(),engine:redactDiagnostic(playoutEngine.snapshot()),
-            runtime:runtimeDiagnosticState(),lastFailure:lastProgramFailure,currentDeck:activeDeck?.snapshot()||null,currentStorage:activeDeck?.source?.cacheState||null,metrics:{...programMetrics},
+            localMonitor,runtime:runtimeDiagnosticState(),lastFailure:lastProgramFailure,currentDeck:activeDeck?.snapshot()||null,currentStorage:activeDeck?.source?.cacheState||null,metrics:{...programMetrics},
             profile:{resolution:activeOutputProfile.resolution,fps:activeOutputProfile.fpsText,pixelFormat:activeOutputProfile.pixelFormat},lastIssue:redactDiagnostic(rundownController?.lastIssue),
             ndi:{ready:ndiReady,error:ndiLastError},omt:redactDiagnostic(omtStatus()),transports:Object.fromEntries([...transportOutputs].map(([kind,out])=>[kind,{online:out.online,error:out.error}]))}),null,2));
         return {ok:true};

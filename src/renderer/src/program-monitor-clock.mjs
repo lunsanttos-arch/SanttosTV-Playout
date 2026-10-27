@@ -3,6 +3,7 @@ export class ProgramMonitorClock {
     constructor(now = () => performance.timeOrigin + performance.now()) {
         this.previewVisible = true; this.background = false; this.visibilityGrace = 0; this.delayMs = 120; this.now = now; this.epoch = 0; this.generation = -1; this.anchor = null;
         this.streamId = null; this.retiredStreams = new Set();
+        this.sourceClocks = new Map();this.lastPacketAgeMs = null;
         this.lastDrawAt = null; this.lastVideoTime = null; this.listeners = new Set();
         this.metrics = { resets: 0, staleVideo: 0, staleAudio: 0, videoStalls: 0, draws: 0 };
     }
@@ -20,8 +21,18 @@ export class ProgramMonitorClock {
         const delay = Math.min(1000, Math.max(250, Math.ceil(latency * 1000 + 120)));
         if (delay !== this.delayMs) { this.delayMs = delay; this.reset(); }
     }
+    configureSourceClock(streamId, offsetMs) {
+        if (typeof streamId !== 'string' || !streamId || !Number.isFinite(offsetMs)) return;
+        const previous = this.sourceClocks.get(streamId) ?? 0;
+        this.sourceClocks.set(streamId, offsetMs);
+        if (this.sourceClocks.size > 32) this.sourceClocks.delete(this.sourceClocks.keys().next().value);
+        if (streamId === this.streamId && Math.abs(offsetMs - previous) > 10) this.reset();
+    }
+    sourceClockKnown(streamId) { return this.sourceClocks.has(streamId); }
+    emittedAt(payload) { return payload.emittedAt - (this.sourceClocks.get(payload.streamId) ?? 0); }
     fresh(payload, maxAge = 250) {
-        const age = this.now() - payload.emittedAt;
+        const age = this.now() - this.emittedAt(payload);
+        this.lastPacketAgeMs = Number.isFinite(age) ? age : null;
         return typeof payload.streamId === 'string' && payload.streamId.length > 0 && payload.streamId.length <= 128 &&
             !this.retiredStreams.has(payload.streamId) && Number.isSafeInteger(payload.generation) &&
             (payload.streamId !== this.streamId || payload.generation >= this.generation) &&
@@ -34,7 +45,7 @@ export class ProgramMonitorClock {
             payload.mediaTimeSeconds - payload.programTimeSeconds > .05) {
             this.metrics.staleVideo++; return null;
         }
-        const anchor = payload.emittedAt - payload.programTimeSeconds * 1000;
+        const anchor = this.emittedAt(payload) - payload.programTimeSeconds * 1000;
         if (payload.streamId !== this.streamId || payload.generation !== this.generation || this.anchor === null || Math.abs(anchor - this.anchor) > 100)
             this.reset(payload.generation, payload.streamId);
         if (this.anchor === null) this.anchor = anchor;
@@ -72,7 +83,7 @@ export class ProgramMonitorClock {
         }
         if ((!this.previewVisible || this.background) && (payload.streamId !== this.streamId || payload.generation > this.generation || this.anchor === null)) {
             this.reset(payload.generation, payload.streamId);
-            this.anchor = payload.emittedAt - payload.mediaTimeSeconds * 1000;
+            this.anchor = this.emittedAt(payload) - payload.mediaTimeSeconds * 1000;
         }
         if (payload.streamId !== this.streamId || payload.generation > this.generation) return { status: 'wait' };
         if (this.anchor === null || (this.lastDrawAt === null && this.previewVisible && !this.background && this.now() >= this.visibilityGrace)) return { status: 'wait' };
@@ -84,6 +95,7 @@ export class ProgramMonitorClock {
         return { status: 'play', deadline, epoch: this.epoch };
     }
     snapshot() { return { ...this.metrics, epoch: this.epoch, generation: this.generation,
+        streamId:this.streamId,sourceClockOffsetMs:this.sourceClocks.get(this.streamId)??null,lastPacketAgeMs:this.lastPacketAgeMs,
         videoAgeMs: this.lastDrawAt === null ? null : this.now() - this.lastDrawAt, videoTime: this.lastVideoTime }; }
 }
 export const programMonitorClock = new ProgramMonitorClock();
