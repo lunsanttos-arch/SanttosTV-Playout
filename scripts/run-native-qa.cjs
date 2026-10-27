@@ -15,7 +15,9 @@ async function run(script,env={},args=[]){const child=start(process.execPath,[pa
 (async()=>{if(process.platform!=='linux')throw Error('Use Linux with DISPLAY/Xvfb; this is not Windows receiver homologation.');
 for(const port of [5173,9333,19334]){let occupied=false;try{await fetch(`http://127.0.0.1:${port}`,{signal:AbortSignal.timeout(700)});occupied=true}catch{}if(occupied)throw Error(`Port ${port} in use; QA does not stop existing applications.`)}
 const config=path.join(folder,'config'),cache=path.join(folder,'cache'),documents=path.join(folder,'documents');fs.mkdirSync(config,{recursive:true});fs.mkdirSync(documents,{recursive:true});fs.writeFileSync(path.join(config,'user-dirs.dirs'),`XDG_DOCUMENTS_DIR="${documents}"\n`);
-const fixture=path.join(folder,'clip.mp4');execFileSync(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','testsrc2=size=320x180:rate=25','-f','lavfi','-i','sine=frequency=997:sample_rate=48000','-t','40','-c:v','libx264','-threads','2','-preset','ultrafast','-c:a','aac','-y',fixture]);
+const fixtureExtension=process.env.SANTTOS_QA_CONTAINER||'mp4';
+if(!['mp4','mkv'].includes(fixtureExtension))throw Error('QA container must be mp4 or mkv');
+const fixture=path.join(folder,`clip.${fixtureExtension}`);execFileSync(ffmpeg,['-hide_banner','-loglevel','error','-f','lavfi','-i','testsrc2=size=320x180:rate=25','-f','lavfi','-i','sine=frequency=997:sample_rate=48000','-t','40','-c:v','libx264','-threads','2','-preset','ultrafast','-c:a','aac','-y',fixture]);
 start(process.execPath,[path.join(root,'node_modules/vite/bin/vite.js'),'--host','127.0.0.1','--strictPort'],{},'vite');
 for(let n=0;n<100;n++){try{if((await fetch('http://127.0.0.1:5173')).ok)break}catch{}await wait(100)}
 const electron=path.join(root,'node_modules/electron/dist/electron');
@@ -26,6 +28,8 @@ async function stateIs(state,id){for(let n=0;n<150;n++){const status=(await eval
 launch();
 let ready=false;for(let n=0;n<100;n++){try{if(!ws||ws.readyState!==WebSocket.OPEN)await connect();ready=await evaluate('Boolean(window.santtosAPI) && document.readyState === "complete" && location.port === "5173"');if(ready)break}catch{}await wait(200)}if(!ready)throw Error('Electron did not initialize');
 await evaluate(`window.santtosAPI.importMedia(${JSON.stringify([fixture])})`);let media;for(let n=0;n<100;n++){media=(await evaluate('window.santtosAPI.getMedia()'))[0];if(media?.duration>=6&&media.quality?.status==='approved')break;await wait(100)}if(!media?.duration||media.quality?.status!=='approved')throw Error('Fixture was not fully analyzed');
+assert.equal(path.extname(media.path),`.${fixtureExtension}`,'Import must preserve the original container');
+console.log(`${fixtureExtension.toUpperCase()} original imported and quality approved (${media.duration.toFixed(2)} s)`);
 // A compact raster keeps CI load separate from hardware production benchmarks.
 const settings=await evaluate('window.santtosAPI.getSettings()');await evaluate(`window.santtosAPI.saveOutputSettings(${JSON.stringify({...settings.output,resolution:process.env.SANTTOS_QA_RESOLUTION||'1280x720',fps:process.env.SANTTOS_QA_FPS||'25',ndi:{enabled:true,name:'Santtos QA DEV NULL'},omt:{enabled:false},srt:{enabled:false},rtmp:{enabled:false}})})`);
 ws.close();ws=null;
