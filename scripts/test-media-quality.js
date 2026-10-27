@@ -8,9 +8,15 @@ try{
  const bytes=fs.readFileSync(good),offset=Math.floor(bytes.length*.65);bytes.fill(0,offset,offset+4096);fs.writeFileSync(bad,bytes);
  const media=[{id:'good',path:good,name:'Good',duration:4,videoStreamIndex:0},{id:'bad',path:bad,name:'Bad',duration:4,videoStreamIndex:0}];let checking=0,maxChecking=0;
  queue=new MediaQualityQueue({ffmpeg,getMedia:()=>media,onUpdate:(id,quality)=>{media.find(m=>m.id===id).quality=quality;checking=media.filter(m=>m.quality?.status==='checking').length;maxChecking=Math.max(maxChecking,checking);}});
+ const progress=[];
  for(const item of media)queue.enqueue(item);queue.enqueue(media[0]);
+ queue.running.worker.on('message',message=>{if(message.type==='progress')progress.push(message.progress);});
+ assert.equal(queue.snapshot().active.name,'Good');assert.equal(queue.snapshot().queue[0].name,'Bad');
  async function done(){for(let i=0;i<300;i++){if(!queue.running&&!queue.pending.size)return;await wait(20)}throw Error('QC did not finish');}
  await assert.rejects(()=>queue.validate(media),/pendente/);await done();
+ for(const phase of ['video','audio-stereo','audio-mono','checksum'])assert(progress.some(item=>item.phase===phase),`Missing real worker progress: ${phase}`);
+ assert(progress.every(item=>item.percent===null||Number.isFinite(item.percent)&&item.percent>=0&&item.percent<=100));
+ assert.equal(queue.snapshot().active,null);assert.equal(queue.snapshot().queued,0);
  assert.equal(maxChecking,1);assert.equal(media[0].quality.status,'approved');assert.equal(media[0].quality.sha256.length,64);assert.equal(media[1].quality.status,'rejected');assert.equal(queue.completed,2);
  await queue.validate([media[0]]);await assert.rejects(()=>queue.validate([media[1]]),/reprovado/);await assert.rejects(()=>queue.assertPlayable(media[1]),/reprovado/);
  const missing={id:'gone',name:'Arquivo removido',path:path.join(root,'gone.mp4')};media.push(missing);

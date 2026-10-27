@@ -29,6 +29,8 @@ function Controller() {
         try {
             await request("/api/login", { pin });
             window.santtosAPI = {
+                getMediaAnalysisStatus: () => request("/api/media/analysis"),
+                getWebInputs: () => request("/api/web-inputs"),
                 getWeeklyRundown: weekday => request(`/api/weekly?weekday=${weekday}`),
                 saveWeeklyRundown: (weekday, rundown) => request("/api/weekly", { weekday, rundown }),
                 exportRundownHtml: rundown => downloadRundown("html", rundown),

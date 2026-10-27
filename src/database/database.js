@@ -1,9 +1,12 @@
 const { previousDate, scheduleBounds } = require("../core/scheduling/broadcast-schedule.mjs");
+const { webInputToMedia, scheduleInputClocks } = require("../core/library/web-input-media.mjs");
+const { getWebInputs } = require("../core/library/web-inputs");
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { openJsonStore } = require("../core/persistence/json-store");
 let databaseStore = null;
+let timelinePublishing = false;
 const { DEFAULT_EXHIBITION_STYLE, normalizeExhibitionStyle } = require("../core/graphics/exhibition-overlay");
 
 const legacyDatabaseFolder = path.join(__dirname, "../../database");
@@ -834,7 +837,7 @@ function normalizeClipNumber(value, fallback = 0) {
         : Math.max(0, Number(fallback) || 0);
 }
 
-function saveTimeline(timelineItems) {
+function normalizeTimeline(timelineItems) {
     if (!Array.isArray(timelineItems)) {
         throw new TypeError(
             "A timeline é inválida."
@@ -845,7 +848,7 @@ function saveTimeline(timelineItems) {
         getPlayableMedia().map((item) => item.id)
     );
 
-    data.timeline = timelineItems
+    return timelineItems
         .map((item) => {
             if (item?.placeholder && item.liveSlot === true && typeof item.id === "string") {
                 const duration = Math.min(86400, Math.max(1, Number(item.duration) || 1800));
@@ -957,9 +960,29 @@ function saveTimeline(timelineItems) {
         })
         .filter(Boolean);
 
-    saveDatabase(["timeline"], data.timeline);
+}
 
+function saveTimeline(timelineItems) {
+    if (timelinePublishing) throw Error("Aguarde a confirmação da programação em gravação.");
+    data.timeline = normalizeTimeline(timelineItems);
+    saveDatabase(["timeline"], data.timeline);
     return getTimeline();
+}
+
+async function publishTimeline(timelineItems) {
+    if (timelinePublishing) throw Error("Aguarde a confirmação da programação em gravação.");
+    const next = normalizeTimeline(timelineItems);
+    if (next.length !== timelineItems.length) throw Error("Há materiais não cadastrados na playlist. Atualize antes de aplicar.");
+    timelinePublishing = true;
+    try {
+        // The writer owns a separate document. PROGRAM continues reading the
+        // previous queue until the atomic file replacement is acknowledged.
+        const store = writer();
+        store.set(["timeline"], next);
+        await store.flush();
+        data.timeline = next;
+        return getTimeline();
+    } finally { timelinePublishing = false; }
 }
 
 function normalizeRundownDate(value) {
@@ -993,7 +1016,9 @@ function getDailyRundown(dateValue) {
     for (const key of chain.reverse()) {
         const stored = data.dailyRundowns?.[key] ?? { date: key, title: "Programação diária", startTime: "00:00", items: [] };
         const current = hydrateRundown(stored, key);
-        const bounds = scheduleBounds(key, current.startTime, current.items, previous, current.startAtOverride);
+        let bounds = scheduleBounds(key, current.startTime, current.items, previous, current.startAtOverride);
+        current.items = scheduleInputClocks(current.items, bounds.startAt);
+        bounds = scheduleBounds(key, current.startTime, current.items, previous, current.startAtOverride);
         // Missing media must never silently shorten the previous day's reserved schedule.
         if (current.missingItems) bounds.endAt = null;
         previous = { ...current, ...bounds };
@@ -1014,6 +1039,7 @@ function hydrateRundown(stored, date = "") {
                   blockLabel: entry.blockLabel || "", notes: entry.notes || "", exhibitionType: "NORMAL", watermark: false,
                   hashtag: "", freezeEnd: false
               };
+              if (entry.sourceType === 'input') return { ...entry, id: `input-slot:${entry.rundownItemId}` };
               const source = mediaById.get(entry.sourceMediaId);
               if (!source) return null;
               return {
@@ -1084,6 +1110,15 @@ function normalizeRundownItems(source) {
     const sourceItems = Array.isArray(source) ? source : [];
 
     return sourceItems.map((item) => {
+        if (item?.sourceType === 'input') {
+            const configured = getWebInputs().find(input => input.id === item.inputId);
+            if (!configured) throw Error(`Input Web não cadastrado: ${item.name || item.inputId}`);
+            return { ...webInputToMedia(configured),
+                rundownItemId: typeof item.rundownItemId === 'string' && item.rundownItemId ? item.rundownItemId : crypto.randomUUID(),
+                blockLabel: normalizeText(item.blockLabel, 'INPUT', 80), notes: normalizeText(item.notes, '', 500),
+                exhibitionType: normalizeExhibitionType(item.exhibitionType), watermark: Boolean(item.watermark),
+                hashtag: normalizeHashtag(item.hashtag ?? '') };
+        }
         if (item?.placeholder === true) return {
             rundownItemId: typeof item.rundownItemId === "string" && item.rundownItemId ? item.rundownItemId : crypto.randomUUID(),
             placeholder: true, liveSlot: item.liveSlot === true, name: normalizeText(item.name, "", 120),
@@ -1263,6 +1298,7 @@ function addMedia(filePaths, scheduleOnly = false) {
 }
 
 function removeMedia(mediaId) {
+    if (timelinePublishing) throw Error("Aguarde a confirmação da programação em gravação.");
     const mediaIndex = data.media.findIndex(
         (item) => item.id === mediaId
     );
@@ -1370,6 +1406,7 @@ module.exports = {
     getPlayableMedia,
     getTimeline,
     saveTimeline,
+    publishTimeline,
     getDailyRundown,
     saveDailyRundown,
     getWeeklyRundown,

@@ -98,6 +98,7 @@ const {
     getPlayableMedia,
     getTimeline,
     saveTimeline,
+    publishTimeline,
     getDailyRundown,
     saveDailyRundown,
     getWeeklyRundown,
@@ -180,7 +181,8 @@ function registerTrustedHandle(channel, listener) {
             if (durableChannels.has(channel) && persistenceStatus().length) await flushPersistence({ retry: true });
             result = await listener(event, ...args);
             if (channel.startsWith("settings:set-") && result?.ok === true) configurationRevision++;
-            if (durableChannels.has(channel) && result?.ok !== false) await flushPersistence();
+            if (durableChannels.has(channel) && result?.ok !== false &&
+                !(channel === "playout:apply-rundown" && result?.persisted === true)) await flushPersistence();
             if (channel === "playout:apply-rundown" && result?.ok === true) result.persisted = true;
             return result;
         } catch (error) {
@@ -362,10 +364,10 @@ function writeNativeProgramFrame(frame, samples) {
 
 function nativeOverlay(item, position = 0, overrides = {}) {
     let outPoint = Number(item.outPoint) > 0 ? Number(item.outPoint) : Number(item.duration) || null;
-    if (item.sourceType === "input" && item.inputTimingMode === "clock" && /^\d{2}:\d{2}$/.test(item.inputEndTime || "")) {
-        const [h,m] = item.inputEndTime.split(":").map(Number), now = new Date(), end = new Date(now);
-        end.setHours(h,m,0,0); if (end <= now) end.setDate(end.getDate()+1);
-        outPoint = Math.max(1,(end-now)/1000);
+    if (item.sourceType === "input" && item.inputTimingMode === "clock" && /^\d{2}:\d{2}(?::\d{2})?$/.test(item.inputEndTime || "")) {
+        const [h,m,s=0] = item.inputEndTime.split(":").map(Number), now = new Date(), end = new Date(now);
+        end.setHours(h,m,s,0); if (end <= now) end.setDate(end.getDate()+1);
+        outPoint = Math.max(0,Number(position)||0) + Math.max(1,(end-now)/1000);
     }
     return { ...item, inPointSeconds: Number(item.inPoint)||0, outPointSeconds: outPoint, durationSeconds: outPoint,
         watermarkEnabled: Boolean(item.watermark), watermarkFadeIn: false, watermarkFadeOut: false,
@@ -1442,6 +1444,7 @@ function redactDiagnostic(value) {
 }
 
 function registerIpcHandlers() {
+    registerTrustedHandle('media:analysis-status', async () => mediaQuality.snapshot());
     async function libraryWatchSource(id) {
         const item = getPlayableMedia().find(media => media.id === id && media.sourceType !== 'input' && !media.placeholder);
         if (!item) throw Error('Material não cadastrado na Biblioteca.');
@@ -1502,6 +1505,7 @@ function registerIpcHandlers() {
         let snapshot = playoutEngine.snapshot(), current = getTimeline().find(item => item.id === snapshot.itemId) || rundownController?.current;
         let preserve = current && ["PLAYING", "STARTING", "PAUSED"].includes(snapshot.state);
         let alignment = null;
+        let incoming = items;
         if (context?.date) {
             const saved = getDailyRundown(context.date);
             if (saved.updatedAt !== context.expectedUpdatedAt || saved.startAt !== context.expectedStartAt)
@@ -1518,18 +1522,24 @@ function registerIpcHandlers() {
                 programmedStartTime:saved.startTime }));
             alignment = planRundownApplication({ items:canonical, date:saved.date, startAt:saved.startAt,
                 queue:current?.isContingency ? [] : getTimeline(), snapshot:current?.isContingency ? {} : snapshot });
-            saveTimeline(alignment.timeline);
-            addLog(`Programação ${saved.date}: ${alignment.message}`);
+            incoming = alignment.timeline.filter(item => item.scheduleDate === saved.date);
+            await publishTimeline(alignment.timeline);
+            try { addLog(`Programação ${saved.date}: ${alignment.message}`); }
+            catch (error) { console.error("Registro da programação publicada:", error); }
         } else {
             // Compatibility for restored/legacy clients without a dated schedule.
-            saveTimeline(preserve && !current.isContingency ? [current, ...items] : items);
+            await publishTimeline(preserve && !current.isContingency ? [current, ...items] : items);
         }
-        if (rundownController?.current?.isContingency && items.length) await rundownController.play(getTimeline()[0]);
-        else if (!preserve && rundownController) {
+        // The decoder keeps running during disk I/O. It may have reached EOF
+        // against the old queue; continue into the committed incoming grade.
+        const afterCommit = playoutEngine.snapshot();
+        if (incoming.length && rundownController && (rundownController.current?.isContingency ||
+            (preserve && rundownController.finished && afterCommit.state === "IDLE"))) await rundownController.play(incoming[0]);
+        else if (!preserve && rundownController && !["PLAYING", "STARTING", "PAUSED"].includes(afterCommit.state)) {
             rundownController.stop(); rundownController.current = null;
             playoutEngine.itemId = null; playoutEngine.filePath = null;
         }
-        const result = { ok: true, applied:true, persisted:false, message:alignment?.message, deltaSeconds:alignment?.deltaSeconds, timeline: getTimeline(), playout: { ...playoutEngine.snapshot(), autonomous: true } };
+        const result = { ok: true, applied:true, persisted:true, message:alignment?.message, deltaSeconds:alignment?.deltaSeconds, timeline: getTimeline(), playout: { ...playoutEngine.snapshot(), autonomous: true } };
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send("playout:rundown-changed", result);
         return result;
     });
@@ -2379,7 +2389,7 @@ function registerIpcHandlers() {
     registerTrustedHandle(
         "timeline:save",
         async (_event, timelineItems) =>
-            saveTimeline(timelineItems)
+            publishTimeline(timelineItems)
     );
 
     registerTrustedOn(

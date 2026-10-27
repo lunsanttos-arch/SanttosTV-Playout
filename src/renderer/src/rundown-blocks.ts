@@ -4,7 +4,7 @@ export type BlockRange = { inPoint: number; outPoint: number };
 export function placeRundownBlocks(items: RundownItem[], sourceId: string, ranges: BlockRange[]): RundownItem[] {
     const index = items.findIndex(item => item.rundownItemId === sourceId);
     const source = items[index];
-    if (!source || source.placeholder || !source.replacedPlaceholder)
+    if (!source || source.placeholder || source.sourceType === "input" || !source.replacedPlaceholder)
         throw new Error("Somente um vídeo que substituiu um Conteúdo a definir pode ser dividido.");
     const duration = Number(source.duration);
     if (!Number.isFinite(duration) || ranges.length < 1 || ranges.length > 6 || !ranges.every((range, i) =>

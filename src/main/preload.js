@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld(
             ),
 
         getLibraryWatchSource: id => ipcRenderer.invoke("media:watch-source",id),
+        getMediaAnalysisStatus: () => ipcRenderer.invoke("media:analysis-status"),
         openLibraryFile: id => ipcRenderer.invoke("media:watch-external",id),
         recheckMedia: id => ipcRenderer.invoke("media:analyze",id),
         onMediaChanged: callback => { const listener=()=>callback(); ipcRenderer.on("media:changed",listener); return ()=>ipcRenderer.removeListener("media:changed",listener); },

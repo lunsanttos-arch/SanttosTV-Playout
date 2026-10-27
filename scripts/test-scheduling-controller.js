@@ -61,6 +61,12 @@ const { SchedulingWebController } = require("../src/core/scheduling/web-controll
         const cookie = login.headers.get("set-cookie").split(";")[0];
         assert(login.headers.get("set-cookie").includes("HttpOnly"));
         const headers = { Cookie: cookie, "Content-Type": "application/json" };
+        assert.equal((await fetch(base + '/api/web-inputs')).status,401);
+        assert.equal((await fetch(base + '/api/media/analysis')).status,401);
+        controller.getWebInputs=()=>[{id:'live',name:'Input cadastrado',url:'https://example.test/live.m3u8'}];
+        controller.getAnalysisStatus=()=>({queued:1,running:'working',active:{id:'working',name:'Em análise',phase:'video',percent:35},queue:[{id:'next',name:'Próximo',position:1}],completed:0});
+        assert.equal((await (await fetch(base+'/api/web-inputs',{headers})).json()).inputs[0].id,'live');
+        assert.equal((await (await fetch(base+'/api/media/analysis',{headers})).json()).active.percent,35);
         const watch = `${base}/api/media/watch?id=${encodeURIComponent(media.id)}`;
         assert.equal((await fetch(watch)).status, 401);
         const head = await fetch(watch, {method:'HEAD',headers});

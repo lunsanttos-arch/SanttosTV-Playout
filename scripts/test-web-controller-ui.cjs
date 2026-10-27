@@ -39,6 +39,27 @@ app.whenReady().then(async()=>{
         await watch('.opec-library-actions button');
         await watch('button[title="Assistir ao material"]');
         assert.equal(await evaluate(`document.querySelectorAll('.opec-rundown-item').length`),rowsBefore);
+        await evaluate(`(()=>{window.originalAnalysisStatus=window.santtosAPI.getMediaAnalysisStatus;window.santtosAPI.getMediaAnalysisStatus=async()=>({active:{id:'qa',name:'Processamento QA',phase:'audio-stereo',percent:37},queued:1,queue:[{id:'next',name:'Próximo material',position:1}],completed:0,running:'qa'})})()`);
+        await wait(1100);
+        assert.equal(await evaluate(`document.querySelector('.media-analysis-progress progress').value`),37);
+        assert(await evaluate(`document.querySelector('.media-analysis-progress').innerText.includes('Medindo áudio estéreo')`));
+        await evaluate(`void(window.santtosAPI.getMediaAnalysisStatus=window.originalAnalysisStatus)`);
+        await evaluate(`[...document.querySelectorAll('[role=tab]')].find(button=>button.innerText==='Inputs Web').click()`);await wait(80);
+        assert.equal(await evaluate(`document.querySelectorAll('.opec-library-item').length`),1);
+        await evaluate(`(()=>{const data=new DataTransfer();data.setData('application/x-santtos-media',${JSON.stringify('input:'+config.inputId)});const slot=document.querySelector('.opec-insert-slot.at-end');slot.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data}))})()`);await wait(80);
+        assert.equal(await evaluate(`document.querySelectorAll('.opec-rundown-item').length`),rowsBefore+1);
+        await evaluate(`[...document.querySelectorAll('button')].find(button=>button.innerText==='Salvar programação').click()`);await wait(200);
+        const savedInput=await evaluate(`fetch('/api/rundown?date='+${JSON.stringify(config.date)}).then(response=>response.json())`);
+        assert.equal(savedInput.items.at(-1).inputId,config.inputId);
+        await evaluate(`(()=>{const data=new DataTransfer();data.setData('application/x-santtos-media',${JSON.stringify(config.sourceId)});const row=[...document.querySelectorAll('.opec-rundown-item')].at(-1);const bounds=row.getBoundingClientRect();row.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:data,clientY:bounds.top+bounds.height/2}))})()`);await wait(80);
+        await evaluate(`[...document.querySelectorAll('button')].find(button=>button.innerText==='Salvar programação').click()`);await wait(200);
+        const replacedInput=await evaluate(`fetch('/api/rundown?date='+${JSON.stringify(config.date)}).then(response=>response.json())`);
+        assert.equal(replacedInput.items.at(-1).sourceMediaId,config.sourceId);assert.notEqual(replacedInput.items.at(-1).sourceType,'input');
+        await evaluate(`[...document.querySelectorAll('button')].find(button=>button.innerText==='Desfazer').click()`);await wait(80);
+        await evaluate(`[...document.querySelectorAll('button')].find(button=>button.innerText==='Salvar programação').click()`);await wait(200);
+        await evaluate(`[...document.querySelectorAll('button')].find(button=>button.innerText==='Desfazer').click()`);await wait(80);
+        await evaluate(`[...document.querySelectorAll('button')].find(button=>button.innerText==='Salvar programação').click()`);await wait(200);
+        console.log('WEB INPUT/PROGRESS: configured input drag/save/undo and live progress component render passed');
         console.log('WEB WATCH: actual authenticated HTTP video, library/rundown controls, local pause/seek/volume and unchanged draft passed');
         console.log('WEB UI: real compiled assets, PIN login, current animated drag targets, model/import placement and theme parity passed');
     }catch(error){console.error(error);failed=true}finally{window.destroy();app.exit(failed?1:0)}

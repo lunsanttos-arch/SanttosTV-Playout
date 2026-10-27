@@ -16,6 +16,7 @@ import WebInputsPanel from "./WebInputsPanel";
 import ProgramAudioMeters from "./ProgramAudioMeters";
 import NativeProgramPreview from "./NativeProgramPreview";
 import TimelineHashtagInput from "./TimelineHashtagInput";
+import MediaAnalysisProgress from "./MediaAnalysisProgress";
 import type { NativeAudioStatus } from "./ProgramAudioMeters";
 import { buildTimelineForecast, buildPlannedSchedule, buildFreezeCountdown, describeForecastEntry, formatEstimatedClock } from "./timeline-forecast";
 import type { PlannedScheduleBlocker } from "./timeline-forecast";
@@ -251,6 +252,7 @@ declare global {
             openLibraryFile:(id:string)=>Promise<{ok:boolean;error?:string}>;
             recheckMedia:(id:string)=>Promise<{ok:boolean}>;
             onMediaChanged: (callback:()=>void) => ()=>void;
+            getMediaAnalysisStatus: () => Promise<import("./MediaAnalysisProgress").AnalysisStatus>;
             getMedia: () => Promise<MediaItem[]>;
             importRundownFiles: (paths: string[]) => Promise<{media: MediaItem[]}>;
             importMedia: (
@@ -5506,6 +5508,8 @@ function LibraryPanel({
                 {(categoryStatus || message) && (
                     <div className="library-message">{categoryStatus || message}</div>
                 )}
+
+                <MediaAnalysisProgress />
     
                 {activeCategoryId !== "__all__" &&
                 !activeCategory?.folderPath ? (

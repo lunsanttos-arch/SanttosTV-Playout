@@ -9,8 +9,8 @@ const { pipeline } = require('node:stream/promises');
 const { buildMediaUrl, serveImportedVideo } = require('../media/media-protocol');
 
 class SchedulingWebController {
-    constructor({ distFolder, getMedia, getRundown, saveRundown, getCategories = () => [], getWeekly, saveWeekly, renderPdf, resolveWatchSource, commit = async () => {}, port = 8787 }) {
-        Object.assign(this, { distFolder, getMedia, getRundown, saveRundown, getCategories, getWeekly, saveWeekly, renderPdf, resolveWatchSource, commit, port });
+    constructor({ distFolder, getMedia, getRundown, saveRundown, getCategories = () => [], getWeekly, saveWeekly, renderPdf, resolveWatchSource, getAnalysisStatus = () => ({queued:0,running:null,completed:0,active:null,queue:[]}), getWebInputs = () => [], commit = async () => {}, port = 8787 }) {
+        Object.assign(this, { distFolder, getMedia, getRundown, saveRundown, getCategories, getWeekly, saveWeekly, renderPdf, resolveWatchSource, getAnalysisStatus, getWebInputs, commit, port });
         this.server = null; this.sessions = new Map(); this.attempts = new Map();
         this.pin = "";
     }
@@ -125,6 +125,8 @@ class SchedulingWebController {
                 finally { this.pdfBusy = false; }
             }
             if (req.method === "GET" && parsed.pathname === "/api/media") return send(200, await this.getMedia());
+            if (req.method === "GET" && parsed.pathname === "/api/media/analysis") return send(200, await this.getAnalysisStatus());
+            if (req.method === "GET" && parsed.pathname === "/api/web-inputs") return send(200, {ok:true,inputs:await this.getWebInputs()});
             if (req.method === "GET" && parsed.pathname === "/api/library-categories") return send(200, await this.getCategories());
             if (req.method === "GET" && parsed.pathname === "/api/rundown") return send(200, await this.getRundown(parsed.searchParams.get("date")));
             if (req.method === "POST" && parsed.pathname === "/api/rundown") {

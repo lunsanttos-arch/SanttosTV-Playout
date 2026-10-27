@@ -14,7 +14,7 @@ class MediaQualityQueue {
   const finish=quality=>{if(job.finished)return;job.finished=true;
    const current=this.getMedia().find(current=>current.id===id&&current.path===item.path);
    if(current&&!this.stopped)this.update(id,quality);this.completed++;};
-  worker.on('message',message=>{if(message.type==='pid')job.pid=message.pid;if(message.type==='result'){job.gotResult=true;finish(message.quality)}});
+  worker.on('message',message=>{if(message.type==='pid')job.pid=message.pid;if(message.type==='progress'&&!job.finished)job.progress=message.progress;if(message.type==='result'){job.gotResult=true;finish(message.quality)}});
   worker.on('error',error=>finish({version:1,status:'unavailable',error:error.message}));
   worker.once('exit',()=>{if(!job.gotResult&&job.pid)try{process.kill(job.pid,'SIGKILL')}catch{};finish({version:1,status:'unavailable',error:'A análise foi interrompida.'});if(this.running===job)this.running=null;this.pump()});
  }
@@ -39,7 +39,10 @@ class MediaQualityQueue {
  async validate(items){for(const [index,item] of items.entries()){
   try{await this.inspect(item)}catch(error){throw new Error(`Item ${index+1} — ${item.name}: ${error.message}`,{cause:error});}
  }}
- snapshot(){return {queued:this.pending.size,running:this.running?.item.id||null,completed:this.completed};}
+ snapshot(){const job=this.running&&!this.running.finished?this.running:null;
+  return {queued:this.pending.size,running:job?.item.id||null,completed:this.completed,
+   active:job?{id:job.item.id,name:job.item.name,...(job.progress||{phase:'preparing',percent:null})}:null,
+   queue:[...this.pending.values()].slice(0,100).map((item,index)=>({id:item.id,name:item.name,position:index+1}))};}
  async stop(){this.stopped=true;this.pending.clear();const job=this.running;if(!job)return;job.worker.postMessage('cancel');
   await new Promise(resolve=>{let timer;const done=()=>{clearTimeout(timer);resolve()};job.worker.once('exit',done);timer=setTimeout(()=>{if(job.pid)try{process.kill(job.pid,'SIGKILL')}catch{};void job.worker.terminate().finally(done)},1500)});}
 }

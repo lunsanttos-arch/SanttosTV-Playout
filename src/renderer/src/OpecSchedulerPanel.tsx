@@ -12,6 +12,8 @@ import StyledDatePicker from "./StyledDatePicker";
 import type { LibraryCategory } from "./LibraryFolderSettingsTab";
 import RemoteControllerAccess from "./RemoteControllerAccess";
 import LibraryWatchDialog from "./LibraryWatchDialog";
+import MediaAnalysisProgress from "./MediaAnalysisProgress";
+import { webInputToMedia, scheduleInputClocks } from "../../core/library/web-input-media.mjs";
 
 const WEEKDAYS = ["Domingo", "Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado"];
 
@@ -115,6 +117,18 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
     const [categories, setCategories] = useState<LibraryCategory[]>([]);
     useEffect(() => { void window.santtosAPI.getLibraryCategories().then(setCategories).catch(() => {}); }, []);
     const [libraryFolder, setLibraryFolder] = useState("");
+    const [webInputs, setWebInputs] = useState<MediaItem[]>([]);
+    useEffect(() => {
+        let canceled = false, timer: ReturnType<typeof setTimeout>;
+        async function update() {
+            try { const result = await window.santtosAPI.getWebInputs();
+                if (!canceled && result.ok) setWebInputs((result.inputs ?? []).map(webInputToMedia));
+            } catch (error) { console.error("Atualização dos Inputs Web:", error); }
+            if (!canceled) timer = setTimeout(() => void update(), 5000);
+        }
+        void update();return () => { canceled = true; clearTimeout(timer); };
+    }, []);
+    const catalogue = useMemo(() => [...media, ...webInputs], [media, webInputs]);
     const [search, setSearch] = useState("");
     const [status, setStatus] = useState("");
     useEffect(() => {
@@ -131,8 +145,8 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
     const materialMatches = useMemo(() => {
         const normalize = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
         const query = normalize(materialSearch.trim());
-        return query ? media.filter(item => normalize(item.name).includes(query)).slice(0, 100) : [];
-    }, [media, materialSearch]);
+        return query ? catalogue.filter(item => normalize(item.name).includes(query)).slice(0, 100) : [];
+    }, [catalogue, materialSearch]);
     const [importOpen, setImportOpen] = useState(false);
     const [importKind, setImportKind] = useState<"weekday" | "date">("weekday");
     const [weekday, setWeekday] = useState(() => new Date(`${todayKey()}T12:00:00`).getDay());
@@ -180,28 +194,29 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
         const q = search.trim().toLowerCase();
         const category = categories.find(item => item.id === libraryFolder);
         const folder = category?.folderPath?.replace(/\\/g, "/").replace(/\/+$|$/, "/");
-        const scoped = libraryFolder ? (folder ? media.filter(item => item.path.replace(/\\/g, "/").toLowerCase().startsWith(folder.toLowerCase())) : []) : media;
+        const scoped = libraryFolder === "__inputs__" ? webInputs : libraryFolder ? (folder ? media.filter(item => item.path.replace(/\\/g, "/").toLowerCase().startsWith(folder.toLowerCase())) : []) : catalogue;
         if (!q) return scoped;
         return scoped.filter((item) => item.name.toLowerCase().includes(q));
-    }, [media, search, libraryFolder, categories]);
+    }, [media, webInputs, catalogue, search, libraryFolder, categories]);
 
     // Roteiro = hora PROGRAMADA. A timeline calcula a entrada ESTIMADA
     // de acordo com a reprodução real, pausa e sinal NDI.
-    const scheduleTimes = useMemo(() =>
-        buildPlannedSchedule(
-            items.map(item => ({ ...item, id: item.rundownItemId })),
-            startTime
-        ), [items, startTime]
-    );
-    const totalDuration = scheduleTimes.totalSeconds;
     const absoluteStart = draft.meta?.startAtOverride ?? (boundary?.date === date && boundary.previousDate
         ? boundary.inheritedStartAt !== undefined ? boundary.inheritedStartAt : boundary.startAt ?? null
         : scheduleBounds(date, startTime, []).startAt);
+    const timedItems = useMemo(() => scheduleInputClocks(items, absoluteStart), [items, absoluteStart]);
+    const scheduleTimes = useMemo(() =>
+        buildPlannedSchedule(
+            timedItems.map(item => ({ ...item, id: item.rundownItemId })),
+            startTime
+        ), [timedItems, startTime]
+    );
+    const totalDuration = scheduleTimes.totalSeconds;
     const displayedStartTime = startTime === "" ? "" : absoluteStart
         ? new Date(absoluteStart).toTimeString().slice(0, new Date(absoluteStart).getSeconds() ? 8 : 5) : startTime;
     const absoluteTimes = new Map<string, string | null>();
     let endMs: number | null = absoluteStart ? Date.parse(absoluteStart) : null;
-    for (const item of items) {
+    for (const item of timedItems) {
         absoluteTimes.set(item.rundownItemId, endMs === null ? null : new Date(endMs).toISOString());
         const seconds = clipSeconds(item);
         endMs = endMs === null || seconds === null ? null : endMs + seconds*1000;
@@ -324,13 +339,22 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
             void importExplorerDrop(files, intent);
             return;
         }
-        const source = media.find(item => item.id === event.dataTransfer.getData("application/x-santtos-media"));
+        const source = catalogue.find(item => item.id === event.dataTransfer.getData("application/x-santtos-media"));
         if (source) {
             if (intent.mode === "replace") {
                 const target = items.find(item => item.rundownItemId === intent.itemId);
-                if (target) patchItem(target.rundownItemId, { ...source, sourceMediaId: source.id, placeholder: false,
-                    liveSlot: false, replacedPlaceholder: target.placeholder || target.replacedPlaceholder === true,
-                    blockLabel: target.blockLabel || splitContentName(source.name).code, notes: target.notes || "", inPoint: clipIn(source), outPoint: clipOut(source) });
+                if (target) {
+                    // Replace the material object, not just its fields: a file
+                    // must not inherit the input type/URL headers of its slot.
+                    setItems(current => current.map(item => item.rundownItemId !== target.rundownItemId ? item : {
+                        ...source, sourceMediaId: source.sourceMediaId ?? source.id, rundownItemId: item.rundownItemId,
+                        placeholder: false, liveSlot: false,
+                        replacedPlaceholder: source.sourceType !== "input" && (item.placeholder || item.replacedPlaceholder === true),
+                        blockLabel: item.blockLabel || splitContentName(source.name).code, notes: item.notes || "",
+                        inPoint: clipIn(source), outPoint: clipOut(source)
+                    }));
+                    setStatus("");
+                }
             } else addItem(source, intent.beforeId ?? undefined);
         } else {
             const id = event.dataTransfer.getData("application/x-santtos-rundown") || draggedId;
@@ -354,7 +378,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
     async function exportRoteiro(format: "pdf" | "html") {
         setLoading(true);
         try {
-            const result = await (format === "pdf" ? window.santtosAPI.exportRundownPdf : window.santtosAPI.exportRundownHtml)({ date, title, startTime, startAt:absoluteStart, items });
+            const result = await (format === "pdf" ? window.santtosAPI.exportRundownPdf : window.santtosAPI.exportRundownHtml)({ date, title, startTime, startAt:absoluteStart, items:timedItems });
             if (!result.ok) throw Error(result.error || "Não foi possível exportar o roteiro.");
             if (!result.canceled) setStatus(`Roteiro exportado em ${format.toUpperCase()}.`);
         } catch (error) { setStatus(error instanceof Error ? error.message : "Não foi possível exportar o roteiro."); }
@@ -552,7 +576,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                         }}
                         onDrop={event => dropItem(event)}>
                         {items.length === 0 && <div className="opec-empty">{remote ? "Arraste mídias das pastas da biblioteca para a programação." : "Arraste vídeos do Explorador ou das pastas da biblioteca para a programação."}</div>}
-                        {items.map((item, index) => (
+                        {timedItems.map((item, index) => (
                             <div className="opec-drag-row" key={item.rundownItemId}>
                             {insertionSlot(item.rundownItemId)}
                             <article
@@ -621,10 +645,13 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                 </div>
 
                 <aside className="opec-library-panel">
-                    <div className="opec-section-title"><strong>BIBLIOTECA</strong><span>{media.length} mídia(s)</span></div>
+                    <div className="opec-section-title"><strong>BIBLIOTECA</strong><span>{catalogue.length} item(ns)</span></div>
+                    <MediaAnalysisProgress />
                     <div className="library-category-tabs opec-folder-tabs" role="tablist" aria-label="Pastas da biblioteca">
                         <button role="tab" aria-selected={libraryFolder === ""} className={libraryFolder === "" ? "active" : ""}
                             onClick={() => setLibraryFolder("")}>Todas</button>
+                        <button role="tab" aria-selected={libraryFolder === "__inputs__"} className={libraryFolder === "__inputs__" ? "active" : ""}
+                            onClick={() => setLibraryFolder("__inputs__")}>Inputs Web</button>
                         {categories.map(category => <button key={category.id} role="tab" aria-selected={libraryFolder === category.id}
                             className={libraryFolder === category.id ? "active" : ""} title={category.folderPath || "Pasta não configurada"}
                             onClick={() => setLibraryFolder(category.id)}>{category.name}</button>)}
@@ -641,8 +668,10 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                                     event.dataTransfer.setData("text/plain", item.name);
                                     event.dataTransfer.effectAllowed = "copy";
                                 }} onDragEnd={clearDrag}>
-                                <div><strong>{item.name}</strong><span>{formatDuration(clipDuration(item))} · {item.extension.toUpperCase()} · {item.quality?.status === "approved" ? "Aprovado" : item.quality?.status === "rejected" ? "Reprovado" : "Em análise"}</span></div>
-                                <div className="opec-library-actions"><button onClick={() => setWatch({item,clip:false})}>Assistir</button>
+                                <div><strong>{item.name}</strong><span>{item.sourceType === "input"
+                                    ? `${item.extension.toUpperCase()} · ${item.inputTimingMode === "clock" ? `Saída às ${item.inputEndTime}` : formatDuration(clipDuration(item))}`
+                                    : `${formatDuration(clipDuration(item))} · ${item.extension.toUpperCase()} · ${item.quality?.status === "approved" ? "Aprovado" : item.quality?.status === "rejected" ? "Reprovado" : "Em análise"}`}</span></div>
+                                <div className="opec-library-actions">{item.sourceType !== "input" && <button onClick={() => setWatch({item,clip:false})}>Assistir</button>}
                                 <button onClick={() => addItem(item)}>+ Programação</button></div>
                             </article>
                         ))}

@@ -1,0 +1,38 @@
+'use strict';
+const assert=require('node:assert/strict'),fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+const db=require('../src/database/database'),inputs=require('../src/core/library/web-inputs');
+const {webInputToMedia}=require('../src/core/library/web-input-media.mjs');
+const {flushPersistence,closePersistence}=require('../src/core/persistence/json-store');
+const runtime=fs.readFileSync(path.join(__dirname,'../src/main/program-runtime.js'),'utf8');
+const overlaySource=runtime.slice(runtime.indexOf('function nativeOverlay('),runtime.indexOf("const { MediaQualityQueue }"));
+class FixedDate extends Date {constructor(...args){super(...(args.length?args:['2026-10-27T01:30:00']));}}
+const overlay=new Function('Date',overlaySource+';return nativeOverlay;')(FixedDate);
+const joined=overlay({id:'joined-live',sourceType:'input',inputTimingMode:'clock',inputEndTime:'02:00:15',inPoint:1800,outPoint:3600,duration:3600},1800);
+assert.equal(joined.outPointSeconds,3615,'Clock input joined mid-slot must keep the remaining 30m15s instead of subtracting the offset twice');
+assert.equal(joined.outPointSeconds-1800,1815);
+(async()=>{const root=fs.mkdtempSync(path.join(os.tmpdir(),'santtos-rundown-inputs-'));try{
+ db.initializeDatabase({userDataPath:root,migrateLegacy:false});inputs.initializeWebInputs(root);
+ const file=path.join(root,'clip.mp4');fs.writeFileSync(file,'fixture');
+ const local=db.addMedia([file]).importedItems[0];db.updateMediaMetadata(local.id,{duration:300});
+ const fixed=inputs.saveWebInput({name:'Live duration',url:'https://example.test/live.m3u8',durationSeconds:90,httpReferer:'https://example.test/',httpUserAgent:'Santtos QA'});
+ const clock=inputs.saveWebInput({name:'Live midnight',url:'srt://127.0.0.1:9000',timingMode:'clock',endTime:'00:10:15',durationSeconds:60});
+ const clip=id=>({...local,sourceMediaId:local.id,rundownItemId:id,inPoint:0,outPoint:300});
+ const slots=[clip('before'),{...webInputToMedia(clock),rundownItemId:'clock'},clip('after')];
+ const day=db.saveDailyRundown({date:'2026-10-27',startTime:'23:50',items:slots});
+ assert.equal(day.items.length,3);assert.equal(day.items[1].duration,915);
+ assert.equal(new Date(day.endAt).getDate(),28);assert.equal(new Date(day.endAt).getMinutes(),15);assert.equal(new Date(day.endAt).getSeconds(),15);
+ const durationSlot={...webInputToMedia(fixed),rundownItemId:'duration',path:'https://not-configured.test/attack',notes:'Link de rede'};
+ const duplicate={...durationSlot,rundownItemId:'duration-again'};
+ const weekly=db.saveWeeklyRundown(2,{title:'Inputs',startTime:'06:00',items:[durationSlot,duplicate]});
+ assert.equal(weekly.items.length,2);assert.equal(weekly.items[0].path,fixed.url,'Canonical configured input must override client URL');
+ assert.equal(weekly.items[0].duration,90);assert.equal(weekly.items[0].notes,'Link de rede');
+ assert.equal(weekly.items[0].inputHttpReferer,fixed.httpReferer);assert.equal(weekly.items[0].inputHttpUserAgent,'Santtos QA');
+ assert.throws(()=>db.saveDailyRundown({date:day.date,items:[{...durationSlot,inputId:'unregistered'}]}),/não cadastrado/);
+ db.saveTimeline(day.items.map((item,i)=>({...item,id:`play-${i}`})));
+ assert.equal(db.getTimeline()[1].inputEndTime,'00:10:15');
+ await flushPersistence();await closePersistence();db.initializeDatabase({userDataPath:root,migrateLegacy:false});inputs.initializeWebInputs(root);
+ assert.equal(db.getDailyRundown(day.date).items[1].duration,915);
+ assert.equal(db.getWeeklyRundown(2).items.length,2);assert.equal(db.getTimeline()[1].sourceType,'input');
+ assert.equal(db.getMedia().length,1,'Web inputs must not become file library entries');
+ console.log('RUNDOWN INPUTS: canonical links/headers, duration and clock across midnight, repeated slots, weekly/day/playlist restart persistence passed');
+}finally{await closePersistence();fs.rmSync(root,{recursive:true,force:true});}})().catch(error=>{console.error(error);process.exitCode=1});
