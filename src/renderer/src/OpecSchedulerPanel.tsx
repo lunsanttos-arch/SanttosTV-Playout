@@ -109,6 +109,11 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
     const [libraryFolder, setLibraryFolder] = useState("");
     const [search, setSearch] = useState("");
     const [status, setStatus] = useState("");
+    useEffect(() => {
+        if (!status) return;
+        const timer = window.setTimeout(() => setStatus(""), 7000);
+        return () => window.clearTimeout(timer);
+    }, [status]);
     const [loading, setLoading] = useState(false);
     const [dropIntent, setDropIntent] = useState<DropIntent | null>(null);
     const [splitError, setSplitError] = useState("");
@@ -504,20 +509,18 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
             {!remote && <RemoteControllerAccess />}
             <div className="opec-meta-row">
                 <label><span>Data</span><StyledDatePicker value={date} onChange={setDate} /></label>
-                <div className="opec-title-area">
-                    <label className="opec-title-field"><span>Nome da programação</span><input value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={120} /></label>
+                    <label className="opec-title-field"><span>Programação</span><input aria-label="Nome da programação" title={title} value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={120} /></label>
                     <div className="opec-title-actions" role="group" aria-label="Modelos semanais e importação">
                     <button disabled={loading} onClick={() => { setModalError(""); setModelAction("save"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Criar modelo semanal</button>
                     <button disabled={loading} onClick={() => { setModalError(""); setModelAction("import"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Importar programação</button>
                     </div>
-                </div>
                 <label><span>Início programado</span>{boundary?.date === date && boundary.previousDate
-                    ? <><input aria-label="Início herdado da programação anterior" title={formatDateTime(absoluteStart)} readOnly value={absoluteStart ? new Date(absoluteStart).toLocaleTimeString("pt-BR") : "Sem previsão"} /><small title={`Continua a grade de ${boundary.previousDate.split("-").reverse().join("/")}`}>{absoluteStart ? new Date(absoluteStart).toLocaleDateString("pt-BR") : "—"} · herdado</small></>
+                    ? <input aria-label="Início herdado da programação anterior" title={`${formatDateTime(absoluteStart)} · herdado da grade de ${boundary.previousDate.split("-").reverse().join("/")}`} readOnly value={absoluteStart ? new Date(absoluteStart).toLocaleTimeString("pt-BR") : "Sem previsão"} />
                     : <input type="time" value={startTime} onChange={(e) => setStartTime(e.currentTarget.value)} />}</label>
                 <div className="opec-summary"><span>PROGRAMADO</span><strong>{totalDuration === null ? "--:--:--" : formatDuration(totalDuration)}</strong><small>até {formatDateTime(endMs)}</small></div>
             </div>
 
-            {status && <div className="opec-status" role="alert">{status}</div>}
+            {status && <div key={status} className="opec-status" role="alert">{status}</div>}
 
             {editingFilm && <FilmBlockEditor item={editingFilm} errorMessage={splitError} onClose={() => setEditingFilm(null)}
                 onSaveEdit={(id, inPoint, outPoint) => { patchItem(id, { inPoint, outPoint }); setEditingFilm(null); }}

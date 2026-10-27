@@ -14,7 +14,7 @@ app.whenReady().then(async()=>{
         await evaluate(`(()=>{const input=document.querySelector('input[aria-label="Código de acesso"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,${JSON.stringify(config.pin)});input.dispatchEvent(new Event('input',{bubbles:true}))})()`);
         await wait(50);await evaluate(`document.querySelector('.remote-controller-login button').click()`);
         for(let i=0;i<100;i++){if(await evaluate(`Boolean(document.querySelector('.opec-shell .opec-rundown-item'))`))break;await wait(50)}
-        assert(await evaluate(`Boolean(document.querySelector('.opec-title-area .opec-title-actions'))`));
+        assert(await evaluate(`Boolean(document.querySelector('.opec-meta-row > .opec-title-actions'))`));
         assert(await evaluate(`Boolean(document.querySelector('button[aria-label="Adicionar material abaixo"]'))&&Boolean(document.querySelector('button[aria-label="Adicionar Conteúdo a definir abaixo"]'))`));
         assert.equal(await evaluate(`document.querySelectorAll('.opec-header-actions button').length`),6);
         const actualStyle=await evaluate(`(()=>{const input=getComputedStyle(document.querySelector('.opec-block-tools input[type=number]'));const button=getComputedStyle(document.querySelector('.opec-title-actions button'));return {input:{background:input.backgroundColor,color:input.color,border:input.borderColor,radius:input.borderRadius},button:{background:button.backgroundColor,color:button.color,border:button.borderColor,radius:button.borderRadius}}})()`);
