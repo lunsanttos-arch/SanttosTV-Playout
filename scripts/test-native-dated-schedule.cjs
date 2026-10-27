@@ -21,7 +21,7 @@ for(const delta of [-240,240]){
 const stale=(await reserve(0)).rundown;await reserve(2);assert.match((await apply(stale)).error,/mudou/);
 await reserve(0);
 await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Programação')).click()`);await wait(350);
-assert.equal(await evaluate(`document.querySelector('input[aria-label="Início herdado da programação anterior"]').readOnly`),true);
+assert.equal(await evaluate(`document.querySelector('input[aria-label="Início programado"]').readOnly`),false);
 assert(await evaluate(`document.querySelector('.opec-entry-time small').textContent.length>0`));
 await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Aplicar no Playout')).click()`);
 for(let i=0;i<60;i++){if(await evaluate(`document.querySelector('.opec-status')?.textContent.includes('Grades alinhadas')||document.querySelector('.opec-status')?.textContent.includes('Grade encaixada')`))break;await wait(50)}
@@ -38,6 +38,15 @@ await evaluate('window.santtosAPI.setControllerEnabled(false)');
 const seen=new Set();let ended=false;
 for(let i=0;i<260;i++){const s=(await evaluate('window.santtosAPI.getNdiStatus()')).playout;seen.add(s.itemId);if(s.state==='IDLE'){ended=true;break}await wait(100)}
 assert(ended);assert(seen.has('dated-tail'));assert(seen.has(timeline[2].id));
+// The operator can override an inherited start with seconds, persist it and reload.
+await evaluate(`(()=>{const input=document.querySelector('input[aria-label="Início programado"]');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'23:45:12');input.dispatchEvent(new Event('input',{bubbles:true}))})()`);await wait(100);
+await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText==='Salvar programação').click()`);await wait(300);
+const manual=await evaluate(`window.santtosAPI.getDailyRundown(${JSON.stringify(seed.date)})`);
+assert.equal(new Date(manual.startAt).getHours(),23);assert.equal(new Date(manual.startAt).getMinutes(),45);assert.equal(new Date(manual.startAt).getSeconds(),12);assert.equal(manual.startAt,manual.startAtOverride);
+await evaluate('setTimeout(()=>location.reload(),0)');await wait(700);
+await evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes('Programação')).click()`);await wait(300);
+assert.equal(await evaluate(`document.querySelector('input[aria-label="Início programado"]').value`),'23:45:12');
+console.log('MANUAL START: inherited field editable, saved absolute start respected and restored after renderer reload');
 console.log('DATED NATIVE: real decoder preserved air+tail, both >3min signs rejected without mutation, stale-bound guard, desktop inherited date/status, authenticated web absolute bounds, metadata survived UI autosave and automatic handoff completed');
 }finally{await evaluate('window.santtosAPI.stopNdiFile()').catch(()=>{});ws.close()}
 })().catch(e=>{console.error(e);process.exitCode=1});

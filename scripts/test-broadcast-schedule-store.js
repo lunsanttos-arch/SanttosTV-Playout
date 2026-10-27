@@ -17,6 +17,17 @@ const {flushPersistence,closePersistence}=require('../src/core/persistence/json-
  for(const item of db.getTimeline())for(const key of Object.keys(fields))assert.equal(item[key],fields[key]);
  await flushPersistence();db.initializeDatabase({userDataPath:root});assert.equal(db.getDailyRundown(day.date).startAt,day.startAt);
  assert.equal(db.getTimeline()[0].scheduleDate,day.date);
+ // A manual start keeps its absolute calendar date, overrides inheritance and survives restart.
+ const manualStart = new Date('2026-10-15T23:45:00').toISOString();
+ const manual = db.saveDailyRundown({...day,startTime:'23:45',startAtOverride:manualStart});
+ assert.equal(manual.startAt,manualStart);assert.equal(manual.previousDate,old.date);assert.equal(manual.inheritedStartAt,day.startAt);
+ db.saveDailyRundown({...old,items:[entry(85000)]});
+ assert.equal(db.getDailyRundown(day.date).startAt,manualStart,'Predecessor edits must not overwrite the operator start');
+ await flushPersistence();await closePersistence();db.initializeDatabase({userDataPath:root});
+ assert.equal(db.getDailyRundown(day.date).startAt,manualStart);
+ assert.throws(()=>db.saveDailyRundown({...manual,startAtOverride:'invalid'}),/Início programado inválido/);
+ const automatic=db.saveDailyRundown({...db.getDailyRundown(day.date),startAtOverride:null});
+ assert.equal(automatic.previousDate,old.date);assert.notEqual(automatic.startAt,manualStart);
  // Removing media must block timing instead of shrinking the predecessor to zero.
  db.removeMedia(source.id);const unavailable=db.getDailyRundown('2026-10-16');assert.equal(unavailable.startAt,null);assert.equal(unavailable.endAt,null);
  console.log('SCHEDULE STORE: derived dates, previous-day edit propagation, file/live/web metadata persistence and missing predecessor media fail closed passed');

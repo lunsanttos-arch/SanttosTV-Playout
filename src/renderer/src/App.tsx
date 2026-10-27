@@ -273,6 +273,7 @@ declare global {
                 date: string;
                 title: string;
                 startTime: string;
+                startAtOverride?: string | null;
                 startAt?: string | null;
                 endAt?: string | null;
                 previousDate?: string | null;
@@ -286,6 +287,7 @@ declare global {
                 date: string;
                 title: string;
                 startTime: string;
+                startAtOverride?: string | null;
                 startAt?: string | null;
                 endAt?: string | null;
                 previousDate?: string | null;
@@ -297,6 +299,7 @@ declare global {
                     date: string;
                     title: string;
                     startTime: string;
+                    startAtOverride?: string | null;
                     startAt?: string | null;
                     endAt?: string | null;
                     previousDate?: string | null;

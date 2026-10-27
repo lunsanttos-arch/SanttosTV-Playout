@@ -993,7 +993,7 @@ function getDailyRundown(dateValue) {
     for (const key of chain.reverse()) {
         const stored = data.dailyRundowns?.[key] ?? { date: key, title: "Programação diária", startTime: "00:00", items: [] };
         const current = hydrateRundown(stored, key);
-        const bounds = scheduleBounds(key, current.startTime, current.items, previous);
+        const bounds = scheduleBounds(key, current.startTime, current.items, previous, current.startAtOverride);
         // Missing media must never silently shorten the previous day's reserved schedule.
         if (current.missingItems) bounds.endAt = null;
         previous = { ...current, ...bounds };
@@ -1040,6 +1040,7 @@ function hydrateRundown(stored, date = "") {
         date,
         title: normalizeText(stored.title, "Programação diária", 120) || "Programação diária",
         startTime: normalizeRundownTime(stored.startTime),
+        startAtOverride: stored.startAtOverride ?? null,
         items,
         updatedAt: stored.updatedAt ?? null,
         missingItems: Math.max(0, (stored.items?.length || 0) - items.length)
@@ -1058,11 +1059,18 @@ function saveDailyRundown(rundown) {
     }
     const items = normalizeRundownItems(rundown.items);
 
+    const requestedStart = Object.hasOwn(rundown, "startAtOverride")
+        ? rundown.startAtOverride : data.dailyRundowns?.[date]?.startAtOverride;
+    if (requestedStart != null && (typeof requestedStart !== "string" || !Number.isFinite(Date.parse(requestedStart))))
+        throw new TypeError("Início programado inválido.");
+    const startAtOverride = requestedStart == null ? null : new Date(requestedStart).toISOString();
+
     data.dailyRundowns = data.dailyRundowns ?? {};
     data.dailyRundowns[date] = {
         date,
         title: normalizeText(rundown.title, "Programação diária", 120) || "Programação diária",
         startTime: normalizeRundownTime(rundown.startTime),
+        startAtOverride,
         items,
         updatedAt: new Date(Math.max(Date.now(), Date.parse(data.dailyRundowns[date]?.updatedAt || "") + 1 || 0)).toISOString()
     };

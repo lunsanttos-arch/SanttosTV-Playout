@@ -25,14 +25,15 @@ export function clockDuration(seconds) {
     const total = Math.ceil(Math.abs(seconds));
     return `${String(Math.floor(total/3600)).padStart(2,'0')}:${String(Math.floor(total/60)%60).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
 }
-export function scheduleBounds(date, startTime, items, previous = null) {
+export function scheduleBounds(date, startTime, items, previous = null, startAtOverride = null) {
     const linked = previous !== null;
-    const start = linked ? Date.parse(previous.endAt) : new Date(`${date}T${startTime}:00`).getTime();
+    const start = startAtOverride ? Date.parse(startAtOverride) : linked ? Date.parse(previous.endAt) : new Date(`${date}T${startTime}:00`).getTime();
     const seconds = durationSeconds(items);
     return {
         startAt: Number.isFinite(start) ? new Date(start).toISOString() : null,
         endAt: Number.isFinite(start) && seconds !== null ? new Date(start + seconds*1000).toISOString() : null,
         previousDate: linked ? previous.date : null,
+        inheritedStartAt: linked ? previous.endAt ?? null : null,
         previousUpdatedAt: linked ? previous.updatedAt ?? null : null
     };
 }

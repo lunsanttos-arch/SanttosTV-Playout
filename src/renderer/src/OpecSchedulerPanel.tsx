@@ -6,7 +6,7 @@ import { splitContentName, contentLabel } from "../../core/media/content-label.m
 import { normalizeExhibitionType } from "./exhibition";
 import { buildPlannedSchedule } from "./timeline-forecast";
 import "./opec-scheduler.css";
-import { placeRundownBlocks, rundownDraftReducer, type BlockRange } from "./rundown-blocks";
+import { placeRundownBlocks, rundownDraftReducer, type BlockRange, type RundownMeta } from "./rundown-blocks";
 import "./library-categories.css";
 import StyledDatePicker from "./StyledDatePicker";
 import type { LibraryCategory } from "./LibraryFolderSettingsTab";
@@ -21,9 +21,11 @@ interface DailyRundown {
     date: string;
     title: string;
     startTime: string;
+    startAtOverride?: string | null;
     startAt?: string | null;
     endAt?: string | null;
     previousDate?: string | null;
+    inheritedStartAt?: string | null;
     previousUpdatedAt?: string | null;
     items: RundownItem[];
     updatedAt?: string | null;
@@ -99,11 +101,17 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
     const [version, setVersion] = useState<string | null>(null);
     const [draft, dispatchDraft] = useReducer(rundownDraftReducer, { items: [], history: [], meta: { title: "Programação diária", startTime: "00:00" } });
     const title = draft.meta?.title ?? "Programação diária", startTime = draft.meta?.startTime ?? "00:00";
-    const setTitle = (title: string) => dispatchDraft({ type: "meta", meta: { title, startTime } });
-    const setStartTime = (startTime: string) => dispatchDraft({ type: "meta", meta: { title, startTime } });
+    const setTitle = (title: string) => dispatchDraft({ type: "meta", meta: { ...draft.meta, title, startTime } });
+    const setStartTime = (startTime: string) => {
+        const start = new Date(absoluteStart ?? `${date}T00:00:00`);
+        const [hours, minutes, seconds = 0] = startTime.split(":").map(Number);
+        if (startTime) start.setHours(hours, minutes, seconds, 0);
+        dispatchDraft({ type: "meta", meta: { title, startTime: startTime.slice(0, 5),
+            startAtOverride: startTime ? start.toISOString() : draft.meta?.startAtOverride } });
+    };
     const items = draft.items;
     const setItems = (update: RundownItem[] | ((items: RundownItem[]) => RundownItem[])) => dispatchDraft({ type: "edit", update });
-    const loadItems = (items: RundownItem[], meta?: { title: string; startTime: string }) => dispatchDraft({ type: "load", items, meta });
+    const loadItems = (items: RundownItem[], meta?: RundownMeta) => dispatchDraft({ type: "load", items, meta });
     const [categories, setCategories] = useState<LibraryCategory[]>([]);
     useEffect(() => { void window.santtosAPI.getLibraryCategories().then(setCategories).catch(() => {}); }, []);
     const [libraryFolder, setLibraryFolder] = useState("");
@@ -153,7 +161,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                 if (cancelled) return;
                 setVersion(rundown.updatedAt ?? null);
                 setBoundary(rundown);
-                loadItems(Array.isArray(rundown.items) ? rundown.items : [], { title: rundown.title || "Programação diária", startTime: rundown.startTime || "00:00" });
+                loadItems(Array.isArray(rundown.items) ? rundown.items : [], { title: rundown.title || "Programação diária", startTime: rundown.startTime || "00:00", startAtOverride: rundown.startAtOverride });
             })
             .catch((error: unknown) => {
                 console.error(error);
@@ -186,8 +194,11 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
         ), [items, startTime]
     );
     const totalDuration = scheduleTimes.totalSeconds;
-    const absoluteStart = boundary?.date === date && boundary.previousDate
-        ? boundary.startAt ?? null : scheduleBounds(date, startTime, []).startAt;
+    const absoluteStart = draft.meta?.startAtOverride ?? (boundary?.date === date && boundary.previousDate
+        ? boundary.inheritedStartAt !== undefined ? boundary.inheritedStartAt : boundary.startAt ?? null
+        : scheduleBounds(date, startTime, []).startAt);
+    const displayedStartTime = startTime === "" ? "" : absoluteStart
+        ? new Date(absoluteStart).toTimeString().slice(0, new Date(absoluteStart).getSeconds() ? 8 : 5) : startTime;
     const absoluteTimes = new Map<string, string | null>();
     let endMs: number | null = absoluteStart ? Date.parse(absoluteStart) : null;
     for (const item of items) {
@@ -364,7 +375,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                 if (source.missingItems) throw Error("Há materiais da origem ausentes na biblioteca. Recupere-os antes de importar.");
                 const imported = source.items.map((item, index) => ({ ...item, rundownItemId: `import-${Date.now()}-${index}-${Math.random().toString(16).slice(2)}` }));
                 dispatchDraft({ type: "import", items: importMode === "append" ? [...items, ...imported] : imported,
-                    meta: importMode === "append" ? { title, startTime } : { title: source.title, startTime: source.startTime } });
+                    meta: importMode === "append" ? { ...draft.meta, title, startTime } : { title: source.title, startTime: source.startTime } });
                 setStatus("Programação importada. Revise e salve para confirmar. Desfazer restaura a programação anterior.");
             }
             setImportOpen(false);
@@ -418,6 +429,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                 expectedUpdatedAt: version,
                 title,
                 startTime,
+                startAtOverride: draft.meta?.startAtOverride ?? null,
                 items
             });
             if (!result?.ok) {
@@ -463,7 +475,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                 <div className="opec-header-actions">
                     <button disabled={loading || !draft.history.length} onClick={() => { dispatchDraft({ type: "undo" }); setEditingFilm(null); setStatus("Última alteração desfeita. Salve para atualizar a programação."); }}>Desfazer</button>
                     <button disabled={loading} onClick={() => void window.santtosAPI.getDailyRundown(date).then(rundown => {
-                        setBoundary(rundown); loadItems(rundown.items ?? [], { title: rundown.title, startTime: rundown.startTime }); setVersion(rundown.updatedAt ?? null); setStatus("Programação atualizada.");
+                        setBoundary(rundown); loadItems(rundown.items ?? [], { title: rundown.title, startTime: rundown.startTime, startAtOverride: rundown.startAtOverride }); setVersion(rundown.updatedAt ?? null); setStatus("Programação atualizada.");
                     }).catch(() => setStatus("Não foi possível atualizar."))}>Atualizar programação</button>
                     <button disabled={loading} onClick={() => void exportRoteiro("pdf")}>PDF do roteiro</button>
                     <button disabled={loading} onClick={() => void exportRoteiro("html")}>HTML do roteiro</button>
@@ -514,9 +526,7 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                     <button disabled={loading} onClick={() => { setModalError(""); setModelAction("save"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Criar modelo semanal</button>
                     <button disabled={loading} onClick={() => { setModalError(""); setModelAction("import"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Importar programação</button>
                     </div>
-                <label><span>Início programado</span>{boundary?.date === date && boundary.previousDate
-                    ? <input aria-label="Início herdado da programação anterior" title={`${formatDateTime(absoluteStart)} · herdado da grade de ${boundary.previousDate.split("-").reverse().join("/")}`} readOnly value={absoluteStart ? new Date(absoluteStart).toLocaleTimeString("pt-BR") : "Sem previsão"} />
-                    : <input type="time" value={startTime} onChange={(e) => setStartTime(e.currentTarget.value)} />}</label>
+                <label><span>Início programado</span><input type="time" step={1} aria-label="Início programado" title={formatDateTime(absoluteStart)} value={displayedStartTime} onChange={(e) => setStartTime(e.currentTarget.value)} /></label>
                 <div className="opec-summary"><span>PROGRAMADO</span><strong>{totalDuration === null ? "--:--:--" : formatDuration(totalDuration)}</strong><small>até {formatDateTime(endMs)}</small></div>
             </div>
 

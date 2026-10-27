@@ -31,7 +31,7 @@ export function placeRundownBlocks(items: RundownItem[], sourceId: string, range
 }
 
 
-export interface RundownMeta { title: string; startTime: string }
+export interface RundownMeta { title: string; startTime: string; startAtOverride?: string | null }
 export interface RundownDraft { items: RundownItem[]; history: RundownItem[][]; meta?: RundownMeta; metaHistory?: (RundownMeta | undefined)[] }
 export type DraftAction = { type: "load"; items: RundownItem[]; meta?: RundownMeta } | { type: "normalize"; items: RundownItem[] } | { type: "undo" } |
     { type: "meta"; meta: RundownMeta } | { type: "import"; items: RundownItem[]; meta: RundownMeta } |
