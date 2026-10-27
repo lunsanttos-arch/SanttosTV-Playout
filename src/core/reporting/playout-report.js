@@ -140,6 +140,14 @@ function initializePlayoutReports({
     const recoveredDates = new Set();
 
     for (const entry of state.entries) {
+        // Older versions classified an unclosed airing as a confirmed skip.
+        // Preserve its evidence, but never infer advancement from a restart.
+        if (entry.status === "PULADO_POR_ERRO" && entry.recoveredAfterCrash && entry.playedSecondsUnknown) {
+            entry.status = "INTERROMPIDO";
+            entry.endedAtUnknown = true;
+            entry.recoveredAt = entry.recoveredAt || entry.endedAt;
+            recoveredDates.add(entry.reportDate);recovered = true;
+        }
         if (
             entry.status !==
             "EM_EXIBICAO"
@@ -147,9 +155,11 @@ function initializePlayoutReports({
             continue;
         }
 
-        entry.status = "PULADO_POR_ERRO";
-        entry.errorReason = "Execução interrompida por encerramento inesperado do aplicativo ou reinício do computador.";
+        entry.status = "INTERROMPIDO";
+        entry.errorReason = "Registro aberto recuperado após encerramento ou reinício do aplicativo/serviço. Avanço para outro conteúdo não confirmado.";
         entry.endedAt = recoveredAt;
+        entry.endedAtUnknown = true;
+        entry.recoveredAt = recoveredAt;
         entry.playedSeconds = 0;
         entry.playedSecondsUnknown = true;
         entry.errorReason += " Tempo parcial exibido não recuperado.";
@@ -168,7 +178,7 @@ function initializePlayoutReports({
         if (
             (
                 entry.status !== "EXECUTADO" &&
-                !["PULADO", "PULADO_POR_ERRO"].includes(entry.status)
+                !["PULADO", "PULADO_POR_ERRO", "INTERROMPIDO"].includes(entry.status)
             ) ||
             typeof entry.reportDate !== "string" ||
             !/^\d{4}-\d{2}-\d{2}$/.test(
@@ -381,7 +391,7 @@ async function writeReportSnapshot({ dateKey, destination, rows }) {
 
     const headers = ["Data", "Código", "Nome", "Bloco", "Entrada", "Saída", "Previsto", "Exibido", "Status", "Caminho", "Motivo", "Conteúdo seguinte", "Contingência"];
     const values = rows.map(entry => [localDateLabel(entry.startedAt), contentLabel(entry).code, contentLabel(entry).name, entry.blockLabel || "",
-        localTimeLabel(entry.startedAt), entry.endedAt ? localTimeLabel(entry.endedAt) : "",
+        localTimeLabel(entry.startedAt), entry.endedAtUnknown ? "Não confirmado" : entry.endedAt ? localTimeLabel(entry.endedAt) : "",
         formatDuration(entry.plannedDurationSeconds), entry.playedSecondsUnknown ? "Não recuperado" : formatDuration(entry.playedSeconds), entry.status.replaceAll("_", " "), entry.filePath || "", entry.errorReason || "", entry.nextContent || "", entry.contingencyContent || ""]);
     const html = `<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>Relatório ${xmlEscape(dateKey)}</title>
         <style>body{font:14px Arial;background:#14141e;color:#eee;padding:24px}h1{color:#a78bfa}
@@ -439,7 +449,7 @@ async function writeReportSnapshot({ dateKey, destination, rows }) {
             ),
             xmlTag(
                 "saida",
-                entry.endedAt
+                entry.endedAt && !entry.endedAtUnknown
                     ? localTimeLabel(
                           entry.endedAt
                       )
@@ -462,6 +472,8 @@ async function writeReportSnapshot({ dateKey, destination, rows }) {
                 entry.status
             ),
             xmlTag("duracao_exibida_conhecida", entry.playedSecondsUnknown ? "false" : "true"),
+            xmlTag("saida_conhecida", entry.endedAtUnknown ? "false" : "true"),
+            xmlTag("recuperado_em", entry.recoveredAt || ""),
             xmlTag("motivo", entry.errorReason || ""),
             xmlTag("conteudo_seguinte", entry.nextContent || ""),
             xmlTag("contingencia", entry.contingencyContent || ""),
@@ -544,7 +556,7 @@ function reexportAllDates() {
                         (
                             entry.status ===
                                 "EXECUTADO" ||
-                            ["PULADO", "PULADO_POR_ERRO"].includes(entry.status)
+                            ["PULADO", "PULADO_POR_ERRO", "INTERROMPIDO"].includes(entry.status)
                         )
                 )
                 .map(

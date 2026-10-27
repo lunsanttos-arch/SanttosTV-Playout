@@ -305,13 +305,19 @@ const playoutEngine = new NativePlayoutEngine({
     now: () => programClock.nowMs()
 });
 const serverMedia = new ServerMediaManager();
+function runtimeDiagnosticState() {
+    const os = require('node:os');
+    return { opening: Boolean(rundownController?.opening), currentItemId: rundownController?.current?.id || null,
+        pendingCut, preparation: decks.snapshot(), process: {pid:process.pid,arch:process.arch,memory:process.memoryUsage()},
+        systemMemory: {totalBytes:os.totalmem(),freeBytes:os.freemem()} };
+}
 function onPlayoutFault(message, failedDeck = activeDeck) {
     lastProgramFailure = redactDiagnostic({ recordedAt: new Date().toISOString(), reason: message,
         engine: playoutEngine.snapshot(), frameAgeMs: lastProgramFrameAt ? Math.max(0,programClock.nowMs()-lastProgramFrameAt) : null,
         deck: failedDeck?.snapshot() || null, storage: failedDeck?.source?.cacheState || null, resolvedSource: failedDeck?.source?.url || null,
         decoderMessages: failedDeck?.stderr?.slice(-3000) || null,
         profile: { resolution: activeOutputProfile.resolution, fps: activeOutputProfile.fpsText },
-        memory: process.memoryUsage(), metrics: { ...programMetrics } });
+        memory: process.memoryUsage(), runtime: runtimeDiagnosticState(), metrics: { ...programMetrics } });
     playoutLastError = message;
     nativePlaybackActive = false;
     playoutEngine.fault(message);
@@ -1468,7 +1474,7 @@ function registerIpcHandlers() {
     });
     registerTrustedHandle("operation:get", async () => ({ ok: true, settings: operationSettings.value,
         startupAvailable: process.platform === "win32" && app.isPackaged,
-        diagnostics: { lastFailure: lastProgramFailure, deck: activeDeck?.snapshot() || null, mediaQuality:mediaQuality.snapshot(), persistence: persistenceStatus(), metrics: { ...programMetrics, ndiVideo: videoPipeWriter.snapshot(), memory: process.memoryUsage() }, engine: playoutEngine.snapshot(), lastIssue: rundownController?.lastIssue, contingency: rundownController?.contingency,
+        diagnostics: { runtime:runtimeDiagnosticState(), lastFailure: lastProgramFailure, deck: activeDeck?.snapshot() || null, mediaQuality:mediaQuality.snapshot(), persistence: persistenceStatus(), metrics: { ...programMetrics, ndiVideo: videoPipeWriter.snapshot(), memory: process.memoryUsage() }, engine: playoutEngine.snapshot(), lastIssue: rundownController?.lastIssue, contingency: rundownController?.contingency,
             frameAgeMs: lastProgramFrameAt ? Math.max(0,programClock.nowMs()-lastProgramFrameAt) : null,
             ndiAudio: { connected: programAudioRouter.connected, bytes: programAudioRouter.bytes, droppedBytes: programAudioRouter.droppedBytes },
             transports: Object.fromEntries([...transportOutputs].map(([kind,out]) => [kind,{online:out.online,error:out.error}])) } }));
@@ -1489,7 +1495,7 @@ function registerIpcHandlers() {
         const selected = await dialog.showSaveDialog(mainWindow,{title:"Exportar diagnóstico",defaultPath:"Santtos-diagnostico.json",filters:[{name:"Diagnóstico",extensions:["json"]}]});
         if (selected.canceled) return { canceled:true };
         await fs.promises.writeFile(selected.filePath,JSON.stringify(redactDiagnostic({version:app.getVersion(),platform:process.platform,createdAt:new Date().toISOString(),engine:redactDiagnostic(playoutEngine.snapshot()),
-            lastFailure:lastProgramFailure,currentDeck:activeDeck?.snapshot()||null,currentStorage:activeDeck?.source?.cacheState||null,metrics:{...programMetrics},
+            runtime:runtimeDiagnosticState(),lastFailure:lastProgramFailure,currentDeck:activeDeck?.snapshot()||null,currentStorage:activeDeck?.source?.cacheState||null,metrics:{...programMetrics},
             profile:{resolution:activeOutputProfile.resolution,fps:activeOutputProfile.fpsText,pixelFormat:activeOutputProfile.pixelFormat},lastIssue:redactDiagnostic(rundownController?.lastIssue),
             ndi:{ready:ndiReady,error:ndiLastError},omt:redactDiagnostic(omtStatus()),transports:Object.fromEntries([...transportOutputs].map(([kind,out])=>[kind,{online:out.online,error:out.error}]))}),null,2));
         return {ok:true};

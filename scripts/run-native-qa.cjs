@@ -24,7 +24,7 @@ let launchCount=0,appChild;function launch(){appChild=start(electron,['.','--no-
 async function reboot(){const closed=new Promise(resolve=>appChild.once('exit',resolve));await evaluate('window.close()').catch(()=>{});let timeout;try{await Promise.race([closed,new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Graceful shutdown timeout')),10000)})])}finally{clearTimeout(timeout)}ws?.close();ws=null;launch();for(let n=0;n<100;n++){try{if(!ws||ws.readyState!==WebSocket.OPEN)await connect();if(await evaluate('Boolean(window.santtosAPI)'))return}catch{}await wait(150)}throw Error('Restart did not initialize');}
 async function stateIs(state,id){for(let n=0;n<150;n++){const status=(await evaluate('window.santtosAPI.getNdiStatus()')).playout;if(status.state===state&&status.itemId===id)return status;await wait(100)}const actual=(await evaluate('window.santtosAPI.getNdiStatus()')).playout;const recovery=await evaluate('window.santtosAPI.getPlayoutRecovery()');throw Error('Expected '+state+' / '+id+'; actual '+actual.state+' / '+actual.itemId+'; checkpoint '+JSON.stringify(recovery));}
 launch();
-let ready=false;for(let n=0;n<100;n++){try{if(!ws||ws.readyState!==WebSocket.OPEN)await connect();ready=await evaluate('Boolean(window.santtosAPI)');if(ready)break}catch{}await wait(200)}if(!ready)throw Error('Electron did not initialize');
+let ready=false;for(let n=0;n<100;n++){try{if(!ws||ws.readyState!==WebSocket.OPEN)await connect();ready=await evaluate('Boolean(window.santtosAPI) && document.readyState === "complete" && location.port === "5173"');if(ready)break}catch{}await wait(200)}if(!ready)throw Error('Electron did not initialize');
 await evaluate(`window.santtosAPI.importMedia(${JSON.stringify([fixture])})`);let media;for(let n=0;n<100;n++){media=(await evaluate('window.santtosAPI.getMedia()'))[0];if(media?.duration>=6&&media.quality?.status==='approved')break;await wait(100)}if(!media?.duration||media.quality?.status!=='approved')throw Error('Fixture was not fully analyzed');
 // A compact raster keeps CI load separate from hardware production benchmarks.
 const settings=await evaluate('window.santtosAPI.getSettings()');await evaluate(`window.santtosAPI.saveOutputSettings(${JSON.stringify({...settings.output,resolution:process.env.SANTTOS_QA_RESOLUTION||'1280x720',fps:process.env.SANTTOS_QA_FPS||'25',ndi:{enabled:true,name:'Santtos QA DEV NULL'},omt:{enabled:false},srt:{enabled:false},rtmp:{enabled:false}})})`);
@@ -40,6 +40,10 @@ if(process.argv.includes('--explorer-drop-only')){
 if(process.argv.includes('--opec-watch-only')){
  await run('test-opec-models.cjs',{SANTTOS_QA_OUTPUT:logs});await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});
  console.log('Desktop/remote Opec watching and clip bounds integration passed.');return;
+}
+if(process.argv.includes('--service-recovery-only')){
+ await run('test-native-service-recovery.cjs',{SANTTOS_QA_USERDATA:path.join(config,'santtos-tv-playout')});await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});
+ console.log('PROGRAM service restart, checkpoint and interrupted report integration passed.');return;
 }
 if(process.argv.includes('--monitor-only')){
  await run('test-native-monitor-sync.cjs');await connect();await evaluate('window.santtosAPI.stopNdiFile()');await evaluate('window.close()').catch(()=>{});

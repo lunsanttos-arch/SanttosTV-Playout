@@ -57,5 +57,16 @@ function fixture({ corrupt = false, filler = null } = {}) {
     await replay.controller.fault("Current decoder failed", replay.engine.snapshot());
     assert.equal(replay.engine.itemId, "second");
     assert.equal(replay.reports[0].status, "PULADO_POR_ERRO");
+    const network = fixture();
+    const {DeckPreparer}=require('../src/core/playout/deck-preparer');
+    const networkDecks=new DeckPreparer({timeoutMs:30,key:item=>item.id,create:async item=>{
+        if(item.id==='first')return new Promise(()=>{}); // A network stat can hang before a decoder exists.
+        return {ready:Promise.resolve(),stopped:false,stop(){this.stopped=true;},snapshot(){return {};}};
+    }});
+    const networkStart=network.controller.startRaw;
+    network.controller.startRaw=async item=>{await networkDecks.take(item,0,{});return networkStart(item);};
+    await network.controller.play(network.items[0]);
+    assert.equal(network.engine.itemId,'second','An unavailable network origin must not prevent automatic advancement');
+    assert.equal(network.reports[0].status,'PULADO_POR_ERRO');
     console.log("RUNDOWN RESILIENCE: corrupt filler terminates safely; stale same-item ready/fault events are ignored; current failures still advance");
 })().catch(error => { console.error(error); process.exitCode = 1; });

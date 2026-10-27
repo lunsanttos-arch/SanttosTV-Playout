@@ -6,7 +6,7 @@ async function exportSnapshot() {
     if (data.stateFile) {
         const state = JSON.parse(require("node:fs").readFileSync(data.stateFile, "utf8"));
         data.rows = state.entries.filter(entry => entry.reportDate === data.dateKey &&
-            ["EXECUTADO", "PULADO", "PULADO_POR_ERRO"].includes(entry.status))
+            ["EXECUTADO", "PULADO", "PULADO_POR_ERRO", "INTERROMPIDO"].includes(entry.status))
             .sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
     }
     return writeReportSnapshot(data);

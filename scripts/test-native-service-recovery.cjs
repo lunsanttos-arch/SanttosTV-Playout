@@ -40,7 +40,7 @@ async function evaluate(expression) {
         assert(resumed.playout.positionSeconds >= saved.positionSeconds - .1 && resumed.playout.positionSeconds < saved.positionSeconds + 5);
         await call("service:flush");
         const entries = JSON.parse(fs.readFileSync(path.join(root, "reporting/playout-report-state.json"), "utf8")).entries;
-        assert(entries.some(entry => entry.occurrenceId === item.id && entry.status === "PULADO_POR_ERRO" && entry.recoveredAfterCrash));
+        assert(entries.some(entry => entry.occurrenceId === item.id && entry.status === "INTERROMPIDO" && entry.recoveredAfterCrash && entry.endedAtUnknown));
         console.log("NATIVE SERVICE RECOVERY: SIGSTOP isolated service, heartbeat timeout/forced termination, automatic new PID, checkpoint position and interrupted-airing report passed");
     } finally {
         if (oldPid) try { process.kill(oldPid, "SIGKILL"); } catch {}

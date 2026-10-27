@@ -56,6 +56,17 @@ const reports = require("../src/core/reporting/playout-report");
         reports.initializePlayoutReports({ userDataPath: root, documentsPath: root });
         await reports.listReportFiles();
         assert(fs.readFileSync(htmlPath, "utf8").includes("Não recuperado"));
+        const interruptionFile=path.join(root,'reporting','playout-report-state.json');
+        const recovered=JSON.parse(fs.readFileSync(interruptionFile,'utf8'));
+        const interrupted=recovered.entries.find(item=>item.occurrenceId==='crash');
+        assert.equal(interrupted.status,'INTERROMPIDO');assert.equal(interrupted.endedAtUnknown,true);
+        assert(fs.readFileSync(htmlPath,'utf8').includes('Não confirmado'));
+        assert.equal(recovered.entries.find(item=>item.id===failed.id).status,'PULADO_POR_ERRO','Confirmed content failures remain failures');
+        // Migrate only legacy recovery markers, preserving real skip records.
+        await closePersistence();interrupted.status='PULADO_POR_ERRO';delete interrupted.endedAtUnknown;
+        fs.writeFileSync(interruptionFile,JSON.stringify(recovered));
+        reports.initializePlayoutReports({userDataPath:root,documentsPath:root});await reports.listReportFiles();
+        assert.equal(JSON.parse(fs.readFileSync(interruptionFile)).entries.find(item=>item.id===interrupted.id).status,'INTERROMPIDO');
         assert(fs.readFileSync(htmlPath.replace(/\.html$/, ".xml"), "utf8").includes("<duracao_exibida_conhecida>false</duracao_exibida_conhecida>"));
         const unavailable = path.join(root, "not-a-folder");
         fs.writeFileSync(unavailable, "file");
