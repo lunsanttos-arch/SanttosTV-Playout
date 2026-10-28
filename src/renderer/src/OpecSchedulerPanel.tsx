@@ -542,7 +542,6 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                 </section>
             </div>}
 
-            {!remote && <RemoteControllerAccess />}
             <div className="opec-meta-row">
                 <label><span>Data</span><StyledDatePicker value={date} onChange={setDate} /></label>
                     <label className="opec-title-field"><span>Programação</span><input aria-label="Nome da programação" title={title} value={title} onChange={(e) => setTitle(e.currentTarget.value)} maxLength={120} /></label>
@@ -551,7 +550,10 @@ export default function OpecSchedulerPanel({ media, onApply, remote = false, onI
                     <button disabled={loading} onClick={() => { setModalError(""); setModelAction("import"); setImportKind("weekday"); setWeekday(new Date(`${date}T12:00:00`).getDay()); setImportOpen(true); }}>Importar programação</button>
                     </div>
                 <label><span>Início programado</span><input type="time" step={1} aria-label="Início programado" title={formatDateTime(absoluteStart)} value={displayedStartTime} onChange={(e) => setStartTime(e.currentTarget.value)} /></label>
-                <div className="opec-summary"><span>PROGRAMADO</span><strong>{totalDuration === null ? "--:--:--" : formatDuration(totalDuration)}</strong><small>até {formatDateTime(endMs)}</small></div>
+                <div className="opec-timing-access">
+                    <div className="opec-summary"><span>PROGRAMADO</span><strong>{totalDuration === null ? "--:--:--" : formatDuration(totalDuration)}</strong><small>até {formatDateTime(endMs)}</small></div>
+                    {!remote && <RemoteControllerAccess />}
+                </div>
             </div>
 
             {status && <div key={status} className="opec-status" role="alert">{status}</div>}
