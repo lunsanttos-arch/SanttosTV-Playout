@@ -4356,11 +4356,6 @@ function PlayoutPanel({
                                                     </span>
 
                                                     <span className="timeline-air-time">
-                                                        PROGRAMADO{" "}
-                                                        {plannedSchedule.times.get(
-                                                            item.id
-                                                        ) ?? "SEM PREVISÃO"}
-                                                        {" • "}
                                                         {describeForecast(
                                                             item,
                                                             isCurrent
