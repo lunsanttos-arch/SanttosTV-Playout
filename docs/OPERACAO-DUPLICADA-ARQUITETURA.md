@@ -1,5 +1,7 @@
 # Operação em duas cadeias Santtos + vMix
 
+**Atualização de escopo em 28/10/2026:** o responsável definiu espelhamento entre dois Santtos, cache próprio de todos os materiais da programação e assunção **manual** pelo reserva. O plano específico e recomendado para implementação está em [ESPELHAMENTO-MANUAL-DO-PLAYOUT.md](ESPELHAMENTO-MANUAL-DO-PLAYOUT.md). As propostas de árbitro externo, automação da comutação e replicação do vMix abaixo são possibilidades futuras, não requisitos da primeira versão. O espelhamento do Santtos não depende da escolha do seletor final da TV.
+
 Estudo de 27/10/2026. Requisito confirmado: haverá dois computadores com vMix. Ainda é necessário confirmar se cada um também executará o Santtos ou se haverá dois PCs adicionais de playout, e identificar a saída final da TV. Este documento é uma proposta de engenharia; a redundância ainda não está implementada.
 
 O operador informou 32 horas de operação sem falhas. É um resultado útil da instalação atual, mas não mede a continuidade de duas cadeias nem os tempos de comutação.
