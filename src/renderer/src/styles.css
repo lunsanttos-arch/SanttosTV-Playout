@@ -2105,7 +2105,7 @@ button {
 
 .timeline-position {
     width: 38px;
-    font-size: 11px;
+    font-size: 12px;
 }
 
 .timeline-content {
@@ -2113,7 +2113,7 @@ button {
 }
 
 .timeline-content strong {
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.2;
 }
 
@@ -2136,13 +2136,13 @@ button {
 
 .timeline-clip-time {
     color: #9c9c9c !important;
-    font-size: 11px !important;
+    font-size: 12px !important;
 }
 
 .timeline-air-time {
     width: 100%;
     color: #ff4f68 !important;
-    font-size: 10px !important;
+    font-size: 12px !important;
     font-weight: 800;
     line-height: 1.2;
 }
