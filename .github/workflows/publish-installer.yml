@@ -1,0 +1,74 @@
+name: Publish verified Windows installer candidate
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: Successful Windows installer workflow run ID
+        required: true
+permissions:
+  actions: read
+  contents: write
+jobs:
+  publish:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      BUILD_RUN_ID: ${{ inputs.run_id }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Require successful installer workflow from main
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:BUILD_RUN_ID -notmatch '^\d+$') { throw 'Invalid build run ID.' }
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect build run.' }
+          if ($run.conclusion -ne 'success' -or $run.head_branch -ne 'main' -or $run.path -ne '.github/workflows/installer-hosted.yml') {
+            throw 'Only a successful installer workflow from main may be published.'
+          }
+          "BUILD_COMMIT=$($run.head_sha)" >> $env:GITHUB_ENV
+      - uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.run_id }}
+          pattern: Santtos-Windows-installer-*
+          path: candidate
+          merge-multiple: true
+      - name: Verify inventory and publish immutable prerelease
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $manifests = @(Get-ChildItem candidate -Recurse -File -Filter release.json)
+          if ($manifests.Count -ne 1) { throw 'Expected one installer candidate.' }
+          $folder = $manifests[0].DirectoryName
+          $manifest = Get-Content $manifests[0].FullName -Raw | ConvertFrom-Json
+          if ($manifest.commit -ne $env:BUILD_COMMIT -or $manifest.platform -ne 'win32' -or $manifest.arch -ne 'x64') { throw 'Build provenance mismatch.' }
+          if ($manifest.version -notmatch '^\d+\.\d+\.\d+-rc\.\d+$') { throw 'This workflow only publishes release candidates.' }
+          if ([IO.Path]::GetFileName($manifest.installer.path) -ne $manifest.installer.path) { throw 'Invalid installer path.' }
+          $installer = Join-Path $folder $manifest.installer.path
+          if ((Get-FileHash $installer -Algorithm SHA256).Hash -ne $manifest.installer.sha256) { throw 'Installer hash mismatch.' }
+          foreach ($line in Get-Content (Join-Path $folder SHA256SUMS.txt)) {
+            if ($line -notmatch '^([a-f0-9]{64})  ([^/\\]+)$') { throw 'Invalid checksum entry.' }
+            if ((Get-FileHash (Join-Path $folder $Matches[2]) -Algorithm SHA256).Hash -ne $Matches[1]) { throw 'Candidate file hash mismatch.' }
+          }
+          $tag = 'v' + $manifest.version
+          $signature = (Get-AuthenticodeSignature $installer).Status
+          $notes = Join-Path $env:RUNNER_TEMP 'installer-notes.md'
+          @"
+          Instalador do SanTTos Playout Lite para Windows x64.
+
+          Inclui Electron, FFmpeg/FFprobe e componentes NDI/OMT. O PC do master nao precisa de Node, npm, Git ou SDK de desenvolvimento.
+
+          O workflow de origem concluiu a instalacao NSIS em ambiente temporario e verificou integridade dos componentes, abertura do aplicativo instalado, analise de midia e reproducao pelo motor PROGRAM.
+
+          Versao candidata para instalacao e validacao no equipamento da emissora. Nao substitui homologacao das saidas no vMix. Estado Authenticode: $signature.
+
+          Commit: $env:BUILD_COMMIT
+          Build: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:BUILD_RUN_ID
+          SHA-256 do instalador: $($manifest.installer.sha256)
+
+          Antes de migrar, exporte o backup de dados do Santtos atual. Os videos nao estao incluidos no instalador. Instrucoes completas em INSTALACAO-LITE.md.
+          "@ | Set-Content $notes -Encoding utf8
+          $files = @(Get-ChildItem $folder -File | ForEach-Object { $_.FullName })
+          gh release create $tag @files --repo $env:GITHUB_REPOSITORY --target $env:BUILD_COMMIT --prerelease --latest=false --title "SanTTos Playout Lite $($manifest.version) - Windows x64" --notes-file $notes
+          if ($LASTEXITCODE -ne 0) { throw 'Publication failed; existing releases are never overwritten.' }
