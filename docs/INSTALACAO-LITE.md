@@ -25,6 +25,20 @@ Não existe atualização automática nem garantia de compatibilidade de dados n
 
 ## Preparar o candidato (equipe técnica)
 
+### Gerador no computador Windows onde o Santtos já funciona
+
+Feche o Santtos e execute `GERAR-INSTALADOR.cmd` na pasta do projeto, ou `npm run installer:windows`. Node/npm são necessários somente no computador que gera o pacote. O script valida o sender NDI existente por execução de `--capabilities`; se faltar ou estiver incompatível, tenta compilar com o SDK instalado. Nunca empacota um sender ausente/incompatível. Verifica também o OMT e os runtimes de mídia.
+
+Se não houver runtime de mídia de release preparado, baixa FFmpeg/FFprobe Windows 9.0.2 essentials da Gyan com URL e SHA-256 fixados, preserva licença/origem e cria o manifesto dos executáveis. A versão deve ser conferida na instalação real; isso não substitui a homologação de áudio/vídeo no Windows. Um runtime completo já preparado é preservado e validado, sem troca automática de versão.
+
+O gerador instala dependências de desenvolvimento, valida frontend/kit/runtime/nivelamento de áudio/transportes, monta NSIS e cria `build/release-VERSAO`, com o `.exe`, instruções e hashes. Recusa sobrescrever um kit existente. Copie esse kit para o PC do master; nele não é preciso instalar Node, npm, Git ou SDK. O gerador não copia vídeos, dados ou cache do computador de build: para migrar a operação, exporte o backup de dados e confira os caminhos e acessos no master.
+
+### Gerador no GitHub sem máquina Windows dedicada
+
+O workflow **Windows installer (prepared NDI runtime)** usa um runner Windows hospedado do GitHub. Requer um ZIP com `ndi_test.exe` e `Processing.NDI.Lib.x64.dll` preparados e autorizados, anexado como `ndi-runtime-windows-x64.zip` a uma Release deste repositório. Ao iniciar, informar a tag dessa Release e o SHA-256 do ZIP. O workflow verifica a integridade, executa as capacidades reais do sender e gera o kit como artifact. Não publica automaticamente uma versão final, não remove as verificações nativas e não exige que o SDK esteja disponível na nuvem.
+
+### Build com SDK e runtimes aprovados previamente
+
 Em Windows x64 com Node 24, MSVC e SDK NDI licenciados, prepare o runtime conforme `src/core/runtime/README.md`, incluindo arquivos LICENSE e SOURCE. Execute `npm ci`, `npm test` e `npm run build:lite`. O comando compila o NDI, verifica os runtimes, gera NSIS e monta `build/release-VERSAO` com instalador, inventário, lockfile, hashes e estes roteiros.
 
 O diretório de candidato não é sobrescrito. Para outro candidato, preserve o anterior fora de `build` e use uma nova versão. `release.json` registra versões/hashes dos componentes essenciais; não certifica homologação ou direitos de redistribuição. Revise também as licenças NDI, OMT, codecs, Electron e dependências antes da venda. Assinatura requer certificado configurado no ambiente de build. O candidato só vira versão final após a homologação documentada em `HOMOLOGACAO-WINDOWS.md`.

@@ -6,6 +6,25 @@ on:
     paths: [".github/workflows/**", "package*.json", "scripts/**", "src/**", "vite.config.*", "tsconfig*.json"]
   workflow_dispatch:
 jobs:
+  installer-tools:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Validate Windows installer script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [Management.Automation.Language.Parser]::ParseFile((Resolve-Path scripts/build-windows-installer.ps1), [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count) { throw ($parseErrors | Out-String) }
+      - run: npm ci
+      - run: npm run test:frontend
+      - run: npm run test:release-kit
   regression:
     runs-on: windows-latest
     timeout-minutes: 45

@@ -1,0 +1,51 @@
+name: Windows installer (prepared NDI runtime)
+on:
+  workflow_dispatch:
+    inputs:
+      ndi_release:
+        description: Release tag in this repository containing ndi-runtime-windows-x64.zip
+        required: true
+      ndi_sha256:
+        description: Expected SHA-256 of the prepared NDI zip
+        required: true
+permissions:
+  contents: read
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      NDI_RELEASE: ${{ inputs.ndi_release }}
+      NDI_SHA256: ${{ inputs.ndi_sha256 }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Download and verify the prepared NDI sender
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:NDI_SHA256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'Invalid expected NDI archive hash.' }
+          gh release download $env:NDI_RELEASE --repo $env:GITHUB_REPOSITORY --pattern ndi-runtime-windows-x64.zip --dir $env:RUNNER_TEMP
+          if ($LASTEXITCODE -ne 0) { throw 'Prepared NDI runtime not available.' }
+          $zip = Join-Path $env:RUNNER_TEMP 'ndi-runtime-windows-x64.zip'
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $env:NDI_SHA256) { throw 'NDI archive hash mismatch.' }
+          $stage = Join-Path $env:RUNNER_TEMP 'ndi-prepared'
+          Expand-Archive -LiteralPath $zip -DestinationPath $stage
+          foreach ($name in @('ndi_test.exe','Processing.NDI.Lib.x64.dll')) {
+            $files = @(Get-ChildItem $stage -Recurse -File -Filter $name)
+            if ($files.Count -ne 1) { throw "Expected exactly one $name." }
+            Copy-Item $files[0].FullName (Join-Path src/core/ndi $name)
+          }
+      - name: Build complete Windows installer
+        shell: pwsh
+        run: ./scripts/build-windows-installer.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Santtos-Windows-installer-${{ github.sha }}
+          path: build/release-*/**
+          if-no-files-found: error

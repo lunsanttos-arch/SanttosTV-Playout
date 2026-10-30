@@ -69,6 +69,7 @@
     "test:audio-leveling": "node scripts/test-audio-leveling.js",
     "test:program-monitor-clock": "node scripts/test-program-monitor-clock.js && node scripts/test-monitor-audio-timeline.js",
     "build:lite": "npm run build -- --win --x64 && node scripts/create-release-kit.js",
+    "installer:windows": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows-installer.ps1",
     "test:release-kit": "node scripts/test-release-kit.js",
     "diagnostico:video": "node scripts/diagnose-video.js",
     "test:video-diagnostic": "node scripts/test-video-diagnostic.js"
