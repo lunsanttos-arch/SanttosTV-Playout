@@ -4,10 +4,11 @@ on:
     inputs:
       ndi_release:
         description: Release tag in this repository containing ndi-runtime-windows-x64.zip
-        required: true
+        required: false
       ndi_sha256:
         description: Expected SHA-256 of the prepared NDI zip
-        required: true
+        required: false
+        default: 9ee4732cece8049ad7f9a64d970f2b98ac5ee4f9af95a13fdaad7f9123ae3be2
 permissions:
   contents: read
 jobs:
@@ -30,9 +31,13 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:NDI_SHA256 -notmatch '^[a-fA-F0-9]{64}$') { throw 'Invalid expected NDI archive hash.' }
-          gh release download $env:NDI_RELEASE --repo $env:GITHUB_REPOSITORY --pattern ndi-runtime-windows-x64.zip --dir $env:RUNNER_TEMP
-          if ($LASTEXITCODE -ne 0) { throw 'Prepared NDI runtime not available.' }
           $zip = Join-Path $env:RUNNER_TEMP 'ndi-runtime-windows-x64.zip'
+          if ($env:NDI_RELEASE) {
+            gh release download $env:NDI_RELEASE --repo $env:GITHUB_REPOSITORY --pattern ndi-runtime-windows-x64.zip --dir $env:RUNNER_TEMP
+            if ($LASTEXITCODE -ne 0) { throw 'Prepared NDI runtime not available.' }
+          } else {
+            Copy-Item build-resources/ndi-runtime-windows-x64.zip $zip
+          }
           if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne $env:NDI_SHA256) { throw 'NDI archive hash mismatch.' }
           $stage = Join-Path $env:RUNNER_TEMP 'ndi-prepared'
           Expand-Archive -LiteralPath $zip -DestinationPath $stage

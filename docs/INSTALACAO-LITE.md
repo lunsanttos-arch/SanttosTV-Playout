@@ -35,7 +35,7 @@ O gerador instala dependências de desenvolvimento, valida frontend/kit/runtime/
 
 ### Gerador no GitHub sem máquina Windows dedicada
 
-O workflow **Windows installer (prepared NDI runtime)** usa um runner Windows hospedado do GitHub. Requer um ZIP com `ndi_test.exe` e `Processing.NDI.Lib.x64.dll` preparados e autorizados, anexado como `ndi-runtime-windows-x64.zip` a uma Release deste repositório. Ao iniciar, informar a tag dessa Release e o SHA-256 do ZIP. O workflow verifica a integridade, executa as capacidades reais do sender e gera o kit como artifact. Não publica automaticamente uma versão final, não remove as verificações nativas e não exige que o SDK esteja disponível na nuvem.
+O workflow **Windows installer (prepared NDI runtime)** usa um runner Windows hospedado do GitHub. Por padrão utiliza `build-resources/ndi-runtime-windows-x64.zip`, fornecido pelo responsável em 30/10/2026 e conferido pelo SHA-256 fixado no workflow. Alternativamente, aceita um ZIP preparado e autorizado anexado como `ndi-runtime-windows-x64.zip` a uma Release deste repositório: informar a tag e o SHA-256 nos parâmetros. O workflow verifica a integridade, executa as capacidades reais do sender e gera o kit como artifact. Não publica automaticamente uma versão final, não remove as verificações nativas e não exige que o SDK esteja disponível na nuvem.
 
 ### Build com SDK e runtimes aprovados previamente
 
