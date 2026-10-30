@@ -23,6 +23,21 @@ function Run-Checked([string]$Executable, [string[]]$Arguments) {
 
 # Reuse only a sender that passes the real executable capability probe.
 # A workstation already running the current Santtos can build without installing the SDK again.
+$ndiFolder = Join-Path $root 'src\core\ndi'
+$ndiZip = Join-Path $root 'build-resources\ndi-runtime-windows-x64.zip'
+if ((-not (Test-Path (Join-Path $ndiFolder 'ndi_test.exe')) -or -not (Test-Path (Join-Path $ndiFolder 'Processing.NDI.Lib.x64.dll'))) -and (Test-Path $ndiZip)) {
+    $expectedNdi = '9ee4732cece8049ad7f9a64d970f2b98ac5ee4f9af95a13fdaad7f9123ae3be2'
+    if ((Get-FileHash $ndiZip -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expectedNdi) { throw 'Prepared NDI archive SHA-256 mismatch.' }
+    $ndiStage = Join-Path ([IO.Path]::GetTempPath()) ('santtos-ndi-' + [guid]::NewGuid().ToString('N'))
+    try {
+        Expand-Archive -LiteralPath $ndiZip -DestinationPath $ndiStage
+        foreach ($name in @('ndi_test.exe','Processing.NDI.Lib.x64.dll')) {
+            $files = @(Get-ChildItem $ndiStage -Recurse -File -Filter $name)
+            if ($files.Count -ne 1) { throw "Expected exactly one $name in the prepared NDI archive." }
+            Copy-Item -LiteralPath $files[0].FullName -Destination (Join-Path $ndiFolder $name)
+        }
+    } finally { if (Test-Path $ndiStage) { Remove-Item -LiteralPath $ndiStage -Recurse -Force } }
+}
 & node 'src/core/ndi/ndi-capabilities.js'
 if ($LASTEXITCODE -ne 0) {
     Write-Host 'Trying to compile NDI using the SDK installed on this build computer...'
