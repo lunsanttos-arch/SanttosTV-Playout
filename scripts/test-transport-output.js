@@ -16,12 +16,25 @@ async function freePort() {
     await new Promise(resolve => server.close(resolve));
     return port;
 }
+async function finishReceiver(receiver, closed) {
+    // SIGINT is graceful on POSIX, but Node terminates a Windows child abruptly.
+    // Ask FFmpeg to flush its muxer before probing the captured transport stream.
+    if (receiver.exitCode === null && receiver.signalCode === null) receiver.stdin.end("q\n");
+    let timeout;
+    try {
+        const code = await Promise.race([closed, new Promise((_, reject) => {
+            timeout = setTimeout(() => reject(Error("Receiver did not flush and close")), 8000);
+        })]);
+        assert([0, 255].includes(code), `Receiver failed instead of flushing: ${code}`);
+    } finally { clearTimeout(timeout); }
+}
 async function test(kind, folder) {
     const port = await freePort();
     const destination = kind === "srt" ? `srt://127.0.0.1:${port}?mode=listener` : `rtmp://127.0.0.1:${port}/live/test`;
     const file = path.join(folder, kind + ".ts");
     const receiver = spawn(ffmpeg, ["-hide_banner", "-loglevel", "info", ...(kind === "rtmp" ? ["-listen", "1"] : []),
-        "-analyzeduration", "500000", "-probesize", "32768", "-i", destination, "-map", "0:v", "-map", "0:a", "-c", "copy", "-y", file], { stdio: ["ignore", "ignore", "pipe"] });
+        "-analyzeduration", "500000", "-probesize", "32768", "-i", destination, "-map", "0:v", "-map", "0:a", "-c", "copy", "-y", file], { stdio: ["pipe", "ignore", "pipe"] });
+    receiver.stdin.on("error", () => {});
     let errors = "";
     receiver.stderr.on("data", data => errors += data.toString());
     receiver.on("error", error => errors += error.message);
@@ -44,21 +57,20 @@ async function test(kind, folder) {
         await delay(10000);
         assert(output.online, `${kind} sender failed: ${output.error || errors}`);
         const firstEncoder = output.process.pid;
-        receiver.kill("SIGINT");
-        await Promise.race([closed, delay(2000)]);
+        await finishReceiver(receiver, closed);
         const recoveredFile = path.join(folder, kind + "-recovered.ts");
         // Keep supplying the same occurrence while the destination is offline.
         await delay(1500);
         recoveredReceiver = spawn(ffmpeg, ["-hide_banner", "-loglevel", "error", ...(kind === "rtmp" ? ["-listen", "1"] : []),
             "-analyzeduration", "500000", "-probesize", "32768", "-i", destination, "-map", "0:v", "-map", "0:a", "-c", "copy", "-y", recoveredFile],
-            { stdio: ["ignore", "ignore", "pipe"] });
+            { stdio: ["pipe", "ignore", "pipe"] });
+        recoveredReceiver.stdin.on("error", () => {});
         recoveredReceiver.stderr.on("data", data => errors += data.toString());
         const recoveredClosed = new Promise(resolve => recoveredReceiver.once("close", resolve));
         for (let attempt = 0; attempt < 150 && !(output.online && output.process?.pid !== firstEncoder); attempt++) await delay(100);
         assert(output.online && output.process?.pid !== firstEncoder && output.reconnects > 0, `${kind} must reconnect the same occurrence`);
         await delay(4000);
-        recoveredReceiver.kill("SIGINT");
-        await Promise.race([recoveredClosed, delay(2000)]);
+        await finishReceiver(recoveredReceiver, recoveredClosed);
         const recoveredInfo = JSON.parse(execFileSync(ffprobe, ["-v", "error", "-show_streams", "-show_format", "-of", "json", recoveredFile], { encoding: "utf8" }));
         assert(recoveredInfo.streams.some(stream => stream.codec_type === "video" && stream.codec_name === "h264"));
         assert(recoveredInfo.streams.some(stream => stream.codec_type === "audio" && stream.codec_name === "aac"));
@@ -86,6 +98,10 @@ async function test(kind, folder) {
     assert.throws(() => transportUrl({ mode: "invalid", host: "localhost", port: 9000 }, "srt"));
     assert.match(transportUrl({ mode: "caller", host: "::1", port: 9000 }, "srt"), /^srt:\/\/\[::1\]:9000\?/);
     const folder = fs.mkdtempSync(path.join(os.tmpdir(), "santtos-transport-"));
-    try { await Promise.all([test("srt", folder), test("rtmp", folder)]); }
+    try {
+        const results = await Promise.allSettled([test("srt", folder), test("rtmp", folder)]);
+        const failures = results.filter(result => result.status === "rejected");
+        if (failures.length) throw new AggregateError(failures.map(result => result.reason), "Transport loopback failed");
+    }
     finally { fs.rmSync(folder, { recursive: true, force: true }); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

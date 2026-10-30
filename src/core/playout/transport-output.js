@@ -33,7 +33,7 @@ class TransportOutput {
     start() {
         this.stopping = false; clearTimeout(this.retryTimer); this.retryTimer = null;
         if (this.process) return this;
-        this.audioSeen = false; this.connected = false; this.startupVideoFrames = 0; this.startupAudioBytes = 0; this.startedAt = Date.now();
+        this.audioSeen = false; this.connected = false; this.connectedAt = null; this.startupVideoFrames = 0; this.startupAudioBytes = 0; this.startedAt = Date.now();
         const url = transportUrl(this.settings, this.kind);
         const p = this.profile;
         const fps = p.fpsN / p.fpsD;
@@ -54,15 +54,25 @@ class TransportOutput {
         let stderr = "";
         child.stderr.on("data", chunk => {
             const text = stderr + chunk.toString();
-            if (this.process === child && /Output #0, (?:mpegts|flv),/.test(text)) this.connected = true;
+            if (this.process === child && /Output #0, (?:mpegts|flv),/.test(text)) this.markConnected();
             stderr = text.slice(-2400);
         });
         child.stdio[4].on("data", chunk => {
-            if (this.process === child && /frame=\s*[1-9]/.test(chunk.toString())) { const wasOffline = !this.online; this.connected = true; this.online = true; this.error = null; this.attempts = 0; if (wasOffline) this.onRecovered?.(); }
+            if (this.process === child && /frame=\s*[1-9]/.test(chunk.toString())) { const wasOffline = !this.online; this.markConnected(); this.online = true; this.error = null; this.attempts = 0; if (wasOffline) this.onRecovered?.(); }
         });
         child.stdin.on("error", fail); child.stdio[3].on("error", fail);
         child.on("close", code => { if (this.process === child && !this.stopping) fail(stderr || "Transporte encerrou: " + code); });
         return this;
+    }
+    markConnected() {
+        if (!this.connected) this.connectedAt = Date.now();
+        this.connected = true;
+    }
+    warmingUp() {
+        // A listener may wait indefinitely before a receiver arrives. Allow its
+        // bounded initial A/V backlog to drain after connection, not only in the
+        // first five seconds after launching FFmpeg.
+        return Date.now() - Math.max(this.startedAt || 0, this.connectedAt || 0) < 5000;
     }
     recover(error) {
         if (this.stopping || this.retryTimer) return;
@@ -84,7 +94,7 @@ class TransportOutput {
         // of repeatedly killing a healthy SRT listener for lack of a receiver.
         if (!this.connected && this.startupVideoFrames >= 8) return;
         this.startupVideoFrames++;
-        if (sink.writableLength > frame.length * (Date.now() - this.startedAt < 5000 ? Math.max(3, Math.min(120, Math.floor(64 * 1024 * 1024 / frame.length))) : 3)) return this.recover("Encoder sem consumir vídeo; reconectando áudio e vídeo juntos.");
+        if (sink.writableLength > frame.length * (this.warmingUp() ? Math.max(3, Math.min(120, Math.floor(64 * 1024 * 1024 / frame.length))) : 3)) return this.recover("Encoder sem consumir vídeo; reconectando áudio e vídeo juntos.");
         sink.write(frame);
     }
     writeAudio(pcm) {
@@ -99,7 +109,7 @@ class TransportOutput {
             pcm = pcm.subarray(0, Math.min(pcm.length, remaining));
             this.startupAudioBytes += pcm.length;
         }
-        if (sink.writableLength > (Date.now() - this.startedAt < 5000 ? 4 * 1024 * 1024 : 512 * 1024)) return this.recover("Encoder sem consumir áudio; reconectando áudio e vídeo juntos.");
+        if (sink.writableLength > (this.warmingUp() ? 4 * 1024 * 1024 : 512 * 1024)) return this.recover("Encoder sem consumir áudio; reconectando áudio e vídeo juntos.");
         sink.write(pcm);
     }
     stop() {
